@@ -24,6 +24,7 @@ const S = {
   // 家长端
   pmId: null,           // 正在操作的宝可梦
   calOffset: 0,         // 日历偏移(月)
+  parentDate: null,     // 家长端当前查看/布置的日期，默认今天
   // 孩子端查看的日期（历史查看用，默认今天）
   viewDate: null,       // 'YYYY-MM-DD'，启动时置为今天
 };
@@ -134,8 +135,17 @@ async function refreshAll() {
 
 function activeTasks() { return S.tasks.filter(t => t.active); }
 
-// 今日常规任务 = active 且每日/单次
-function todayTasks() { return S.tasks.filter(t => t.active && (t.schedule === 'daily' || t.schedule === 'once')); }
+// 任务在某日期是否生效（start_date/end_date 均为空 = 一直生效）
+function inEffect(t, d) {
+  if (t.start_date && d < t.start_date) return false;
+  if (t.end_date && d > t.end_date) return false;
+  return true;
+}
+
+// 某日期的常规任务 = active 且每日/单次 且在生效日期范围内
+function tasksOnDate(date) { return S.tasks.filter(t => t.active && (t.schedule === 'daily' || t.schedule === 'once') && inEffect(t, date)); }
+// 今日常规任务
+function todayTasks() { return tasksOnDate(DB.today()); }
 // 本周(长期)任务 = 父任务
 function weeklyTasks() { return S.tasks.filter(t => t.active && t.schedule === 'weekly'); }
 // 某父任务的子任务（仅 active）
@@ -311,6 +321,12 @@ async function grantExp(pm, exp) {
   await DB.updatePokemon(pm.id, { exp: e, level: lv });
   pm.exp = e; pm.level = lv;
   if (leveled) showLevelUp(pm);
+  // 最高级后继续攒经验，攒满一管就变闪光：给孩子升满级后的新目标
+  if (lv >= CONFIG.LEVEL_CAP && !pm.shiny && e >= CONFIG.EXP_PER_LEVEL) {
+    await DB.updatePokemon(pm.id, { exp: 0, shiny: true });
+    pm.exp = 0; pm.shiny = true;
+    await showShiny(pm, `${pm.name} 攒满了最高级的经验，突破极限成为传说闪光✨`);
+  }
 }
 
 // ---------- 喂养 ----------
@@ -380,7 +396,7 @@ async function catchOne() {
 }
 
 // ---------- 动画：随机点亮闪光（连续全勤时触发） ----------
-function showShiny(pm) {
+function showShiny(pm, sub = null) {
   return new Promise(resolve => {
     const ov = $('overlay');
     ov.classList.remove('hidden'); ov.className = 'overlay gold';
@@ -392,7 +408,7 @@ function showShiny(pm) {
         <div class="shiny-rain">${stars}</div>
       </div>
       <div class="ov-title">✨ 闪闪发光了！✨</div>
-      <div class="ov-sub">${pm.name} 在连续全勤的欢呼中变成了闪光宝可梦！</div>
+      <div class="ov-sub">${sub || `${pm.name} 在连续全勤的欢呼中变成了闪光宝可梦！`}</div>
       <button class="ov-skip">哇！！🌟</button>
     `;
     sparkleBurst(ov.querySelector('.ov-stage'), 30);
@@ -653,7 +669,7 @@ function taskCardHTML(t) {
     <div class="emoji">${catIcon(t.category)}</div>
     <div class="info">
       <b>${t.title}</b>
-      <span>${t.category}${t.schedule === 'once' ? ' · 单次' : ''}${t.required === false ? ' · 可选' : ''}</span>
+      <span>${t.category}${t.schedule === 'once' ? ' · 单次' : ''}${t.required === false ? ' · 可选' : ''}${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}</span>
     </div>
     <div class="pts">+${t.points}</div>
     <button class="btn-done" data-action="checkin" data-tid="${t.id}" ${done || !isToday ? 'disabled' : ''}>${done ? '✅ 已完成' : (!isToday ? '查看历史' : '✅ 完成')}</button>
@@ -956,6 +972,10 @@ function bindActions() {
     else if (act === 'parent-parse') parseBatch();
     else if (act === 'parent-exit') { S.role = 'kid'; localStorage.setItem(LK('role'), 'kid'); render(); }
     else if (act === 'parent-cal') { S.calOffset += Number(btn.dataset.step || 0); renderParentCal(); }
+    else if (act === 'parent-date-prev') { S.parentDate = shiftDate(S.parentDate, -1); render(); }
+    else if (act === 'parent-date-next') { S.parentDate = shiftDate(S.parentDate, 1); render(); }
+    else if (act === 'parent-date-today') { S.parentDate = DB.today(); render(); }
+    else if (act === 'parent-multi') openMultiDayAssign();
     else if (act === 'parent-giveball') giveBall();
     else if (act === 'parent-givepts') givePts();
     else if (act === 'parent-minuspts') minusPts();
@@ -1013,12 +1033,12 @@ function renderParent() {
       </div>
     </div>
     <div class="page">
-      ${modePanel()}
       ${pendingPointsPanel()}
       ${parentTaskPanel()}
       ${parentStatsPanel()}
       ${parentPmPanel()}
       ${pointLogPanel()}
+      ${modePanel()}
       <button class="btn-ghost" style="width:100%;margin-top:8px" data-action="parent-exit">← 返回孩子界面</button>
     </div>
   `;
@@ -1026,20 +1046,35 @@ function renderParent() {
   renderParentCal();
   bindActions();
 }
+// 家长端日期导航条（切换后任务面板/布置都针对所选日期）
+function parentDateNav() {
+  const today = DB.today();
+  return `
+    <div class="date-nav">
+      <button class="chip" data-action="parent-date-prev">◀ 前一天</button>
+      <span class="date-cur">${S.parentDate}${S.parentDate === today ? '（今天）' : ''}</span>
+      <button class="chip" data-action="parent-date-next">后一天 ▶</button>
+      ${S.parentDate !== today ? `<button class="chip red" data-action="parent-date-today">回到今天</button>` : ''}
+    </div>
+  `;
+}
 function parentTaskPanel() {
-  const ts = todayTasks();
+  const ts = tasksOnDate(S.parentDate);
   const wts = weeklyTasks();
+  const pIsToday = S.parentDate === DB.today();
   return `
     <div class="panel">
-      <h3>今日任务</h3>
+      <h3>布置任务 <small style="font-weight:400">先选日期，再布置那天的任务</small></h3>
+      ${parentDateNav()}
+      <h3 style="margin-top:8px">📅 ${S.parentDate} 的任务${pIsToday ? '（今天）' : ''}</h3>
       ${ts.map(t => `
         <div class="prow">
           <span>${catIcon(t.category)}</span>
-          <div class="grow">${t.title} <small style="color:#90a4ae">${t.category} · +${t.points}分${t.schedule === 'once' ? ' · 单次' : ''}${t.required === false ? ' · 可选' : ''}</small></div>
-          <span class="${logToday(t.id) ? 'ok' : 'miss'}">${logToday(t.id) ? '✓ 完成' : '未完成'}</span>
+          <div class="grow">${t.title} <small style="color:#90a4ae">${t.category} · +${t.points}分${t.schedule === 'once' ? ' · 单次' : ''}${t.required === false ? ' · 可选' : ''}${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}</small></div>
+          <span class="${logOn(t.id, S.parentDate) ? 'ok' : 'miss'}">${logOn(t.id, S.parentDate) ? '✓ 完成' : '未完成'}</span>
           <button class="btn-danger" data-action="parent-del" data-tid="${t.id}">删除</button>
         </div>
-      `).join('') || '<div class="empty-tip">今天没有任务</div>'}
+      `).join('') || '<div class="empty-tip">这一天没有任务，用下面的按钮布置</div>'}
       ${wts.length ? `
         <h3 style="margin-top:12px">⏰ 本周任务</h3>
         ${wts.map(t => {
@@ -1125,11 +1160,14 @@ function parentTaskPanel() {
           </span>
         </div>
       </details>
-      <h3 style="margin-top:16px">自动识别（粘贴或手输都行）</h3>
+      <h3 style="margin-top:16px">批量布置多天</h3>
+      <button class="btn-primary" data-action="parent-multi" style="width:100%">📅 批量布置多天（日期分隔行）</button>
+      <div class="form-hint">一次规划好几天：每行写一个日期（如 <b>10-20</b> / <b>周一</b> / <b>明天</b>），下面几行是那天要做的任务，直到下一个日期行。布置后任务只出现在对应的那天（错过当天则不再出现）。</div>
+      <h3 style="margin-top:16px">自动识别（布置每天都要做的任务）</h3>
       <div class="form-hint" style="margin-bottom:6px">格式：<b>名称, 类别, 分数, 可选</b>　（除名称外均选填，分隔符使用逗号/分号/顿号/竖线/空格都行）</div>
       <textarea id="pt-batch" placeholder="每行一个任务，4 段可省：&#10;  第1段：名称（必填）&#10;  第2段：类别，不填默认「打卡」&#10;  第3段：分数，不填默认 10 分&#10;  第4段：写「可选」就是不强制，不写默认必选&#10;&#10;语文作业,校内作业,10&#10;跳绳500个,运动,5,可选&#10;练字一页 10"></textarea>
       <button class="btn-primary" data-action="parent-parse" style="margin-top:8px">解析并添加</button>
-      <div class="form-hint">类别随意填，会自动记住，孩子端按类别分区展示。</div>
+      <div class="form-hint">这里布置的任务每天都出现（如每天的语文作业）；想布置某天专属任务用上面的「批量布置多天」。</div>
     </div>
   `;
 }
@@ -1150,7 +1188,9 @@ async function saveParentTask() {
       await DB.addTask({ title: x.title, category, points: 0, schedule: 'child', parent_id: parent.id, percent: x.pct });
     }
   } else {
-    await DB.addTask({ title, category, points, schedule, deadline, required });
+    // once = 只做一次 → 绑定家长当前查看/布置的日期（当天专属）
+    const bindDate = schedule === 'once' ? S.parentDate : null;
+    await DB.addTask({ title, category, points, schedule, deadline, required, start_date: bindDate, end_date: bindDate });
   }
   $('pt-title').value = '';
   $('pt-deadline').value = '';
@@ -1395,7 +1435,91 @@ async function parseBatch() {
   await refreshAll();
   recordAssign();
   render();
-  toast(`成功添加 ${n} 个任务`);
+  toast(`成功添加 ${n} 个每天任务`);
+}
+// ---------- 批量布置多天：日期分隔行 ----------
+function pad2(n) { return String(n).padStart(2, '0'); }
+// 解析日期行 → 'YYYY-MM-DD'（支持 2026-10-20 / 10-20 / 10月20日 / 今天 / 明天 / 后天 / 周X）
+function parseDateToken(s, base) {
+  s = s.trim();
+  if (!s) return null;
+  if (s === '今天') return base;
+  if (s === '明天') return shiftDate(base, 1);
+  if (s === '后天') return shiftDate(base, 2);
+  if (s === '大后天') return shiftDate(base, 3);
+  if (/^周[一二三四五六日天]$/.test(s)) {
+    const map = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 0, '天': 0 };
+    const target = map[s[1]];
+    const now = new Date(base + 'T00:00:00');
+    let diff = (target - now.getDay() + 7) % 7;
+    if (diff === 0) diff = 7; // 只找最近的一个未来周X
+    return shiftDate(base, diff);
+  }
+  let m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (m) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
+  m = s.match(/^(\d{1,2})[-/](\d{1,2})$/);
+  if (m) { const y = new Date(base + 'T00:00:00').getFullYear(); return `${y}-${pad2(m[1])}-${pad2(m[2])}`; }
+  m = s.match(/^(\d{1,2})月(\d{1,2})日?$/);
+  if (m) { const y = new Date(base + 'T00:00:00').getFullYear(); return `${y}-${pad2(m[1])}-${pad2(m[2])}`; }
+  return null;
+}
+// 解析日期分隔行：每行一个日期，其后到下一个日期前的行归该日期
+function parseMultiDay(text) {
+  const base = DB.today();
+  const groups = [];
+  let cur = null;
+  text.split('\n').map(l => l.trim()).filter(Boolean).forEach(line => {
+    const dt = parseDateToken(line, base);
+    if (dt) { cur = { date: dt, items: [] }; groups.push(cur); return; }
+    if (!cur) return; // 开头不是日期就跳过
+    const parts = parseFields(line);
+    const title = parts[0];
+    if (!title) return;
+    let category = '打卡', points = 10, required = true;
+    if (parts[1]) { if (/^\d+$/.test(parts[1])) points = parseInt(parts[1]); else category = parts[1]; }
+    if (parts[2] && /^\d+$/.test(parts[2])) points = parseInt(parts[2]);
+    if (parts[3] && ['可选', '0', '选'].includes(parts[3])) required = false;
+    points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, points));
+    cur.items.push({ title, category, points, required });
+  });
+  return groups.filter(g => g.items.length);
+}
+// 弹窗：一次规划多天
+function openMultiDayAssign() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-mask';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:460px;width:calc(100% - 40px)">
+      <h3>📅 批量布置多天</h3>
+      <p class="form-hint">每行写一个日期（如 <b>10-20</b> / <b>周一</b> / <b>明天</b>），下面几行是那天要做的任务，直到下一个日期行。任务只出现在对应的那天。</p>
+      <textarea id="md-input" style="min-height:180px" placeholder="10-20&#10;语文作业,校内作业,10&#10;跳绳500个,运动,5,可选&#10;10-21&#10;英语作业,校内作业,10&#10;阅读20分钟,阅读,5"></textarea>
+      <div class="form-hint">任务格式同「自动识别」：名称, 类别, 分数, 可选（除名称外可省）</div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn-cancel" data-cancel style="flex:1">取消</button>
+        <button class="btn-primary" data-ok style="flex:2">解析并布置</button>
+      </div>
+    </div>
+  `;
+  modal.querySelector('[data-cancel]').onclick = () => modal.remove();
+  modal.querySelector('[data-ok]').onclick = async () => {
+    const text = modal.querySelector('#md-input').value.trim();
+    if (!text) { toast('内容为空'); return; }
+    const groups = parseMultiDay(text);
+    if (!groups.length) { toast('没解析到有效的日期分组，第一行请先写日期'); return; }
+    let n = 0;
+    for (const g of groups) {
+      for (const it of g.items) {
+        saveCat(it.category);
+        await DB.addTask({ title: it.title, category: it.category, points: it.points, schedule: 'once', required: it.required, start_date: g.date, end_date: g.date });
+        n++;
+      }
+    }
+    modal.remove();
+    await refreshAll(); render();
+    toast(`已布置 ${n} 个任务（${groups.length} 天）`);
+  };
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 // 家长中心顶部：当前数据模式提示（demo 演示模式才显示重置按钮）
 function modePanel() {
@@ -1545,6 +1669,9 @@ function parentPmPanel() {
     <div class="panel">
       <h3>奖励 / 扣分</h3>
       <div class="input-row">
+        <input id="pt-reason" placeholder="理由（如：帮妈妈洗碗 / 作业拖拉）" style="flex:2">
+      </div>
+      <div class="input-row">
         <input id="pt-givepts" type="number" placeholder="积分数量" value="50">
         <button class="btn-primary" data-action="parent-givepts" style="flex:1">奖励积分</button>
       </div>
@@ -1555,10 +1682,12 @@ function parentPmPanel() {
       <div class="input-row">
         <button class="btn-primary" data-action="parent-giveball" style="flex:1">送精灵球 ×1</button>
       </div>
-      <div class="form-hint">奖励或扣分即时生效；孩子端会分类展示「额外奖励」和「扣分」。</div>
+      <div class="form-hint">奖励或扣分即时生效；理由会跟着展示给孩子看。</div>
     </div>
   `;
 }
+// 读取奖励/扣分理由（可空）
+function pmReason() { return ($('pt-reason') && $('pt-reason').value || '').trim(); }
 async function resetDemo() {
   const prefix = DEMO_ACTIVE ? 'kmd_' : 'km_';
   const what = DEMO_ACTIVE ? '演示数据' : '全部数据';
@@ -1568,7 +1697,9 @@ async function resetDemo() {
   location.reload();
 }
 async function giveBall() {
-  await DB.addItemLog('ball', 1, '家长奖励', DB.today());
+  const why = pmReason();
+  const reason = why ? `家长奖励：${why}` : '家长奖励';
+  await DB.addItemLog('ball', 1, reason, DB.today());
   S.balls++;
   toast('🔴 已送 1 个精灵球');
   render();
@@ -1576,8 +1707,10 @@ async function giveBall() {
 async function givePts() {
   const n = parseInt($('pt-givepts').value) || 0;
   if (!n) { toast('填数量'); return; }
-  const pid = await DB.addPointLog(n, '家长奖励', DB.today());
-  S.pointLogs.push({ id: pid, log_date: DB.today(), amount: n, reason: '家长奖励' });
+  const why = pmReason();
+  const reason = why ? `家长奖励：${why}` : '家长奖励';
+  const pid = await DB.addPointLog(n, reason, DB.today());
+  S.pointLogs.push({ id: pid, log_date: DB.today(), amount: n, reason });
   S.balance += n;
   toast(`⭐ 已发 ${n} 积分`);
   render();
@@ -1585,8 +1718,10 @@ async function givePts() {
 async function minusPts() {
   const n = parseInt($('pt-minuspts').value) || 0;
   if (!n) { toast('填数量'); return; }
-  const pid = await DB.addPointLog(-n, '家长扣分', DB.today());
-  S.pointLogs.push({ id: pid, log_date: DB.today(), amount: -n, reason: '家长扣分' });
+  const why = pmReason();
+  const reason = why ? `家长扣分：${why}` : '家长扣分';
+  const pid = await DB.addPointLog(-n, reason, DB.today());
+  S.pointLogs.push({ id: pid, log_date: DB.today(), amount: -n, reason });
   S.balance -= n;
   toast(`➖ 已扣 ${n} 积分`);
   render();
@@ -1678,7 +1813,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     DB.init();
     await refreshAll();
-    S.viewDate = S.viewDate || DB.today();  // 默认查看今天
+    S.viewDate = S.viewDate || DB.today();    // 默认查看今天
+    S.parentDate = S.parentDate || DB.today(); // 家长端默认今天
     render();
     bindActions();
   } catch (err) {

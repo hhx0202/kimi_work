@@ -7,11 +7,11 @@ const CONFIG = {
   // ---------- 数据模式 ----------
   // 'demo'    = 本地试玩模式：数据存浏览器 localStorage，不连数据库，无需填 key，先看效果
   // 'supabase'= 真实模式：连接 Supabase 数据库（部署到远程前改这里并填写下方 key）
-  DB_MODE: 'demo',
+  DB_MODE: 'supabase',
 
   // ---------- Supabase 数据库（DB_MODE='supabase' 时必须填写！） ----------
   SUPABASE_URL: 'https://ipitcujpkfszghngfzwp.supabase.co',   // 你的 Project URL（不带 /rest/v1/）
-  SUPABASE_ANON_KEY: '在这里粘贴你的anon_public_key',          // Settings → API Keys → anon / publishable
+    SUPABASE_ANON_KEY: 'sb_publishable_nB4k3A_lo1VmYzZxUMGOcg_krEckErZ',          // Settings → API Keys → anon / publishable
 
   // ---------- 家长模式 ----------
   PARENT_PASSWORD: '2024',        // 家长密码（个人使用，简单即可）

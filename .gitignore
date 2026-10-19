@@ -23,3 +23,6 @@ __pycache__/
 # 编辑器
 .vscode/
 .idea/
+
+# AI 助手本地配置（如 Claude Code 的权限记录）
+.claude/

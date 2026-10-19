@@ -47,9 +47,9 @@ const DB = (() => {
       }
     },
     async getTasks() { return [...dGet(K.tasks)]; },
-    async addTask({ title, category, points, schedule = 'daily', deadline = null, parent_id = null, percent = null, required = true }) {
+    async addTask({ title, category, points, schedule = 'daily', deadline = null, parent_id = null, percent = null, required = true, start_date = null, end_date = null }) {
       const rows = dGet(K.tasks);
-      const row = { id: dNextId(K.tasks), title, category, points, schedule, deadline, parent_id, percent, required, active: true, created_at: nowISO() };
+      const row = { id: dNextId(K.tasks), title, category, points, schedule, deadline, parent_id, percent, required, start_date, end_date, active: true, created_at: nowISO() };
       rows.push(row); dSet(K.tasks, rows);
       return { ...row };
     },
@@ -131,8 +131,8 @@ const DB = (() => {
       if (error) sFail(error, '读取任务');
       return data || [];
     },
-    async addTask({ title, category, points, schedule = 'daily', deadline = null, parent_id = null, percent = null, required = true }) {
-      const { data, error } = await sClient().from('tasks').insert({ title, category, points, schedule, deadline, parent_id, percent, required, active: true }).select();
+    async addTask({ title, category, points, schedule = 'daily', deadline = null, parent_id = null, percent = null, required = true, start_date = null, end_date = null }) {
+      const { data, error } = await sClient().from('tasks').insert({ title, category, points, schedule, deadline, parent_id, percent, required, start_date, end_date, active: true }).select();
       if (error) sFail(error, '新增任务');
       return data[0];
     },
