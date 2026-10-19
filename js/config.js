@@ -14,7 +14,7 @@ const CONFIG = {
     SUPABASE_ANON_KEY: 'sb_publishable_nB4k3A_lo1VmYzZxUMGOcg_krEckErZ',          // Settings → API Keys → anon / publishable
 
   // ---------- 家长模式 ----------
-  PARENT_PASSWORD: '2024',        // 家长密码（个人使用，简单即可）
+  PARENT_PASSWORD: '1024',        // 家长密码（个人使用，简单即可）
 
   // ---------- 任务类别（自定义，家长端下拉+可输入新值，孩子端按此顺序分区展示） ----------
   // 顺序即孩子端展示顺序：校内在前，孩子会先做完校内再做校外
