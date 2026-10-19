@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kimi 任务岛 · 演示</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  body { background: linear-gradient(180deg, #e8f4fd 0%, #fdf8ef 100%); min-height: 100vh; }
+  .intro { max-width: 640px; margin: 0 auto; padding: 32px 18px 60px; }
+  .intro-hero { text-align: center; margin-bottom: 24px; }
+  .intro-hero h1 { font-size: 34px; margin: 0 0 6px; }
+  .intro-hero p { color: var(--ink-soft); margin: 0; font-size: 15px; }
+  .intro-card { background: #fff; border-radius: 18px; padding: 18px; margin-bottom: 14px; box-shadow: 0 4px 14px rgba(0,0,0,.06); }
+  .intro-card h3 { margin: 0 0 10px; font-size: 16px; }
+  .feat { display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f5f5f5; font-size: 14px; }
+  .feat:last-child { border-bottom: 0; }
+  .feat .ico { font-size: 22px; width: 30px; text-align: center; flex-shrink: 0; }
+  .feat b { display: block; }
+  .feat small { color: var(--ink-soft); }
+  .btn-row { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .btn-row a { flex: 1; min-width: 150px; text-align: center; text-decoration: none; border-radius: 999px; padding: 14px 18px; font-size: 16px; font-weight: 800; color: #fff; }
+  .btn-play { background: linear-gradient(135deg, #ffb74d, #f57c00); box-shadow: 0 3px 0 #e65100; }
+  .btn-parent { background: linear-gradient(135deg, #42a5f5, #1e88e5); box-shadow: 0 3px 0 #1565c0; }
+  .foot { text-align: center; color: var(--ink-soft); font-size: 12px; margin-top: 20px; line-height: 1.8; }
+</style>
+</head>
+<body>
+<div class="intro">
+  <div class="intro-hero">
+    <div style="font-size:56px">🏝️</div>
+    <h1>Kimi 任务岛</h1>
+    <p>给孩子的作业 + 打卡激励工作台，边完成任务边收集宝可梦</p>
+  </div>
+
+  <div class="intro-card">
+    <h3>🎯 它是什么</h3>
+    <div style="font-size:14px;line-height:1.9;color:#444">
+      家长在手机上布置任务，孩子在平板上打卡赚积分；用积分捕捉、喂养、进化宝可梦，点亮 151 只图鉴。
+      免费、纯前端、数据存在自己浏览器里，开箱即用。
+    </div>
+  </div>
+
+  <div class="intro-card">
+    <h3>✨ 功能亮点</h3>
+    <div class="feat"><div class="ico">📌</div><div><b>三类任务</b><small>每日任务 / 一次性任务 / 本周长期任务（可拆子任务按百分比累计进度）</small></div></div>
+    <div class="feat"><div class="ico">🛡️</div><div><b>必选 / 可选分区</b><small>必选全清 +5 分，可选全清再 +3 分，连续全勤送精灵球</small></div></div>
+    <div class="feat"><div class="ico">✅</div><div><b>待确认积分（防乱点）</b><small>孩子打卡立即有反馈，但积分要家长确认后才到账，发错了还能一条条撤销</small></div></div>
+    <div class="feat"><div class="ico">🥚</div><div><b>捕捉 / 升级 / 进化</b><small>1 球抓一只，5% 闪光，喂养升级，等级达标花钱进化，动画超炫</small></div></div>
+    <div class="feat"><div class="ico">🃏</div><div><b>宝可梦卡牌</b><small>小卡网格 + PTCG 风格翻牌大卡（属性边框 + 场景背景 + 技能 + 进化链）</small></div></div>
+    <div class="feat"><div class="ico">📖</div><div><b>151 图鉴</b><small>未收集显示剪影，闪光个体带 ✨</small></div></div>
+    <div class="feat"><div class="ico">📸</div><div><b>成就图一键分享</b><small>生成成就卡，长按保存发朋友圈</small></div></div>
+    <div class="feat"><div class="ico">⚡</div><div><b>家长快速布置</b><small>复制上次布置 / 命名模板 / 最近用过，几十秒布置好今天的任务</small></div></div>
+  </div>
+
+  <div class="btn-row">
+    <a class="btn-play" href="index.html">🎮 立即试玩</a>
+    <a class="btn-parent" href="index.html" onclick="localStorage.setItem('km_role','parent')">👨‍👩‍👧 家长演示</a>
+  </div>
+
+  <div class="foot">
+    试玩数据存在本浏览器里，不会上网。<br>
+    想重新演示一遍？家长中心 → 「🎮 重置试玩数据」一键清空重来。
+  </div>
+</div>
+</body>
+</html>
