@@ -677,7 +677,7 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .ov-mon.reveal { animation: mon-reveal .7s cubic-bezier(.2, 1.6, .4, 1) forwards; }
 @keyframes mon-reveal { to { opacity: 1; transform: scale(1); } }
 .ov-title { font-size: 26px; font-weight: 900; margin-top: 8px; text-shadow: 0 2px 12px rgba(255, 255, 255, .45); }
-.ov-sub { font-size: 14px; opacity: .85; margin-top: 6px; min-height: 20px; }
+.ov-sub { font-size: 14px; opacity: .85; margin-top: 6px; min-height: 20px; max-width: 86%; line-height: 1.5; padding: 0 6px; }
 .ov-skip {
   position: absolute; bottom: 40px; border: 0; cursor: pointer;
   background: rgba(255, 255, 255, .16); color: #fff;
@@ -786,9 +786,48 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   background: rgba(0,0,0,.65); color: #ffd54f; font-size: 11px; font-weight: 800;
   padding: 2px 7px; border-radius: 999px;
 }
-.mini-name { font-weight: 800; margin-top: 7px; font-size: 13px; }
-.mini-type { font-size: 11px; font-weight: 700; margin-top: 2px; }
+/* 第一行：属性小胶囊 + 名字；第二行：获取时间 */
+.mini-line { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 7px; min-width: 0; }
+.mini-type {
+  flex: 0 0 auto; font-size: 9px; font-weight: 800; color: #fff; line-height: 1;
+  padding: 3px 5px; border-radius: 999px; letter-spacing: .3px;
+}
+.mini-name { font-weight: 800; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.mini-time { font-size: 10px; color: #90a4ae; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @keyframes twinkle { 50% { opacity: .35; transform: scale(.85); } }
+
+/* ---------- 连续必做全清（孩子端任务页最下方） ---------- */
+.streak-card { margin-top: 4px; }
+.streak-card .streak-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 13px; margin-bottom: 6px; }
+.streak-card .streak-head b { font-size: 14px; }
+.streak-card .streak-head span { color: var(--ink-soft); font-weight: 700; }
+.streak-row { display: flex; align-items: center; gap: 10px; }
+.streak-row .progress-track { flex: 1; }
+.streak-btn {
+  flex: 0 0 auto; border: 0; border-radius: 999px; cursor: pointer;
+  font-size: 12px; font-weight: 800; padding: 8px 12px; white-space: nowrap;
+  background: #eceff1; color: #78909c;
+}
+.streak-btn:disabled { cursor: default; }
+.streak-btn.ready {
+  background: linear-gradient(135deg, #ffb74d, #fb8c00); color: #fff;
+  box-shadow: 0 3px 0 #ef6c00; animation: streak-pulse 1.1s ease-in-out infinite;
+}
+.streak-btn.ready:active { transform: translateY(2px); box-shadow: none; }
+@keyframes streak-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 3px 0 #ef6c00, 0 0 0 0 rgba(251, 140, 0, .55); }
+  50% { transform: scale(1.05); box-shadow: 0 3px 0 #ef6c00, 0 0 0 9px rgba(251, 140, 0, 0); }
+}
+.streak-tip { font-size: 11px; color: var(--ink-soft); line-height: 1.5; margin-top: 7px; }
+.streak-card.ready { box-shadow: 0 0 0 2px rgba(255, 183, 77, .5), var(--shadow); }
+
+/* 达标庆祝：整屏奖杯 */
+.streak-fx { text-align: center; color: #fff; padding: 20px; }
+.streak-fx-badge { font-size: 84px; line-height: 1; animation: streak-pop .6s cubic-bezier(.2, 1.5, .4, 1) both; }
+.streak-fx-title { font-size: 24px; font-weight: 900; margin-top: 12px; text-shadow: 0 2px 12px rgba(0, 0, 0, .35); }
+.streak-fx-sub { font-size: 14px; opacity: .92; margin-top: 8px; line-height: 1.5; }
+.streak-fx .catch-tap { margin-top: 20px; font-size: 13px; opacity: .6; }
+@keyframes streak-pop { from { transform: scale(.3) rotate(-12deg); opacity: 0; } }
 
 /* ---------- 卡牌详情（PTCG 风格） ---------- */
 .overlay.card-view {

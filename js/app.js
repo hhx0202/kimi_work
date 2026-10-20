@@ -45,8 +45,8 @@ const SETTING_FIELDS = [
   { key: 'EVO_EXP_1', label: '进化第1段所需经验' },
   { key: 'EVO_EXP_2', label: '进化第2段所需经验' },
   { key: 'SHINY_EXP', label: '进入闪耀形态所需经验' },
-  { key: 'STREAK_DAYS_FOR_BALL', label: '连续全勤几天送球' },
-  { key: 'STREAK_REWARD_BALLS', label: '全勤送几个球' },
+  { key: 'STREAK_DAYS_FOR_BALL', label: '连续几天必做全清送球' },
+  { key: 'STREAK_REWARD_BALLS', label: '达标送几个球' },
 ];
 
 // 日期工具
@@ -67,7 +67,7 @@ const MOTTO = [
   // ===== 鼓励话 =====
   '坚持打卡，你的伙伴会越来越强！⚡',
   '每完成一个任务，宝可梦就离进化更近一步！',
-  '连续全勤的坚持，也许会有宝可梦闪闪发光！✨',
+  '每天把必做任务做完，也许会有宝可梦闪闪发光！✨',
   '精灵球攒够了，就去捕捉新的伙伴吧！',
   '喂饱你的宝可梦，它会回报你更多经验！',
   '今天的任务做完，明天就能捉新宝可梦！',
@@ -90,7 +90,7 @@ const MOTTO = [
   '攒够球就去捕捉，图鉴越满越开心！🥚',
   '喂一颗糖果，你的伙伴离进化近一步！🍬',
   '别小看小任务，小步快跑也能赢！🏃',
-  '全勤一周，会有惊喜等着你！🎉',
+  '必做任务连清一周，会有惊喜等着你！🎉',
   '今天的你，比昨天的你更厉害！💪',
   '每只宝可梦都有它的闪耀时刻！✨',
   '快去看看图鉴，又有新点亮了！🔆',
@@ -420,20 +420,45 @@ function isAllDone(dates) {
   if (!ts.length) return false;
   return ts.every(t => S.logs[dates]?.[t.id]?.done === true);
 }
-function calcStreak() {
-  let streak = 0;
-  const d = new Date();
-  for (let i = 0; i < 60; i++) {
-    const ds = fmtDate(d);
-    const dayLogs = S.logs[ds];
-    if (dayLogs && Object.keys(dayLogs).length) {
-      if (Object.values(dayLogs).every(l => l && l.done)) streak++;
-      else break;
-    }
+// 某天「必做任务是否全部完成」：和进度条同一个分母（dayTasksForProgress），口径不会打架
+function reqDayDone(date) {
+  const ts = dayTasksForProgress(date).filter(t => t.required !== false);
+  if (!ts.length) return false;                 // 没有必做任务的一天不算「必做全清」
+  return ts.every(t => S.logs[date]?.[t.id]?.done === true);
+}
+// 连续几天「必做全清」：今天还没做完就从昨天开始数，进度条不会一到零点就归零
+function reqStreakDays() {
+  const today = DB.today();
+  const d = new Date(today + 'T00:00:00');
+  if (!reqDayDone(today)) d.setDate(d.getDate() - 1);
+  let n = 0;
+  for (let i = 0; i < 400; i++) {
+    if (!reqDayDone(fmtDate(d))) break;
+    n++;
     d.setDate(d.getDate() - 1);
   }
-  return streak;
+  return n;
 }
+function calcStreak() { return reqStreakDays(); }
+// 本轮（上次领奖之后）已经连了几天必做全清
+const K_STREAK_CLAIM = LK('streak_claim');
+function streakClaimedOn() { return lsGet(K_STREAK_CLAIM, '') || ''; }
+function streakCycleDays() {
+  const stop = streakClaimedOn();
+  const today = DB.today();
+  const d = new Date(today + 'T00:00:00');
+  if (!reqDayDone(today)) d.setDate(d.getDate() - 1);
+  let n = 0;
+  for (let i = 0; i < 400; i++) {
+    const ds = fmtDate(d);
+    if (stop && ds <= stop) break;              // 领过的那天之前不算新一轮
+    if (!reqDayDone(ds)) break;
+    n++;
+    d.setDate(d.getDate() - 1);
+  }
+  return n;
+}
+function streakGoal() { return Math.max(1, Number(CONFIG.STREAK_DAYS_FOR_BALL) || 7); }
 // 某任务的连续打卡天数（从今天往前连续完成）
 function taskStreak(taskId) {
   let n = 0;
@@ -581,27 +606,17 @@ async function checkin(taskId, btn, progress = null) {
   const reqDone = isDayDone(reqTasks);
   const optDone = isDayDone(optTasks);
 
+  // 7 天必做全清达标：这里只庆祝 + 提示，奖励改成在最下方进度条点「领取」（不再自动发）
+  let celebrating = false;
   if (reqDone && !S.pointLogs.some(l => l.reason === `必选全清_${today}`)) {
     const rpid = await DB.addPointLog(CONFIG.REQUIRED_DONE_BONUS, `必选全清_${today}`, today, { confirmed: false });
     S.pointLogs.push({ id: rpid, log_date: today, amount: CONFIG.REQUIRED_DONE_BONUS, reason: `必选全清_${today}`, confirmed: false });
-    confetti({ particleCount: 90, spread: 80, origin: { y: .6 } });
-    toast(`🎉 今日必做任务全部完成！+${CONFIG.REQUIRED_DONE_BONUS}（待家长确认）`);
-    // 连击球（基于必选全清）
-    if (calcStreak() >= CONFIG.STREAK_DAYS_FOR_BALL) {
-      const reason = `全勤${CONFIG.STREAK_DAYS_FOR_BALL}天_${today}`;
-      if (!await DB.hasItemReason(reason)) {
-        await DB.addItemLog('ball', CONFIG.STREAK_REWARD_BALLS, reason, today);
-        S.balls += CONFIG.STREAK_REWARD_BALLS;
-        toast(`🏆 连续 ${calcStreak()} 天全勤！送精灵球 ×${CONFIG.STREAK_REWARD_BALLS}`);
-        // ✨ 全勤彩蛋：随机点亮一只已有的宝可梦为闪耀形态
-        const cand = S.pokemons.filter(p => !p.shiny);
-        if (cand.length) {
-          const pick = cand[Math.floor(Math.random() * cand.length)];
-          await DB.updatePokemon(pick.id, { shiny: true });
-          pick.shiny = true;
-          await showShiny(pick);
-        }
-      }
+    if (streakCycleDays() >= streakGoal()) {
+      celebrating = true;
+      showStreakReady();   // 不 await：庆祝动画播着，后面的任务卡/进度条照常刷新
+    } else {
+      confetti({ particleCount: 90, spread: 80, origin: { y: .6 } });
+      toast(`🎉 今日必做任务全部完成！+${CONFIG.REQUIRED_DONE_BONUS}（待家长确认）`);
     }
   }
   if (optDone && !S.pointLogs.some(l => l.reason === `可选全清_${today}`)) {
@@ -615,7 +630,7 @@ async function checkin(taskId, btn, progress = null) {
   const card = btn ? btn.closest('.task-card') : null;
   if (card) card.classList.add('just-done');
   confetti({ particleCount: 40, spread: 60, scalar: .8, origin: { y: .5 } });
-  toast(`📝 「${task.title}」已提交，等家长确认～`);
+  if (!celebrating) toast(`📝 「${task.title}」已提交，等家长确认～`);
   renderTop();
   renderProgress();
   renderTasks();
@@ -688,9 +703,20 @@ function expThreshold(pm) {
   if (stage === 1) return CONFIG.EVO_EXP_2;       // 一阶形态
   return CONFIG.SHINY_EXP;                        // 二阶（最终）形态：再攒满即进入闪耀形态
 }
+// 是否已经有这只（同名编号）的闪耀卡
+function hasShinyCopy(no) { return S.pokemons.some(p => p.pokedex_no === no && p.shiny); }
+// 闪耀形态统一「额外多一张卡」：原来的普通卡留着，另建一张 ✨ 卡（和演示数据里 ‹皮卡丘 + ✨皮卡丘› 一致）
+async function addShinyCopy(pm) {
+  const copy = await DB.addPokemon({ pokedex_no: pm.pokedex_no, shiny: true });
+  S.pokemons.push(copy);
+  return copy;
+}
 // 是否已封顶：闪耀形态且没有后续进化（基础/一阶的闪耀形态还能继续进化，不算封顶）
 function isMaxed(pm) {
-  if (!pm.shiny) return false;
+  if (!pm.shiny) {
+    // 已经有同编号闪耀卡的普通卡：不再吃经验，否则会一直「经验满」却进化不了
+    return !!PK_BY_NO[pm.pokedex_no] && !hasNextEvo(pm.pokedex_no) && hasShinyCopy(pm.pokedex_no);
+  }
   if (!PK_BY_NO[pm.pokedex_no]) return false;
   if (!hasNextEvo(pm.pokedex_no)) return true;      // 没有后续进化：闪耀形态即最终形态
   return evoStage(pm.pokedex_no) >= 2;              // 二阶（最终形态）闪耀形态即封顶
@@ -719,7 +745,7 @@ async function grantExp(pm, exp) {
 
 // ---------- 喂养 ----------
 async function feedPm(pm, pts) {
-  if (isMaxed(pm)) { hideModal(); toast('它已经是闪耀形态（满级）啦，不需要再喂糖果～'); return; }
+  if (isMaxed(pm)) { hideModal(); toast(pm.shiny ? '它已经是闪耀形态（满级）啦，不需要再喂糖果～' : '它已经有闪耀卡啦，这张普通卡不用再喂～'); return; }
   pts = Math.floor(Number(pts) || 0);
   if (pts <= 0) { toast('请输入要喂的积分数'); return; }
   if (pts > S.balance) { toast(`积分不够啦，你最多只能喂 ${S.balance} 分`); return; }
@@ -744,6 +770,7 @@ function canEvolve(pm) {
   // 没有后续进化的宝可梦：经验满 SHINY_EXP 即进入闪耀形态
   if (!hasNextEvo(pm.pokedex_no)) {
     if (pm.shiny) return { ok: false };
+    if (hasShinyCopy(pm.pokedex_no)) return { ok: false, why: '已拥有闪耀形态' };  // 别再重复生成闪耀卡
     return pm.exp >= CONFIG.SHINY_EXP ? { ok: true, shiny: true } : { ok: false, why: `经验 ${pm.exp}/${CONFIG.SHINY_EXP}` };
   }
   const stage = evoStage(pm.pokedex_no);
@@ -784,11 +811,12 @@ function pickEvoTarget(pm, targets) {
 async function evolvePm(pm) {
   const c = canEvolve(pm);
   if (!c.ok) return;
-  // 闪耀形态：最终形态再攒满一管 → 进入闪耀形态（之后封顶，经验清零）
+  // 闪耀形态：最终形态再攒满一管 → 额外多一张闪耀卡（普通卡保留，和图鉴里的「皮卡丘 + ✨皮卡丘」一致）
   if (c.shiny) {
-    await DB.updatePokemon(pm.id, { exp: 0, shiny: true });
-    pm.exp = 0; pm.shiny = true;
-    await showShiny(pm, `${pm.name} 经验满格，进化成了闪耀形态✨`);
+    const copy = await addShinyCopy(pm);
+    await DB.updatePokemon(pm.id, { exp: 0 });
+    pm.exp = 0;
+    await showShiny(copy, `${pm.name} 经验满格，多了一张闪耀形态卡✨`);
     renderTop();
     render();
     return;
@@ -837,7 +865,7 @@ async function catchOne() {
   renderTop(); renderPokemons();
 }
 
-// ---------- 动画：随机点亮闪耀形态（连续全勤时触发） ----------
+// ---------- 动画：多一张闪耀形态卡（进化满经验 / 连清奖励时触发） ----------
 function showShiny(pm, sub = null) {
   return new Promise(resolve => {
     const ov = $('overlay');
@@ -865,7 +893,7 @@ function showShiny(pm, sub = null) {
       </div>
       <div class="ov-badge">SHINY!</div>
       <div class="ov-title">✨ 进入闪耀形态！✨</div>
-      <div class="ov-sub">${sub || `${pm.name} 在连续全勤的欢呼中变成了闪耀形态！`}</div>
+      <div class="ov-sub">${sub || `${pm.name} 在欢呼中多了一张闪耀形态卡！`}</div>
       <button class="ov-skip">哇！！🌟</button>
     `;
     sparkleBurst(ov.querySelector('.ov-stage'), 30);
@@ -1297,6 +1325,86 @@ function renderProgress() {
   el.innerHTML = html;
 }
 
+// ---------- 连续「必做全清」进度 + 领取（放在孩子端任务页最下方） ----------
+function streakCardHTML() {
+  const goal = streakGoal();
+  const days = Math.min(streakCycleDays(), goal);
+  const ready = days >= goal;
+  const pct = Math.round(days / goal * 100);
+  const left = Math.max(0, goal - days);
+  return `
+    <div class="progress-card streak-card${ready ? ' ready' : ''}">
+      <div class="streak-head">
+        <b>🏆 ${goal} 天必做全清</b>
+        <span>${days}/${goal} 天${ready ? ' · 可以领奖啦' : ''}</span>
+      </div>
+      <div class="streak-row">
+        <div class="progress-track"><div class="progress-fill ${ready ? 'full' : ''}" style="width:${pct}%${progFillStyle(pct, ready)}"></div></div>
+        ${ready
+          ? `<button class="streak-btn ready" data-action="streak-claim">🎁 领取</button>`
+          : `<button class="streak-btn" disabled>还差 ${left} 天</button>`}
+      </div>
+      <div class="streak-tip">每天把<b>必做任务全部做完</b>算 1 天，连满 ${goal} 天领精灵球 ×${CONFIG.STREAK_REWARD_BALLS}，还会额外多一张闪耀卡 ✨（中间断一天就重新数）</div>
+    </div>`;
+}
+
+// 达标瞬间的庆祝动画（一次性，点一下或 2.6 秒后自动消失，不挡领奖按钮）
+function showStreakReady() {
+  return new Promise(resolve => {
+    const ov = $('overlay');
+    ov.classList.remove('hidden');
+    ov.className = 'overlay gold';
+    ov.innerHTML = `
+      <div class="streak-fx">
+        <div class="streak-fx-badge">🏆</div>
+        <div class="streak-fx-title">连续 ${streakGoal()} 天必做全清！</div>
+        <div class="streak-fx-sub">精灵球 ×${CONFIG.STREAK_REWARD_BALLS} + 一张闪耀卡在下面等你领</div>
+        <div class="catch-tap">点一下继续</div>
+      </div>`;
+    confetti({ particleCount: 220, spread: 140, origin: { y: .5 } });
+    let closed = false;
+    const done = () => {
+      if (closed) return;
+      closed = true;
+      ov.classList.add('hidden');
+      ov.innerHTML = '';
+      ov.onclick = null;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(done, 2600);
+    ov.onclick = done;
+  });
+}
+
+// 点「领取」：发球 + 随机多一张闪耀卡，然后把这一轮清零重新数
+async function claimStreak() {
+  const goal = streakGoal();
+  const days = streakCycleDays();
+  if (days < goal) { toast(`还差 ${goal - days} 天必做全清`); return; }
+  const today = DB.today();
+  const n = Math.max(1, Number(CONFIG.STREAK_REWARD_BALLS) || 1);
+  const reason = `必做全清${goal}天_${today}`;
+  let gotBall = false;
+  if (!await DB.hasItemReason(reason)) {      // 同一天只发一次，防止重复点「领取」刷球
+    await DB.addItemLog('ball', n, reason, today);
+    S.balls += n;
+    gotBall = true;
+  }
+  lsSet(K_STREAK_CLAIM, today);
+  // ✨ 奖励：随机一只（还没有闪耀卡的）额外多一张闪耀形态卡
+  const cand = S.pokemons.filter(p => !p.shiny && !hasShinyCopy(p.pokedex_no));
+  const pick = cand.length ? cand[Math.floor(Math.random() * cand.length)] : null;
+  const shiny = pick ? await addShinyCopy(pick) : null;
+  confetti({ particleCount: 180, spread: 130, origin: { y: .5 } });
+  renderTop(); render();
+  const parts = [];
+  if (gotBall) parts.push(`领到精灵球 ×${n}`);
+  if (shiny) parts.push(`${PK_BY_NO[shiny.pokedex_no].name} 多了一张闪耀卡✨`);
+  if (parts.length) toast(`🏆 ${parts.join('，')}`);
+  if (shiny) await showShiny(shiny, `连续 ${goal} 天必做全清的奖励，${PK_BY_NO[shiny.pokedex_no].name} 变成了闪耀形态！`);
+}
+
 function renderTasks() {
   const page = $('page');
   const ts = todayTasks();
@@ -1307,8 +1415,10 @@ function renderTasks() {
   const notices = noticesHTML();
   // 每日叮嘱：即使今天没有任务也要显示（家长的话比任务列表更重要）
   const note = S.viewNote ? noteCardHTML() : '';
+  // 连续必做全清进度条固定在这页最下方（只看今天，翻历史日期时不显示）
+  const streak = S.viewDate === DB.today() ? streakCardHTML() : '';
   if (!ts.length && !wts.length) {
-    page.innerHTML = notices + dateNavHTML() + note + `<div class="empty-tip">今天还没有任务哦，让家长去布置吧～</div>`;
+    page.innerHTML = notices + dateNavHTML() + note + `<div class="empty-tip">今天还没有任务哦，让家长去布置吧～</div>` + streak;
     return;
   }
   let html = notices + dateNavHTML() + note;
@@ -1318,6 +1428,7 @@ function renderTasks() {
   html += catSectionHTML(req, '🔴 必做任务');
   // 选做任务：同样按类别分区
   if (opt.length) html += catSectionHTML(opt, '🟢 选做任务');
+  html += streak;
   page.innerHTML = html;
   renderProgress();
 }
@@ -1374,7 +1485,7 @@ function rulesHintHTML() {
         <li>✅ 完成任务 → +积分（家长确认后才到账）</li>
         <li>🎯 今日 <b>必做</b> 全部完成 → +${CONFIG.REQUIRED_DONE_BONUS} 分</li>
         <li>🎁 <b>选做</b> 也全部完成 → 再 +${CONFIG.OPTIONAL_DONE_BONUS} 分</li>
-        <li>🏆 连续 ${CONFIG.STREAK_DAYS_FOR_BALL} 天全勤 → 送精灵球，还会随机让一只进入闪耀形态✨</li>
+        <li>🏆 连续 ${CONFIG.STREAK_DAYS_FOR_BALL} 天<b>必做任务全清</b> → 领精灵球，还会额外多一张闪耀卡✨（断一天重数）</li>
         <li>🥚 1 个精灵球一定抓到 1 只<b>新</b>宝可梦（绝不重复）</li>
         <li>🍬 喂糖果攒经验：1 分 = ${CONFIG.POINTS_TO_EXP} exp；经验满了一管就能进化，越进化需要的经验越多</li>
         <li>⭐ 出战的宝可梦是你的伙伴，每次完成任务它 +${CONFIG.LEAD_EXP_PER_TASK} 经验</li>
@@ -1598,13 +1709,19 @@ function showWeeklyChildren(id) {
 
 function renderPokemons() {
   const page = $('page');
+  // 按获取先后排：先抓到的在前（同时间按 id 兜底，演示数据都是同一批种下的）
+  const list = S.pokemons.slice().sort((a, b) => {
+    const ca = String(a.caught_at || ''), cb = String(b.caught_at || '');
+    if (ca !== cb) return ca < cb ? -1 : 1;
+    return (a.id || 0) - (b.id || 0);
+  });
   page.innerHTML = `
     <div class="catch-zone">${catchZoneHTML()}</div>
     <div class="catch-hint" style="text-align:center;margin-bottom:12px">⭐ 卡上带 ⭐ 的「出战」宝可梦是你的伙伴，每次完成任务它都会 +${CONFIG.LEAD_EXP_PER_TASK} 经验。</div>
-    ${S.pokemons.length ? `
-      <div class="section-title">我的宝可梦 <small>${S.pokemons.length} 只 · 点卡查看</small></div>
+    ${list.length ? `
+      <div class="section-title">我的宝可梦 <small>${list.length} 只 · 按获取先后 · 点卡查看</small></div>
       <div class="pm-grid">
-        ${S.pokemons.map(pmCardHTML).join('')}
+        ${list.map(pmCardHTML).join('')}
       </div>
     ` : '<div class="empty-tip">还没有宝可梦！<br><br>先去捉一只吧 🥚</div>'}
     <div class="section-title" style="margin-top:24px">宝可梦图鉴 <small>${dexGotCount()}/151</small></div>
@@ -1612,20 +1729,39 @@ function renderPokemons() {
   `;
 }
 
-// 小卡牌（列表）
+// 获取时间：小卡上只放「月-日 时:分」，完整时间放到 title 里，免得把卡撑破
+function caughtShort(iso) {
+  if (!iso) return '时间未知';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso).slice(0, 16);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function caughtFull(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// 小卡牌（列表）：第一行「属性 + 名字」，第二行获取时间
 function pmCardHTML(pm) {
   const info = PK_BY_NO[pm.pokedex_no];
   const type = pmType(pm.pokedex_no);
   return `
-  <div class="pm-card-mini ${pm.shiny ? 'shiny' : ''}" data-action="card" data-pmid="${pm.id}">
+  <div class="pm-card-mini ${pm.shiny ? 'shiny' : ''}" data-action="card" data-pmid="${pm.id}" title="获取于 ${caughtFull(pm.caught_at)}">
     <div class="mini-frame" style="--tc:${TYPE_COLOR[type] || '#a8a878'}">
       <img src="${artworkPath(pm.pokedex_no)}" alt="${info.name}" loading="lazy">
       ${pm.shiny ? '<span class="mini-shiny">✨</span>' : ''}
       ${pm.id === S.leadId ? '<span class="mini-lead">⭐</span>' : ''}
       <span class="mini-lv-badge">${evoStageLabel(pm)}</span>
     </div>
-    <div class="mini-name">${info.name}</div>
-    <div class="mini-type" style="color:${TYPE_COLOR[type] || '#a8a878'}">${TYPE_NAME[type] || type}</div>
+    <div class="mini-line">
+      <span class="mini-type" style="background:${TYPE_COLOR[type] || '#a8a878'}">${TYPE_NAME[type] || type}</span>
+      <span class="mini-name">${info.name}</span>
+    </div>
+    <div class="mini-time">🕒 ${caughtShort(pm.caught_at)}</div>
   </div>`;
 }
 
@@ -1658,7 +1794,7 @@ function showCardDetail(pm) {
       ${typeof PK_FLAVOR !== 'undefined' && PK_FLAVOR[pm.pokedex_no] ? `
       <div class="ptcg-flavor">📖 ${PK_FLAVOR[pm.pokedex_no]}</div>` : ''}
       <div class="ptcg-foot">
-        <div class="ptcg-exprow">${maxed ? '✨ 已满级（封顶）' : `EXP ${pm.exp}/${expThreshold(pm)}`}</div>
+        <div class="ptcg-exprow">${maxed ? (pm.shiny ? '✨ 已满级（封顶）' : '✅ 已进入闪耀形态（这张是普通卡）') : `EXP ${pm.exp}/${expThreshold(pm)}`}</div>
         <div class="exp-track"><div class="exp-fill" style="width:${expPct}%"></div></div>
         ${evoChainLine(pm.pokedex_no)}
         ${evoFamily(pm.pokedex_no).length > 1 ? '<div class="chain-tip">👆 点上面的名字，可以看每个形态的详情</div>' : ''}
@@ -1820,7 +1956,7 @@ function catchZoneHTML() {
       <button class="btn-big" data-action="catch" ${S.balls < 1 ? 'disabled' : ''}>${POKE_ICON.ball('#e53935')} 捕捉宝可梦（1 个球）</button>
       <button class="btn-big buy" data-action="buyball" ${S.balance < CONFIG.BALL_PRICE ? 'disabled' : ''}>${POKE_ICON.master()} 买精灵球（${CONFIG.BALL_PRICE} 分）</button>
     </div>
-    <div class="catch-hint">每次必抓到「没抓过的基础形态」（不重复）· 进化后的形态要靠喂养进化获得 · 连续 ${CONFIG.STREAK_DAYS_FOR_BALL} 天全勤送球，还会随机让一只进入闪耀形态✨</div>
+    <div class="catch-hint">每次必抓到「没抓过的基础形态」（不重复）· 进化后的形态要靠喂养进化获得 · 连续 ${CONFIG.STREAK_DAYS_FOR_BALL} 天必做全清送球，还会额外多一张闪耀卡✨</div>
   `;
 }
 
@@ -1878,7 +2014,7 @@ function renderMe() {
   page.innerHTML = `
     <div class="stat-grid">
       <div class="stat-card"><b>${S.balance}</b><span>当前积分</span></div>
-      <div class="stat-card"><b>${streak}</b><span>连续全勤(天)</span></div>
+      <div class="stat-card"><b>${streak}</b><span>必做全清连击(天)</span></div>
       <div class="stat-card"><b>${S.pokemons.length}</b><span>我的宝可梦</span></div>
       <div class="stat-card"><b>${Object.values(ownDexCount()).length}</b><span>图鉴收集</span></div>
     </div>
@@ -2363,6 +2499,7 @@ function bindActions() {
     const act = btn.dataset.action;
     const tid = btn.dataset.tid, pmid = btn.dataset.pmid;
     if (act === 'checkin') await checkin(Number(tid), btn, btn.dataset.prog ? Number(btn.dataset.prog) : null);
+    else if (act === 'streak-claim') await claimStreak();
     else if (act === 'cancel-submit') await cancelSubmission(Number(tid));
     else if (act === 'notice-ack') ackNotice(btn.dataset.nid);
     else if (act === 'notice-ack-all') ackNotice('*');
@@ -3911,7 +4048,7 @@ function shareCardHTML() {
       </div>
       <div class="share-stats">
         <div><b>${done}/${ts.length}</b><span>今日任务</span></div>
-        <div><b>${streak}</b><span>连续全勤</span></div>
+        <div><b>${streak}</b><span>必做全清连击</span></div>
         <div><b>${dexGotCount()}/151</b><span>图鉴收集</span></div>
         <div><b>${S.balance}</b><span>积分</span></div>
       </div>
