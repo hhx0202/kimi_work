@@ -72,11 +72,17 @@ create table if not exists notes (
   created_at timestamptz not null default now()
 );
 
+-- 家长规则设置（key-value，覆盖 config 数值）
+create table if not exists settings (
+  key text primary key,
+  value text not null
+);
+
 -- 2. 行级安全：家庭个人使用，anon key 全开放（读写都允许）
 do $$
 declare t text;
 begin
-  foreach t in array array['tasks','task_logs','pokemon','point_logs','item_logs','notes'] loop
+  foreach t in array array['tasks','task_logs','pokemon','point_logs','item_logs','notes','settings'] loop
     execute format('alter table %I enable row level security;', t);
     execute format('drop policy if exists "public access" on %I;', t);
     execute format('create policy "public access" on %I for all using (true) with check (true);', t);

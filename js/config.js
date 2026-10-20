@@ -15,7 +15,7 @@ const CONFIG = {
     SUPABASE_ANON_KEY: 'sb_publishable_nB4k3A_lo1VmYzZxUMGOcg_krEckErZ',          // Settings → API Keys → anon / publishable
 
   // ---------- 家长模式 ----------
-  PARENT_PASSWORD: '1024',        // 家长密码（个人使用，简单即可）
+  PARENT_PASSWORD: '2048',        // 家长密码（个人使用，简单即可）
 
   // ---------- 任务类别（自定义，家长端下拉+可输入新值，孩子端按此顺序分区展示） ----------
   // 顺序即孩子端展示顺序：校内在前，孩子会先做完校内再做校外
@@ -53,6 +53,7 @@ const CONFIG = {
   MAX_POINTS_PER_TASK: 100,       // 单个任务积分上限（防手滑）
   WEEKLY_DONE_BONUS: 10,          // 多日任务全部完成额外奖励积分
   OVERDUE_DAILY_PENALTY: 5,       // 多日任务超期后每天自动扣分
+  LEAD_EXP_PER_TASK: 1,           // 出战宝可梦每次完成任务获得的经验（原 5）
 
   // ---------- 连续全勤 ----------
   STREAK_DAYS_FOR_BALL: 7,        // 连续全勤多少天送精灵球

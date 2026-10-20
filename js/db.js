@@ -140,6 +140,9 @@ const DB = (() => {
     // 今天的叮嘱（家长留言，孩子端顶部展示）
     async getNote(date) { return lsGet(P + 'note_' + date, '') || null; },
     async setNote(date, note) { lsSet(P + 'note_' + date, note || ''); },
+    // 家长规则设置（覆盖 config 数值）
+    async getSettings() { return lsGet(P + 'settings', {}) || {}; },
+    async setSettings(obj) { lsSet(P + 'settings', obj); },
   };
 
   // ==========================================================
@@ -245,6 +248,19 @@ const DB = (() => {
       const { error } = await sClient().from('notes').upsert({ log_date: date, note }, { onConflict: 'log_date' });
       if (error) sFail(error, '存叮嘱');
     },
+    // 家长规则设置（覆盖 config 数值）
+    async getSettings() {
+      const { data, error } = await sClient().from('settings').select('key, value');
+      if (error) sFail(error, '读设置');
+      const obj = {};
+      (data || []).forEach(r => { obj[r.key] = r.value; });
+      return obj;
+    },
+    async setSettings(obj) {
+      const rows = Object.keys(obj).map(k => ({ key: k, value: String(obj[k]) }));
+      const { error } = await sClient().from('settings').upsert(rows, { onConflict: 'key' });
+      if (error) sFail(error, '存设置');
+    },
   };
 
   // ==========================================================
@@ -275,5 +291,7 @@ const DB = (() => {
     hasItemReason: impl.hasItemReason.bind(impl),
     getNote: impl.getNote.bind(impl),
     setNote: impl.setNote.bind(impl),
+    getSettings: impl.getSettings.bind(impl),
+    setSettings: impl.setSettings.bind(impl),
   };
 })();

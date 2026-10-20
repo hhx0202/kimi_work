@@ -31,6 +31,21 @@ const S = {
   viewDate: null,       // 'YYYY-MM-DD'，启动时置为今天
 };
 
+// 家长可在「规则设置」里动态调整的数值项（对应 config.js 的键）
+const SETTING_FIELDS = [
+  { key: 'REQUIRED_DONE_BONUS', label: '必做全清奖（分）' },
+  { key: 'OPTIONAL_DONE_BONUS', label: '选做全清奖（分）' },
+  { key: 'WEEKLY_DONE_BONUS', label: '多日任务完成奖（分）' },
+  { key: 'OVERDUE_DAILY_PENALTY', label: '多日超期每日扣分' },
+  { key: 'MAX_POINTS_PER_TASK', label: '单任务积分上限' },
+  { key: 'BALL_PRICE', label: '买一个球的价格（分）' },
+  { key: 'LEAD_EXP_PER_TASK', label: '出战宝可梦每任务经验' },
+  { key: 'POINTS_TO_EXP', label: '1 积分可换经验' },
+  { key: 'EXP_PER_LEVEL', label: '升 1 级所需经验' },
+  { key: 'STREAK_DAYS_FOR_BALL', label: '连续全勤几天送球' },
+  { key: 'STREAK_REWARD_BALLS', label: '全勤送几个球' },
+];
+
 // 日期工具
 function shiftDate(dateStr, delta) {
   const d = new Date(dateStr + 'T00:00:00');
@@ -45,12 +60,12 @@ const MOTTO = [
   // ===== 鼓励话 =====
   '坚持打卡，你的伙伴会越来越强！⚡',
   '每完成一个任务，宝可梦就离进化更近一步！',
-  '连续全勤 7 天，也许会有宝可梦闪闪发光！✨',
+  '连续全勤的坚持，也许会有宝可梦闪闪发光！✨',
   '精灵球攒够了，就去捕捉新的伙伴吧！',
   '喂饱你的宝可梦，它会回报你更多经验！',
   '今天的任务做完，明天就能捉新宝可梦！',
   '每只宝可梦都在等你点亮它的图鉴格子！',
-  '出战宝可梦每次完成任务都会 +5 经验哦！',
+  '出战宝可梦每次完成任务都会获得经验哦！',
   '攒积分买精灵球，图鉴收集越多越开心！',
   '把必做任务全清，还有额外加分哦！',
   '选做任务全清也有加分，别小看它们！',
@@ -229,7 +244,7 @@ const fmtDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, 
 // ---------- 数据加载 ----------
 async function refreshAll() {
   const vDate = S.viewDate || DB.today(), pDate = S.parentDate || DB.today();
-  const [tasks, logs, pokemons, pointLogs, balls, vNote, pNote] = await Promise.all([
+  const [tasks, logs, pokemons, pointLogs, balls, vNote, pNote, settings] = await Promise.all([
     DB.getTasks(),
     DB.getLogsBetween('2000-01-01', '2099-12-31'),
     DB.getPokemons(),
@@ -237,7 +252,10 @@ async function refreshAll() {
     DB.getItemCount('ball'),
     DB.getNote(vDate),
     DB.getNote(pDate),
+    DB.getSettings(),
   ]);
+  // 家长设置的规则数值覆盖默认 config（只覆盖配置过的 key）
+  Object.keys(settings || {}).forEach(k => { if (CONFIG[k] !== undefined && settings[k] !== '') CONFIG[k] = Number(settings[k]); });
   S.viewNote = vNote || null;
   S.parentNote = pNote || null;
   S.tasks = tasks;
@@ -358,7 +376,7 @@ async function checkin(taskId, btn, progress = null) {
       const pid = await DB.addPointLog(pts, `完成:${task.title}`, today, { confirmed: false, task_id: taskId });
       S.pointLogs.push({ id: pid, log_date: today, amount: pts, reason: `完成:${task.title}`, confirmed: false, task_id: taskId });
     }
-    if (S.leadId) { const lead = S.pokemons.find(p => p.id === S.leadId); if (lead) await grantExp(lead, 5); }
+    if (S.leadId) { const lead = S.pokemons.find(p => p.id === S.leadId); if (lead) await grantExp(lead, CONFIG.LEAD_EXP_PER_TASK); }
     // 子任务完成即下架（只完成一次，防止每天重复刷分）
     await DB.updateTask(taskId, { active: false });
     task.active = false;
@@ -399,7 +417,7 @@ async function checkin(taskId, btn, progress = null) {
     }
     if (S.leadId) {
       const lead = S.pokemons.find(p => p.id === S.leadId);
-      if (lead) await grantExp(lead, 5);
+      if (lead) await grantExp(lead, CONFIG.LEAD_EXP_PER_TASK);
     }
     const total = parent ? taskProgress(parent.id) : taskProgress(taskId);
     if (total >= 100) {
@@ -432,7 +450,7 @@ async function checkin(taskId, btn, progress = null) {
   // 出战宝可梦加经验
   if (S.leadId) {
     const lead = S.pokemons.find(p => p.id === S.leadId);
-    if (lead) await grantExp(lead, 5);
+    if (lead) await grantExp(lead, CONFIG.LEAD_EXP_PER_TASK);
   }
 
   // once 任务完成即下架
@@ -441,7 +459,7 @@ async function checkin(taskId, btn, progress = null) {
     task.active = false;
   }
 
-  // 全清判定 + 奖励（必选/可选分开）
+  // 全清判定 + 奖励（必做/选做分开）
   const dayTasks = todayTasks();
   const reqTasks = dayTasks.filter(t => t.required !== false);
   const optTasks = dayTasks.filter(t => t.required === false);
@@ -453,7 +471,7 @@ async function checkin(taskId, btn, progress = null) {
     const rpid = await DB.addPointLog(CONFIG.REQUIRED_DONE_BONUS, `必选全清_${today}`, today, { confirmed: false });
     S.pointLogs.push({ id: rpid, log_date: today, amount: CONFIG.REQUIRED_DONE_BONUS, reason: `必选全清_${today}`, confirmed: false });
     confetti({ particleCount: 90, spread: 80, origin: { y: .6 } });
-    toast(`🎉 今日必选任务全部完成！+${CONFIG.REQUIRED_DONE_BONUS}（待家长确认）`);
+    toast(`🎉 今日必做任务全部完成！+${CONFIG.REQUIRED_DONE_BONUS}（待家长确认）`);
     // 连击球（基于必选全清）
     if (calcStreak() >= CONFIG.STREAK_DAYS_FOR_BALL) {
       const reason = `全勤${CONFIG.STREAK_DAYS_FOR_BALL}天_${today}`;
@@ -476,7 +494,7 @@ async function checkin(taskId, btn, progress = null) {
     const opid = await DB.addPointLog(CONFIG.OPTIONAL_DONE_BONUS, `可选全清_${today}`, today, { confirmed: false });
     S.pointLogs.push({ id: opid, log_date: today, amount: CONFIG.OPTIONAL_DONE_BONUS, reason: `可选全清_${today}`, confirmed: false });
     confetti({ particleCount: 50, spread: 60, origin: { y: .5 } });
-    toast(`🎁 可选任务也全部完成！+${CONFIG.OPTIONAL_DONE_BONUS}（待家长确认）`);
+    toast(`🎁 选做任务也全部完成！+${CONFIG.OPTIONAL_DONE_BONUS}（待家长确认）`);
   }
 
   // 单任务动画
@@ -832,12 +850,12 @@ function rulesHintHTML() {
       <summary>${POKE_ICON.dex()} 规则小抄 <small style="font-weight:400">点开看看怎么拿分</small></summary>
       <ul>
         <li>✅ 完成任务 → +积分（家长确认后才到账）</li>
-        <li>🎯 今日 <b>必选</b> 全部完成 → +${CONFIG.REQUIRED_DONE_BONUS} 分</li>
-        <li>🎁 <b>可选</b> 也全部完成 → 再 +${CONFIG.OPTIONAL_DONE_BONUS} 分</li>
+        <li>🎯 今日 <b>必做</b> 全部完成 → +${CONFIG.REQUIRED_DONE_BONUS} 分</li>
+        <li>🎁 <b>选做</b> 也全部完成 → 再 +${CONFIG.OPTIONAL_DONE_BONUS} 分</li>
         <li>🏆 连续 ${CONFIG.STREAK_DAYS_FOR_BALL} 天全勤 → 送精灵球，还会随机点亮一只闪光✨</li>
         <li>🥚 1 个精灵球一定抓到 1 只<b>新</b>宝可梦（绝不重复）</li>
-        <li>🍬 喂糖果攒经验：1 分 = 1 exp；经验满了一管就能进化，越进化需要的经验越多</li>
-        <li>⭐ 出战的宝可梦是你的伙伴，每次完成任务它 +5 经验</li>
+        <li>🍬 喂糖果攒经验：1 分 = ${CONFIG.POINTS_TO_EXP} exp；经验满了一管就能进化，越进化需要的经验越多</li>
+        <li>⭐ 出战的宝可梦是你的伙伴，每次完成任务它 +${CONFIG.LEAD_EXP_PER_TASK} 经验</li>
         <li>⏳ 积分要家长确认才到账，别乱点哦</li>
       </ul>
     </details>
@@ -855,7 +873,7 @@ function taskCardHTML(t) {
   // 家长小提示
   const hint = t.hint ? `<div class="task-hint">💡 ${t.hint}</div>` : '';
   return `
-  <div class="task-card ${done ? 'done' : ''} ${t.required === false ? 'optional' : ''} ${isChild ? 'child-card' : ''}" data-tid="${t.id}">
+  <div class="task-card ${done ? 'done' : ''} ${t.required === false ? 'optional' : ''} ${isChild ? 'child-card' : ''}" data-action="task-detail" data-tid="${t.id}">
     <div class="emoji">${catIcon(t.category)}</div>
     <div class="info">
       <b>${t.title}</b>${reqTag}
@@ -865,6 +883,53 @@ function taskCardHTML(t) {
     <div class="pts">+${t.points}</div>
     <button class="btn-done" data-action="checkin" data-tid="${t.id}" ${done || !isToday ? 'disabled' : ''}>${done ? '✅ 已完成' : (!isToday ? '查看历史' : '✅ 完成')}</button>
   </div>`;
+}
+
+// 任务详情弹窗（手机上看不清时点卡片查看完整信息）
+function showTaskDetail(id) {
+  const t = S.tasks.find(x => x.id === id);
+  if (!t) return;
+  const isChild = !!t.parent_id;
+  const parent = isChild ? S.tasks.find(x => x.id === t.parent_id) : null;
+  const isParent = S.role === 'parent';
+  const modal = document.createElement('div');
+  modal.className = 'modal-mask';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:420px;width:calc(100% - 40px)">
+      <h3>${t.title}${t.required === false ? ' <span class="req-tag opt">选做</span>' : ' <span class="req-tag">必做</span>'}</h3>
+      <div class="form-hint" style="margin-top:10px">${t.category} · +${t.points}分 · ${t.schedule === 'once' ? '只做一次' : t.schedule === 'daily' ? '每天都有' : t.schedule === 'weekly' ? '多日任务' : '子任务'}${t.start_date ? ` · 📅 ${t.start_date}` : ''}${t.deadline ? ` · 截止 ${t.deadline}` : ''}</div>
+      ${parent ? `<div class="form-hint">📋 属于多日任务「${parent.title}」</div>` : ''}
+      ${t.hint ? `<div class="form-hint" style="color:#ef6c00">💡 ${t.hint}</div>` : ''}
+      ${isParent ? `
+      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-ghost" data-act="up" style="font-size:13px;padding:6px 12px">↑ 上移</button>
+        <button class="btn-ghost" data-act="down" style="font-size:13px;padding:6px 12px">↓ 下移</button>
+        <button class="btn-primary" data-act="edit" style="font-size:13px;padding:6px 12px">✏️ 编辑</button>
+        <button class="btn-danger" data-act="del" style="font-size:13px;padding:6px 12px">删除</button>
+      </div>` : ''}
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn-primary" data-close style="flex:1">关闭</button>
+      </div>
+    </div>
+  `;
+  modal.querySelector('[data-close]').onclick = () => modal.remove();
+  const up = modal.querySelector('[data-act="up"]');
+  if (up) up.onclick = () => { modal.remove(); moveTask(t.id, 'up'); };
+  const down = modal.querySelector('[data-act="down"]');
+  if (down) down.onclick = () => { modal.remove(); moveTask(t.id, 'down'); };
+  const edit = modal.querySelector('[data-act="edit"]');
+  if (edit) edit.onclick = () => { modal.remove(); openTaskEditor(t.id); };
+  const del = modal.querySelector('[data-act="del"]');
+  if (del) del.onclick = () => { modal.remove(); delTask(t.id); };
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+// 删除任务（家长）
+async function delTask(id) {
+  if (!confirm('确定删除这个任务？')) return;
+  await DB.deleteTask(id);
+  await refreshAll(); render();
+  toast('已删除');
 }
 
 // ---------- 多日任务进度条（统一风格，挨着每日进度条增加） ----------
@@ -893,7 +958,7 @@ function renderPokemons() {
   const page = $('page');
   page.innerHTML = `
     <div class="catch-zone">${catchZoneHTML()}</div>
-    <div class="catch-hint" style="text-align:center;margin-bottom:12px">⭐ 卡上带 ⭐ 的「出战」宝可梦是你的伙伴，每次完成任务它都会 +5 经验。</div>
+    <div class="catch-hint" style="text-align:center;margin-bottom:12px">⭐ 卡上带 ⭐ 的「出战」宝可梦是你的伙伴，每次完成任务它都会 +${CONFIG.LEAD_EXP_PER_TASK} 经验。</div>
     ${S.pokemons.length ? `
       <div class="section-title">我的宝可梦 <small>${S.pokemons.length} 只 · 点卡查看</small></div>
       <div class="pm-grid">
@@ -1141,10 +1206,77 @@ function bindKidTabs() {
     else if (pw !== null) toast('密码不对哦');
   };
 }
+// 家长端任务列表：长按/按住拖动排序（手机 touch + 桌面 mouse）
+function enableDragSort(sel) {
+  const list = document.querySelector(sel);
+  if (!list) return;
+  const rows = () => [...list.children].filter(c => c.classList.contains('prow'));
+  let drag = null;
+  function moveBy(dy) {
+    const r = rows();
+    const h = (r[0] ? r[0].offsetHeight : 40) + 4;
+    let cur = r.indexOf(drag.row);
+    let target = Math.min(r.length - 1, Math.max(0, cur + Math.round(dy / h)));
+    if (target !== cur && r[target]) {
+      drag.moved = true;
+      list.insertBefore(drag.row, target > cur ? r[target].nextSibling : r[target]);
+      drag.startY += (target - cur) * h;  // 行已移动，起始基准同步，继续拖能连续换位
+      drag.row.classList.add('dragging');
+    }
+  }
+  async function saveSort() {
+    const r = rows();
+    for (let i = 0; i < r.length; i++) await DB.updateTask(Number(r[i].dataset.tid), { sort: i });
+    await refreshAll(); render();
+  }
+  // 手机：长按 400ms 进入拖动
+  list.addEventListener('touchstart', e => {
+    const row = e.target.closest('.prow');
+    if (!row) return;
+    const t = e.touches[0];
+    drag = { row, startY: t.clientY, armed: false, moved: false, timer: setTimeout(() => { drag.armed = true; row.classList.add('dragging'); }, 400) };
+  }, { passive: true });
+  list.addEventListener('touchmove', e => {
+    if (!drag || !drag.armed) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    moveBy(t.clientY - drag.startY);
+  }, { passive: false });
+  list.addEventListener('touchend', () => {
+    if (!drag) return;
+    clearTimeout(drag.timer);
+    if (drag.armed && drag.moved) saveSort();
+    if (drag.row) drag.row.classList.remove('dragging');
+    drag = null;
+  });
+  // 桌面：鼠标直接按住拖动
+  list.addEventListener('mousedown', e => {
+    const row = e.target.closest('.prow');
+    if (!row) return;
+    e.preventDefault();
+    drag = { row, startY: e.clientY, armed: true, moved: false, timer: null };
+    row.classList.add('dragging');
+    const onMove = ev => { if (!drag) return; moveBy(ev.clientY - drag.startY); };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (drag && drag.moved) saveSort();
+      if (drag && drag.row) drag.row.classList.remove('dragging');
+      drag = null;
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
 // 家长端上移/下移调整任务展示顺序（重排 sort）
 async function moveTask(id, dir) {
-  const list = tasksOnDate(S.parentDate).sort(taskSort);
-  const i = list.findIndex(t => t.id === id);
+  const all = tasksOnDate(S.parentDate);
+  const t = all.find(x => x.id === id);
+  if (!t) return;
+  // 只在必做/选做各自分区内移动，不会跨区
+  const list = all.filter(x => (x.required === false) === (t.required === false)).sort(taskSort);
+  const i = list.findIndex(x => x.id === id);
   const j = dir === 'up' ? i - 1 : i + 1;
   if (i < 0 || j < 0 || j >= list.length) { toast('已经是边缘了'); return; }
   const arr = [...list];
@@ -1160,6 +1292,7 @@ function bindActions() {
     const act = btn.dataset.action;
     const tid = btn.dataset.tid, pmid = btn.dataset.pmid;
     if (act === 'checkin') await checkin(Number(tid), btn, btn.dataset.prog ? Number(btn.dataset.prog) : null);
+    else if (act === 'task-detail') showTaskDetail(Number(tid));
     else if (act === 'date-prev') { S.viewDate = shiftDate(S.viewDate, -1); render(); refreshViewNote(); }
     else if (act === 'date-next') { if (S.viewDate < DB.today()) { S.viewDate = shiftDate(S.viewDate, 1); render(); refreshViewNote(); } }
     else if (act === 'date-today') { S.viewDate = DB.today(); render(); refreshViewNote(); }
@@ -1185,7 +1318,8 @@ function bindActions() {
     else if (act === 'parent-multi') openMultiDayAssign();
     else if (act === 'parent-move') moveTask(Number(tid), btn.dataset.dir);
     else if (act === 'parent-edit') openTaskEditor(Number(tid));
-    else if (act === 'parent-save-note') saveNote();
+    else if (act === 'parent-edit-note') openNoteEditor();
+    else if (act === 'parent-settings') openSettings();
     else if (act === 'pts-dismiss') { lsSet(LK('seen_pts'), Math.max(0, ...S.pointLogs.filter(l => l.amount > 0 && l.confirmed !== false).map(l => l.id))); render(); }
     else if (act === 'parent-giveball') giveBall();
     else if (act === 'parent-givepts') givePts();
@@ -1206,7 +1340,7 @@ function bindActions() {
 function setLead(id) {
   S.leadId = id; localStorage.setItem(LK('lead'), id);
   render();
-  toast('⭐ 它成为你的伙伴了！完成任务会帮它 +5 经验');
+  toast(`⭐ 它成为你的伙伴了！完成任务会帮它 +${CONFIG.LEAD_EXP_PER_TASK} 经验`);
 }
 function openFeed(pmId) {
   const pm = S.pokemons.find(p => p.id === pmId);
@@ -1248,6 +1382,7 @@ function renderParent() {
       ${parentTaskPanel()}
       ${parentStatsPanel()}
       ${parentPmPanel()}
+      ${parentSettingsPanel()}
       ${pointLogPanel()}
       ${modePanel()}
       <button class="btn-ghost" style="width:100%;margin-top:8px" data-action="parent-exit">← 返回孩子界面</button>
@@ -1256,6 +1391,8 @@ function renderParent() {
   if (draft) { const ta = document.getElementById('pt-batch'); if (ta) ta.value = draft; }
   renderParentCal();
   bindActions();
+  enableDragSort('#pt-task-list-req');
+  enableDragSort('#pt-task-list-opt');
 }
 // 家长端日期导航条（切换后任务面板/布置都针对所选日期）
 function parentDateNav() {
@@ -1269,8 +1406,21 @@ function parentDateNav() {
     </div>
   `;
 }
+// 家长端任务行模板（小字标出必做/选做）
+function prowRowHTML(t) {
+  return `
+    <div class="prow prow-click" data-action="parent-edit" data-tid="${t.id}" title="点开编辑">
+      <span>${catIcon(t.category)}</span>
+      <div class="grow"><b>${t.title}</b><small style="display:block;color:#90a4ae">${t.category} · ${t.required === false ? '选做' : '必做'} · +${t.points}分${t.schedule === 'once' ? ' · 单次' : ''}${t.schedule === 'child' ? ' · 子任务' : ''}${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}${t.hint ? ` · 💡 ${t.hint}` : ''}</small></div>
+      <span class="${logOn(t.id, S.parentDate) ? 'ok' : 'miss'}">${logOn(t.id, S.parentDate) ? '✓' : '·'}</span>
+      <button class="btn-ghost mini" data-action="parent-move" data-tid="${t.id}" data-dir="up" title="上移">↑</button>
+      <button class="btn-ghost mini" data-action="parent-move" data-tid="${t.id}" data-dir="down" title="下移">↓</button>
+    </div>`;
+}
 function parentTaskPanel() {
-  const ts = tasksOnDate(S.parentDate).sort(taskSort);
+  const ts = tasksOnDate(S.parentDate);
+  const reqTs = ts.filter(t => t.required !== false).sort(taskSort);
+  const optTs = ts.filter(t => t.required === false).sort(taskSort);
   const wts = weeklyTasks();
   const pIsToday = S.parentDate === DB.today();
   return `
@@ -1279,21 +1429,17 @@ function parentTaskPanel() {
       ${parentDateNav()}
       <div class="input-row" style="margin-top:8px">
         <span style="font-size:13px;color:var(--ink-soft);white-space:nowrap">💬 叮嘱</span>
-        <input id="pt-note" placeholder="说句给孩子的话（孩子端日期导航下方展示）" value="${S.parentNote || ''}" style="flex:2">
-        <button class="btn-primary" data-action="parent-save-note" style="flex:1">保存</button>
+        <button class="btn-primary" data-action="parent-edit-note" style="flex:2">${S.parentNote ? `📝 编辑叮嘱（${S.parentNote.slice(0, 12)}${S.parentNote.length > 12 ? '…' : ''}）` : '✍️ 写今天的叮嘱'}</button>
       </div>
-      <h3 style="margin-top:8px">📅 ${S.parentDate} 的任务${pIsToday ? '（今天）' : ''}</h3>
-      ${ts.map(t => `
-        <div class="prow">
-          <span>${catIcon(t.category)}</span>
-          <div class="grow">${t.title} <small style="color:#90a4ae">${t.category} · +${t.points}分${t.schedule === 'once' ? ' · 单次' : ''}${t.schedule === 'child' ? ' · 子任务' : ''}${t.required === false ? ' · 选做' : ''}${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}${t.hint ? ` · 💡 ${t.hint}` : ''}</small></div>
-          <span class="${logOn(t.id, S.parentDate) ? 'ok' : 'miss'}">${logOn(t.id, S.parentDate) ? '✓ 完成' : '未完成'}</span>
-          <button class="btn-ghost" data-action="parent-edit" data-tid="${t.id}" title="编辑任务">✏️</button>
-          <button class="btn-ghost" data-action="parent-move" data-tid="${t.id}" data-dir="up" title="上移">↑</button>
-          <button class="btn-ghost" data-action="parent-move" data-tid="${t.id}" data-dir="down" title="下移">↓</button>
-          <button class="btn-danger" data-action="parent-del" data-tid="${t.id}">删除</button>
-        </div>
-      `).join('') || '<div class="empty-tip">这一天没有任务，用下面的按钮布置</div>'}
+      <h3 style="margin-top:8px">📅 ${S.parentDate} 的任务${pIsToday ? '（今天）' : ''} <small style="font-weight:400">长按拖动可排序</small></h3>
+      <div class="prow sec-head">🔴 必做</div>
+      <div id="pt-task-list-req">
+      ${reqTs.map(prowRowHTML).join('') || '<div class="empty-tip" style="padding:4px 0">没有必做任务</div>'}
+      </div>
+      <div class="prow sec-head" style="margin-top:6px">🟢 选做</div>
+      <div id="pt-task-list-opt">
+      ${optTs.map(prowRowHTML).join('') || '<div class="empty-tip" style="padding:4px 0">没有选做任务</div>'}
+      </div>
       ${wts.length ? `
         <h3 style="margin-top:12px">📅 多日任务</h3>
         ${wts.map(t => {
@@ -1301,12 +1447,10 @@ function parentTaskPanel() {
           const left = deadlineDaysLeft(t.deadline);
           const kids = allChildTasks(t.id);
           return `
-          <div class="prow">
+          <div class="prow prow-click" data-action="parent-edit" data-tid="${t.id}" title="点开编辑">
             <span>${catIcon(t.category)}</span>
-            <div class="grow"><b>${t.title}</b> <small style="color:#90a4ae">${t.deadline ? `截止 ${t.deadline}·剩${left}天` : ''} · 进度 ${prog}% · +${t.points}分</small></div>
-            <span class="${prog >= 100 ? 'ok' : 'miss'}">${prog >= 100 ? '✓ 完成' : prog + '%'}</span>
-            <button class="btn-ghost" data-action="parent-edit-weekly" data-tid="${t.id}" title="编辑标题/积分/子任务">✏️</button>
-            <button class="btn-danger" data-action="parent-del" data-tid="${t.id}">删除</button>
+            <div class="grow"><b>${t.title}</b><small style="display:block;color:#90a4ae">${t.deadline ? `截止 ${t.deadline}·剩${left}天` : ''} · 进度 ${prog}% · +${t.points}分</small></div>
+            <span class="${prog >= 100 ? 'ok' : 'miss'}">${prog >= 100 ? '✓' : prog + '%'}</span>
           </div>
           ${kids.map(k => {
             const kdone = taskProgress(k.id) >= (k.percent || 0);
@@ -1347,8 +1491,8 @@ function parentTaskPanel() {
         <datalist id="cat-options">${loadCats().map(c => `<option value="${c}">`).join('')}</datalist>
         <input id="pt-pts" type="number" placeholder="积分" value="10" style="width:80px">
         <select id="pt-req" style="width:80px">
-          <option value="1">必选</option>
-          <option value="0">可选</option>
+          <option value="1">必做</option>
+          <option value="0">选做</option>
         </select>
       </div>
       <div class="input-row">
@@ -1361,7 +1505,7 @@ function parentTaskPanel() {
         <button class="btn-primary" data-action="parent-save" style="flex:1">添加</button>
       </div>
       <div id="pt-children-wrap" style="display:none;margin-top:8px">
-        <textarea id="pt-children" placeholder="拆子任务：每行 名称,分数（分数可省，默认10分）&#10;第1篇课文,10&#10;第2篇课文,10&#10;习作,15,可选&#10;&#10;· 每个子任务完成得自己的分数，进度按已得/总分算&#10;· 想标可选：名称,分数,可选"></textarea>
+        <textarea id="pt-children" placeholder="拆子任务：每行 名称,分数（分数可省，默认10分）&#10;第1篇课文,10&#10;第2篇课文,10&#10;习作,15,选做&#10;&#10;· 每个子任务完成得自己的分数，进度按已得/总分算&#10;· 想标选做：名称,分数,选做"></textarea>
         <div class="input-row" style="margin-top:8px">
           <span style="font-size:13px;color:var(--ink-soft);white-space:nowrap">完成奖励</span>
           <input id="pt-bonus" type="number" placeholder="全清额外分（留空=默认${CONFIG.WEEKLY_DONE_BONUS}）" style="flex:2">
@@ -1387,8 +1531,8 @@ function parentTaskPanel() {
       <button class="btn-primary" data-action="parent-multi" style="width:100%">📅 批量布置多天（日期分隔行）</button>
       <div class="form-hint">一次规划好几天：每行写一个日期（如 <b>10-20</b> / <b>周一</b> / <b>明天</b>），下面几行是那天要做的任务，直到下一个日期行。布置后任务只出现在对应的那天（错过当天则不再出现）。</div>
       <h3 style="margin-top:16px">自动识别（布置每天都要做的任务）</h3>
-      <div class="form-hint" style="margin-bottom:6px">格式：<b>名称, 类别, 分数, 可选</b>　（除名称外均选填；名称末尾可用 <b>{花括号}</b> 圈住小提示）</div>
-      <textarea id="pt-batch" placeholder="每行一个任务，4 段可省：&#10;  第1段：名称（必填），末尾可加 {提示}&#10;  第2段：类别，不填默认「打卡」&#10;  第3段：分数，不填默认 10 分&#10;  第4段：写「可选」就是不强制，不写默认必选&#10;&#10;语文作业{先复习生字},校内作业,10&#10;跳绳500个,运动,5,可选&#10;练字一页 10"></textarea>
+      <div class="form-hint" style="margin-bottom:6px">格式：<b>名称, 类别, 分数, 选做</b>　（除名称外均可省；名称末尾用 <b>{花括号}</b> 圈住小提示）</div>
+      <textarea id="pt-batch" placeholder="每行一个任务（除名称外都可省）：&#10;  名称 必填，末尾可加 {小提示} 如 语文作业{先复习生字}&#10;  类别 默认「打卡」&#10;  分数 默认 10&#10;  选做 写「选做」=非必做（默认必做）&#10;&#10;示例：&#10;  语文作业{先复习生字},校内作业,10&#10;  跳绳500个,运动,5,选做&#10;  练字一页 10"></textarea>
       <button class="btn-primary" data-action="parent-parse" style="margin-top:8px">解析并添加</button>
       <div class="form-hint">这里布置的任务每天都出现（如每天的语文作业）；想布置某天专属任务用上面的「批量布置多天」。</div>
     </div>
@@ -1444,7 +1588,7 @@ function splitHint(title) {
   return { title: title.trim(), hint: '' };
 }
 
-// ---------- 子任务解析（独立分数，格式：名称, 分数, 可选） ----------
+// ---------- 子任务解析（独立分数，格式：名称, 分数, 选做） ----------
 function parseSubtasks(text) {
   return (text || '').split('\n').map(s => s.trim()).filter(Boolean)
     .map(l => {
@@ -1453,7 +1597,7 @@ function parseSubtasks(text) {
       const { title, hint } = splitHint(p[0]);
       if (!title) return null;
       const points = p[1] ? Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt(p[1]) || 10)) : 10;
-      const required = !(p[2] && ['可选', '0', '选'].includes(p[2]));
+      const required = !(p[2] && ['选做', '可选', '0', '选'].includes(p[2]));
       return { title, hint, points, required };
     })
     .filter(Boolean);
@@ -1464,7 +1608,7 @@ function openWeeklyEditor(id) {
   const t = S.tasks.find(x => x.id === id);
   if (!t) return;
   const kids = allChildTasks(id);
-  const kidsText = kids.map(k => `${k.title},${k.points}${k.required === false ? ',可选' : ''}`).join('\n');
+  const kidsText = kids.map(k => `${k.title},${k.points}${k.required === false ? ',选做' : ''}`).join('\n');
   const modal = document.createElement('div');
   modal.className = 'modal-mask';
   modal.innerHTML = `
@@ -1481,8 +1625,8 @@ function openWeeklyEditor(id) {
       <div class="input-row">
         <input id="we-bonus" type="number" value="${t.bonus || ''}" placeholder="完成奖励（留空=默认${CONFIG.WEEKLY_DONE_BONUS}分）" style="flex:1">
       </div>
-      <div class="form-hint">子任务每行「名称,分数」（分数可省默认10分，可加 {提示}，末尾写「可选」为选做）。总分自动 = 子任务分之和。改子任务会重置它的进度。</div>
-      <textarea id="we-kids" style="min-height:110px" placeholder="第1篇课文,10&#10;第2篇课文,10&#10;习作,15,可选">${kidsText}</textarea>
+      <div class="form-hint">子任务每行「名称,分数」（分数可省默认10分，可加 {提示}，末尾写「选做」为非必做）。总分自动 = 子任务分之和。改子任务会重置它的进度。</div>
+      <textarea id="we-kids" style="min-height:110px" placeholder="第1篇课文,10&#10;第2篇课文,10&#10;习作,15,选做">${kidsText}</textarea>
       <div style="margin-top:12px;display:flex;gap:8px">
         <button class="btn-cancel" data-cancel style="flex:1">取消</button>
         <button class="btn-primary" data-save style="flex:2">保存修改</button>
@@ -1518,6 +1662,15 @@ function openWeeklyEditor(id) {
 }
 
 // ---------- 通用任务编辑（普通任务：改名/类别/分数/必做选做/类型/提示） ----------
+// 重算多日任务总分 = 子任务分数之和
+async function syncParentPoints(parentId) {
+  const kids = allChildTasks(parentId);
+  const total = kids.reduce((s, k) => s + (k.points || 0), 0);
+  await DB.updateTask(parentId, { points: total });
+  const p = S.tasks.find(x => x.id === parentId);
+  if (p) p.points = total;
+}
+
 function openTaskEditor(id) {
   const t = S.tasks.find(x => x.id === id);
   if (!t) return;
@@ -1542,19 +1695,28 @@ function openTaskEditor(id) {
       </div>
       <label>小提示</label>
       <input id="te-hint" value="${t.hint || ''}" placeholder="给孩子的小提示（如：先复习生字）">
+      <label>所属多日任务</label>
+      <select id="te-parent">
+        <option value="">独立任务（不关联）</option>
+        ${weeklyTasks().map(w => `<option value="${w.id}" ${t.parent_id === w.id ? 'selected' : ''}>${w.title}</option>`).join('')}
+      </select>
       ${isChild ? '' : `
       <label>任务类型</label>
       <select id="te-schedule">
         <option value="daily" ${t.schedule === 'daily' ? 'selected' : ''}>每天都有</option>
         <option value="once" ${t.schedule === 'once' ? 'selected' : ''}>只做一次</option>
       </select>`}
+      <div class="form-hint">选「多日任务」后，本任务成为它的子任务，孩子按完成度独立计分。</div>
       <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn-danger" data-del style="flex:1">删除</button>
         <button class="btn-cancel" data-cancel style="flex:1">取消</button>
         <button class="btn-primary" data-save style="flex:2">保存修改</button>
       </div>
     </div>
   `;
   modal.querySelector('[data-cancel]').onclick = () => modal.remove();
+  const delBtn = modal.querySelector('[data-del]');
+  if (delBtn) delBtn.onclick = () => { modal.remove(); delTask(t.id); };
   modal.querySelector('[data-save]').onclick = async () => {
     const title = modal.querySelector('#te-title').value.trim();
     if (!title) { toast('任务名称不能为空'); return; }
@@ -1562,18 +1724,34 @@ function openTaskEditor(id) {
     const category = (modal.querySelector('#te-cat').value || '').trim() || '打卡';
     const points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt(modal.querySelector('#te-pts').value) || 10));
     const required = modal.querySelector('#te-req').value !== '0';
+    const oldParent = t.parent_id;
+    const parentVal = (modal.querySelector('#te-parent').value || '').trim();
+    const newParent = parentVal ? Number(parentVal) : null;
     const patch = { title, hint, category, points, required };
-    if (!isChild) {
-      const schedule = modal.querySelector('#te-schedule').value;
-      if (schedule !== t.schedule) {
-        if (schedule === 'once') { patch.start_date = S.parentDate; patch.end_date = S.parentDate; }
-        else if (schedule === 'daily') { patch.start_date = null; patch.end_date = null; }
-        patch.schedule = schedule;
+    if (newParent) {
+      // 关联到多日任务：变成它的子任务（独立计分，不绑日期）
+      patch.parent_id = newParent;
+      patch.schedule = 'child';
+      patch.start_date = null; patch.end_date = null;
+    } else {
+      patch.parent_id = null;
+      if (t.schedule === 'child') {
+        patch.schedule = 'daily';  // 子任务取消关联 → 恢复独立每天
+      } else if (!isChild) {
+        const schedule = modal.querySelector('#te-schedule').value;
+        if (schedule !== t.schedule) {
+          if (schedule === 'once') { patch.start_date = S.parentDate; patch.end_date = S.parentDate; }
+          else if (schedule === 'daily') { patch.start_date = null; patch.end_date = null; }
+          patch.schedule = schedule;
+        }
       }
     }
     saveCat(category);
     await DB.updateTask(id, patch);
     Object.assign(t, patch);
+    // 关联变化时重算相关多日任务的总分
+    if (oldParent && oldParent !== newParent) await syncParentPoints(oldParent);
+    if (newParent) await syncParentPoints(newParent);
     modal.remove();
     await refreshAll(); render();
     toast('已保存');
@@ -1604,7 +1782,7 @@ function catOrder(cat) {
   return i >= 0 ? i : 1000;
 }
 
-function itemLine(it) { return `${it.title}${it.hint ? `{${it.hint}}` : ''},${it.category},${it.points}${it.required === false ? ',可选' : ''}`; }
+function itemLine(it) { return `${it.title}${it.hint ? `{${it.hint}}` : ''},${it.category},${it.points}${it.required === false ? ',选做' : ''}`; }
 
 function fillBatch(items) {
   const ta = $('pt-batch');
@@ -1675,7 +1853,7 @@ function parseBatchLines(text) {
       else category = parts[1];
     }
     if (parts[2] && /^\d+$/.test(parts[2])) points = parseInt(parts[2]);
-    if (parts[3] && ['可选', '0', '选'].includes(parts[3])) required = false;
+    if (parts[3] && ['选做', '可选', '0', '选'].includes(parts[3])) required = false;
     points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, points));
     return { title, hint, category, points, required };
   });
@@ -1772,7 +1950,7 @@ function parseMultiDay(text) {
     let category = '打卡', points = 10, required = true;
     if (parts[1]) { if (/^\d+$/.test(parts[1])) points = parseInt(parts[1]); else category = parts[1]; }
     if (parts[2] && /^\d+$/.test(parts[2])) points = parseInt(parts[2]);
-    if (parts[3] && ['可选', '0', '选'].includes(parts[3])) required = false;
+    if (parts[3] && ['选做', '可选', '0', '选'].includes(parts[3])) required = false;
     points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, points));
     cur.items.push({ title, hint, category, points, required });
   });
@@ -1786,8 +1964,8 @@ function openMultiDayAssign() {
     <div class="modal" style="max-width:460px;width:calc(100% - 40px)">
       <h3>📅 批量布置多天</h3>
       <p class="form-hint">每行写一个日期（如 <b>10-20</b> / <b>周一</b> / <b>明天</b>），下面几行是那天要做的任务，直到下一个日期行。任务只出现在对应的那天。</p>
-      <textarea id="md-input" style="min-height:180px" placeholder="10-20&#10;语文作业,校内作业,10&#10;跳绳500个,运动,5,可选&#10;10-21&#10;英语作业,校内作业,10&#10;阅读20分钟,阅读,5"></textarea>
-      <div class="form-hint">任务格式同「自动识别」：名称, 类别, 分数, 可选（除名称外可省）</div>
+      <textarea id="md-input" style="min-height:180px" placeholder="10-20&#10;语文作业,校内作业,10&#10;跳绳500个,运动,5,选做&#10;10-21&#10;英语作业,校内作业,10&#10;阅读20分钟,阅读,5"></textarea>
+      <div class="form-hint">任务格式同「自动识别」：名称, 类别, 分数, 选做（除名称外可省）</div>
       <div style="margin-top:12px;display:flex;gap:8px">
         <button class="btn-cancel" data-cancel style="flex:1">取消</button>
         <button class="btn-primary" data-ok style="flex:2">解析并布置</button>
@@ -1983,12 +2161,76 @@ function parentPmPanel() {
 // 读取奖励/扣分理由（可空）
 function pmReason() { return ($('pt-reason') && $('pt-reason').value || '').trim(); }
 
-async function saveNote() {
-  const n = ($('pt-note') && $('pt-note').value || '').trim();
-  await DB.setNote(S.parentDate, n);
-  S.parentNote = n || null;
-  toast(n ? '已保存叮嘱' : '已清除叮嘱');
-  render();
+// 家长叮嘱弹窗编辑
+function openNoteEditor() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-mask';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:440px;width:calc(100% - 40px)">
+      <h3>💬 ${S.parentDate} 的叮嘱</h3>
+      <textarea id="note-text" placeholder="说句给孩子的话（孩子端当天显示）" style="min-height:110px">${S.parentNote || ''}</textarea>
+      <div class="form-hint">每天一条，家长手机写了孩子平板打开就能看到。留空保存 = 清除。</div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn-cancel" data-cancel style="flex:1">取消</button>
+        <button class="btn-primary" data-save style="flex:2">保存</button>
+      </div>
+    </div>
+  `;
+  modal.querySelector('[data-cancel]').onclick = () => modal.remove();
+  modal.querySelector('[data-save]').onclick = async () => {
+    const n = modal.querySelector('#note-text').value.trim();
+    await DB.setNote(S.parentDate, n);
+    S.parentNote = n || null;
+    modal.remove();
+    toast(n ? '已保存叮嘱' : '已清除叮嘱');
+    render();
+  };
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+// ---------- 家长规则设置（动态调分值，存数据库全家同步） ----------
+function parentSettingsPanel() {
+  return `
+    <div class="panel">
+      <h3>⚙️ 规则设置</h3>
+      <div class="form-hint">调整各种分值奖励（必做/选做全清奖、多日奖励与扣分、球价、经验等），改完立即生效、孩子端同步。</div>
+      <button class="btn-primary" data-action="parent-settings" style="width:100%">调整规则数值</button>
+    </div>
+  `;
+}
+function openSettings() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-mask';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:440px;width:calc(100% - 40px)">
+      <h3>⚙️ 规则设置</h3>
+      ${SETTING_FIELDS.map(f => `
+        <div class="input-row" style="margin-top:8px">
+          <span style="font-size:13px;color:var(--ink-soft);flex:1.5">${f.label}</span>
+          <input type="number" data-key="${f.key}" value="${CONFIG[f.key]}" style="width:88px">
+        </div>`).join('')}
+      <div class="form-hint">家长手机调整后，孩子平板打开自动用新数值。留空 = 保持原值。</div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn-cancel" data-cancel style="flex:1">取消</button>
+        <button class="btn-primary" data-save style="flex:2">保存设置</button>
+      </div>
+    </div>
+  `;
+  modal.querySelector('[data-cancel]').onclick = () => modal.remove();
+  modal.querySelector('[data-save]').onclick = async () => {
+    const obj = {};
+    modal.querySelectorAll('input[data-key]').forEach(inp => {
+      const k = inp.dataset.key, v = inp.value.trim();
+      if (v !== '') obj[k] = Number(v);
+    });
+    await DB.setSettings(obj);
+    Object.keys(obj).forEach(k => { if (CONFIG[k] !== undefined) CONFIG[k] = obj[k]; });
+    modal.remove();
+    toast('已保存规则设置');
+    render();
+  };
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 async function resetDemo() {
   const prefix = DEMO_ACTIVE ? 'kmd_' : 'km_';
