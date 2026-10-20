@@ -21,8 +21,11 @@ create table if not exists tasks (
   hint text,                -- 任务小提示（家长用 {提示} 圈住）
   sort int not null default 0,  -- 孩子端展示顺序
   bonus int,                -- 多日任务全清额外分（null=用默认 10 分）
+  note text,                -- 备注（暂未使用，留给前端兼容；日常叮嘱存在 notes 表里）
   created_at timestamptz not null default now()
 );
+-- 兼容早期 addTask 多塞了 note 字段（不影响线上）
+alter table tasks add column if not exists note text;
 
 create table if not exists task_logs (
   id bigint generated always as identity primary key,
