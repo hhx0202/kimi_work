@@ -1243,14 +1243,24 @@ function dateNavHTML() {
   `;
 }
 
-// 进度条随完成度变色：0% 红橙 → 50% 黄 → 100% 绿；完成后是绿色 + 光带扫过（不再用黄色）
+// 进度条随完成度变色：淡蓝（刚布置）→ 淡青（做了一半）→ 绿（快完成）；完成后绿色 + 光带扫过。
+// 不再从红色起：0~10% 一片红看着像报警，孩子刚看到任务就是「出事了」的观感。
+const PROG_STOPS = [
+  [0,   [172, 201, 234]],   // 淡雾蓝：还没动（不是红色，别把「刚布置」做成警报）
+  [50,  [130, 206, 197]],   // 淡青绿：做了一半
+  [100, [86,  183, 111]],   // 绿：快完成
+];
 function progFillStyle(pct, full) {
   if (full) return '';
   const p = Math.max(0, Math.min(100, pct));
-  // 前半程红→黄（0-50），后半程黄→绿（50-100），比线性 HSL 更贴合「越接近完成越绿」的直觉
-  const hue = p <= 50 ? 4 + p * 0.92 : 50 + (p - 50) * 1.4;
-  const h = Math.round(hue);
-  return `;background:linear-gradient(90deg,hsl(${h} 82% 64%),hsl(${h} 74% 47%))`;
+  // 在 RGB 上分段线性插值：色相走蓝→青→绿，全程不经过红/橙
+  let i = 0;
+  while (i < PROG_STOPS.length - 2 && p > PROG_STOPS[i + 1][0]) i++;
+  const [p0, c0] = PROG_STOPS[i], [p1, c1] = PROG_STOPS[i + 1];
+  const k = (p - p0) / (p1 - p0 || 1);
+  const c = c0.map((v, j) => Math.round(v + (c1[j] - v) * k));
+  const light = c.map(v => Math.min(255, Math.round(v + (255 - v) * 0.35)));   // 左端更淡，出一点渐变层次
+  return `;background:linear-gradient(90deg,rgb(${light.join(',')}),rgb(${c.join(',')}))`;
 }
 
 function renderProgress() {
@@ -1320,6 +1330,24 @@ function taskTypeLabel(t) {
   if (t.schedule === 'weekly') return '多日';
   return '';
 }
+// 同名任务拦截：名称完全一样的不再重复布置（手滑点两次、批量粘贴重复行都拦掉）。
+// date 只在「单次任务」时传：单次任务按天去重，批量布置多天里不同天允许同名；
+// 不传 date 时：任何仍在使用中的同名任务都算重复（重复/多日任务全局唯一）。
+function sameTitleTask(title, opts) {
+  const o = opts || {};
+  const name = String(title || '').trim();
+  if (!name) return null;
+  return S.tasks.find(x => {
+    if (x.active === false || x.id === o.ignoreId) return false;
+    if (String(x.title || '').trim() !== name) return false;
+    if (o.parentId !== undefined && (x.parent_id || null) !== (o.parentId || null)) return false;
+    if (o.date && x.schedule === 'once' && x.start_date && x.start_date !== o.date) return false;
+    return true;
+  }) || null;
+}
+// 某天视为重复时的提示文案
+function dupTitleMsg(title) { return `已经有同名任务「${title}」，不用再加一次`; }
+
 // 任务排序（家长端、孩子端、进度详情共用同一套，家长拖完孩子端才会跟着变）：
 // 家长调整的 sort 优先 → 类别顺序（全未排序时的默认观感）→ 名称
 function taskSort(a, b) {
@@ -1356,6 +1384,13 @@ function rulesHintHTML() {
   `;
 }
 
+// 小字里的日期：单次/子任务只在当天出现，写日期纯属噪音（所以「口算一页」比别的小任务多一行日期就是这里有值）；
+// 重复任务只在「不是今天才开始」时提示一下起始日。
+function taskStartText(t) {
+  if (!t.start_date || t.schedule !== 'daily') return '';
+  if (t.start_date === S.viewDate) return '';
+  return ` · 🚩 ${t.start_date.slice(5)} 起`;
+}
 function taskCardHTML(t) {
   const isToday = S.viewDate === DB.today();
   const submitted = isSubmitted(t);
@@ -1387,7 +1422,7 @@ function taskCardHTML(t) {
     <div class="info">
       <b>${t.title}</b>${reqTag}
       ${hint}
-      <span>${t.category} · ${taskTypeLabel(t)}${streak > 0 ? ` · 🔥连续 ${streak} 天` : ''}${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}</span>
+      <span>${t.category} · ${taskTypeLabel(t)}${streak > 0 ? ` · 🔥连续 ${streak} 天` : ''}${taskStartText(t)}</span>
     </div>
     <div class="pts">+${t.points}</div>
     ${btnHtml}
@@ -2093,11 +2128,33 @@ function ptsNoticeHTML() {
 // 切换查看日期后加载当天叮嘱（孩子端/家长端）
 async function refreshViewNote() { S.viewNote = await DB.getNote(S.viewDate) || null; render(); }
 async function refreshParentNote() { S.parentNote = await DB.getNote(S.parentDate) || null; render(); }
-// 孩子端：当日叮嘱卡片（等宽圆角，和任务列表一致），随日期切换；家长写的换行原样保留
+// 叮嘱每行的图标：按「行号 + 文字」稳定哈希，从宝可梦道具里挑一个。
+// 用哈希不用 Math.random —— 刷新/切日期回来图标不会乱跳，同一句话永远配同一个图标。
+function noteLineIconKey(text, idx, used) {
+  const keys = (typeof POKE_ICON_KEYS !== 'undefined' && POKE_ICON_KEYS.length) ? POKE_ICON_KEYS : null;
+  if (!keys) return null;
+  let h = 17 + idx * 131;
+  for (const ch of String(text)) h = (h * 31 + (ch.codePointAt(0) || 0)) % 100003;
+  let key = keys[h % keys.length];
+  if (used && used.has(key)) {                     // 相邻几行别撞成同一个图标
+    const pool = keys.filter(k => !used.has(k));
+    if (pool.length) key = pool[h % pool.length];
+  }
+  return key;
+}
+// 孩子端：当日叮嘱卡片（等宽圆角，和任务列表一致），随日期切换；一行一句话，每行配一个宝可梦道具图标
 function noteCardHTML() {
   const txt = String(S.viewNote == null ? '' : S.viewNote).trim();
   if (!txt) return '';
-  return `<div class="note-card">💬 <span class="note-txt"><b>每日叮嘱</b>${escHTML(txt).replace(/\n/g, '<br>')}</span></div>`;
+  const lines = txt.split('\n').map(l => l.trim()).filter(Boolean);
+  const used = new Set();
+  const rows = lines.map((l, i) => {
+    const key = noteLineIconKey(l, i, used);
+    if (key) used.add(key);
+    const ico = key && typeof catIconByKey === 'function' ? catIconByKey(key) : '';
+    return `<li><span class="note-ico">${ico}</span><span class="note-line">${escHTML(l)}</span></li>`;
+  }).join('');
+  return `<div class="note-card"><div class="note-head">💬 每日叮嘱</div><ul class="note-lines">${rows}</ul></div>`;
 }
 function bindKidTabs() {
   const tabs = document.querySelectorAll('.tabbar button[data-tab]');
@@ -2637,11 +2694,19 @@ async function saveParentTask() {
   const schedule = $('pt-schedule').value;
   const deadline = (schedule === 'weekly' && $('pt-deadline').value) ? $('pt-deadline').value : null;
   const required = $('pt-req').value !== '0';
+  // 同名拦截：单次任务按「这一天」判重，重复/多日任务全局判重
+  if (sameTitleTask(title, { parentId: null, date: schedule === 'once' ? S.parentDate : null })) {
+    toast(dupTitleMsg(title)); return;
+  }
   saveCat(category);
   if (schedule === 'weekly') {
     const text = ($('pt-children') ? $('pt-children').value : '') || '';
-    const items = parseSubtasks(text);
+    const rawItems = parseSubtasks(text);
+    // 子任务里两行写同一个名字也拦一下，不然进度条分母会被重复项搅乱
+    const seenKid = new Set();
+    const items = rawItems.filter(x => !seenKid.has(x.title) && seenKid.add(x.title));
     if (!items.length) { toast('子任务为空，先填拆分子任务'); return; }
+    if (items.length < rawItems.length) toast(`有 ${rawItems.length - items.length} 行子任务同名，已合并`);
     const totalPts = items.reduce((s, x) => s + x.points, 0);
     const bonusEl = $('pt-bonus');
     const bonusVal = bonusEl && parseInt(bonusEl.value);
@@ -2728,6 +2793,7 @@ function openWeeklyEditor(id) {
   modal.querySelector('[data-save]').onclick = async () => {
     const title = modal.querySelector('#we-title').value.trim();
     if (!title) { toast('任务名称不能为空'); return; }
+    if (sameTitleTask(title, { ignoreId: id, parentId: null })) { toast(dupTitleMsg(title)); return; }
     const hint = modal.querySelector('#we-hint').value.trim() || null;
     const category = readCat('we-cat');
     const deadline = modal.querySelector('#we-deadline').value || null;
@@ -2819,6 +2885,7 @@ function openTaskEditor(id) {
     const oldParent = t.parent_id;
     const parentVal = (modal.querySelector('#te-parent').value || '').trim();
     const newParent = parentVal ? Number(parentVal) : null;
+    if (sameTitleTask(title, { ignoreId: t.id, parentId: newParent })) { toast(dupTitleMsg(title)); return; }
     const patch = { title, hint, category, points, required };
     if (newParent) {
       // 关联到多日任务：变成它的子任务（独立计分，不绑日期）
@@ -3077,6 +3144,7 @@ function openQuickAddTask(idx) {
     const required = modal.querySelector('#qa-req').value !== '0';
     const schedule = modal.querySelector('#qa-schedule').value === 'daily' ? 'daily' : 'once';
     const bindDate = schedule === 'once' ? S.parentDate : null;
+    if (sameTitleTask(title, { parentId: null, date: bindDate })) { toast(dupTitleMsg(title)); return; }
     saveCat(category);
     await DB.addTask({ title, hint, category, points, schedule, required, start_date: bindDate, end_date: bindDate });
     close();
@@ -3158,17 +3226,22 @@ async function parseBatch() {
   if (!text) { toast('粘贴内容为空'); return; }
   const items = parseBatchLines(text);
   if (!items.length) { toast('没解析到有效任务'); return; }
-  let n = 0;
+  let n = 0, dup = 0;
+  const added = new Set();
   for (const it of items) {
+    // 同名拦截：当天已有同名任务 / 粘贴内容里自己重复了
+    if (added.has(it.title) || sameTitleTask(it.title, { parentId: null, date: S.parentDate })) { dup++; continue; }
     saveCat(it.category);
     // 批量添加固定为单次任务（当前日期做一次、做完消失），避免批量复制重复建重复任务
     await DB.addTask({ title: it.title, hint: it.hint, category: it.category, points: it.points, schedule: 'once', required: it.required, start_date: S.parentDate, end_date: S.parentDate });
+    added.add(it.title);
     n++;
   }
   $('pt-batch').value = '';
   await refreshAll();
   render();
-  toast(`成功添加 ${n} 个单次任务`);
+  if (!n) toast(`都是同名任务，没有新增（跳过 ${dup} 个）`);
+  else toast(dup ? `添加 ${n} 个，跳过 ${dup} 个同名` : `成功添加 ${n} 个单次任务`);
 }
 // ---------- 批量布置多天：日期分隔行 ----------
 function pad2(n) { return String(n).padStart(2, '0'); }
@@ -3232,17 +3305,22 @@ function openMultiDayAssign() {
     if (!text) { toast('内容为空'); return; }
     const groups = parseMultiDay(text);
     if (!groups.length) { toast('没解析到有效的日期分组，第一行请先写日期'); return; }
-    let n = 0;
+    let n = 0, dup = 0;
     for (const g of groups) {
+      const added = new Set();
       for (const it of g.items) {
+        // 同名拦截：同一天里重名的只留一个（不同天允许同名，那是两天的独立任务）
+        if (added.has(it.title) || sameTitleTask(it.title, { parentId: null, date: g.date })) { dup++; continue; }
         saveCat(it.category);
         await DB.addTask({ title: it.title, hint: it.hint, category: it.category, points: it.points, schedule: 'once', required: it.required, start_date: g.date, end_date: g.date });
+        added.add(it.title);
         n++;
       }
     }
     modal.remove();
     await refreshAll(); render();
-    toast(`已布置 ${n} 个任务（${groups.length} 天）`);
+    if (!n) toast(`都是同名任务，没有布置（跳过 ${dup} 个）`);
+    else toast(`已布置 ${n} 个任务（${groups.length} 天）${dup ? `，跳过 ${dup} 个同名` : ''}`);
   };
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
