@@ -643,9 +643,30 @@ async function cleanupAllClearPending(date) {
 }
 
 // ---------- 经验 / 进化（不再有等级，经验满一管即进化） ----------
+// 下一阶进化目标：单线用 e，分支（伊布）用 ev 数组
+function evoTargets(no) {
+  const info = PK_BY_NO[no];
+  if (!info) return [];
+  if (info.ev && info.ev.length) return info.ev.slice();
+  return info.e ? [info.e] : [];
+}
+function hasNextEvo(no) { return evoTargets(no).length > 0; }
+// 祖先链：从最初形态一路到自己（含自己）
+function evoAncestors(no) {
+  const list = [no];
+  let cur = no, guard = 0;
+  while (PK_EVOLVE_FROM[cur] !== undefined && guard++ < 20) { cur = PK_EVOLVE_FROM[cur]; list.unshift(cur); }
+  return list;
+}
+// 所有后代形态（分支全部展开）
+function evoDescendants(no) {
+  const out = [];
+  const walk = n => evoTargets(n).forEach(t => { out.push(t); walk(t); });
+  walk(no);
+  return out;
+}
 function expThreshold(pm) {
-  const info = PK_BY_NO[pm.pokedex_no];
-  if (!info.e) return CONFIG.SHINY_EXP;          // 无进化链的宝可梦：攒满即进入闪耀形态
+  if (!hasNextEvo(pm.pokedex_no)) return CONFIG.SHINY_EXP;   // 没有后续进化：攒满即进入闪耀形态
   const stage = evoStage(pm.pokedex_no);
   if (stage === 0) return CONFIG.EVO_EXP_1;       // 基础形态
   if (stage === 1) return CONFIG.EVO_EXP_2;       // 一阶形态
@@ -654,23 +675,19 @@ function expThreshold(pm) {
 // 是否已封顶：闪耀形态且没有后续进化（基础/一阶的闪耀形态还能继续进化，不算封顶）
 function isMaxed(pm) {
   if (!pm.shiny) return false;
-  const info = PK_BY_NO[pm.pokedex_no];
-  if (!info) return false;
-  if (!info.e) return true;                 // 无进化链：闪耀形态即最终形态
-  return evoStage(pm.pokedex_no) >= 2;      // 二阶（最终形态）闪耀形态即封顶
+  if (!PK_BY_NO[pm.pokedex_no]) return false;
+  if (!hasNextEvo(pm.pokedex_no)) return true;      // 没有后续进化：闪耀形态即最终形态
+  return evoStage(pm.pokedex_no) >= 2;              // 二阶（最终形态）闪耀形态即封顶
 }
-// 进化阶段标签（替代原"等级"显示）：✨ / 基础 / 一阶 / 二阶
+// 进化阶段标签：✨ / 基础 / 一阶 / 二阶
 function evoStageLabel(pm) {
   if (pm.shiny) return '✨';
-  const info = PK_BY_NO[pm.pokedex_no];
-  if (!info.e) return '基础';
   const s = evoStage(pm.pokedex_no);
   return s === 0 ? '基础' : (s === 1 ? '一阶' : '二阶');
 }
 // 下一管经验满时会怎样：进化 / 进入闪耀形态
 function nextStageWord(pm) {
-  const info = PK_BY_NO[pm.pokedex_no];
-  if (!info.e) return '闪耀';
+  if (!hasNextEvo(pm.pokedex_no)) return '闪耀';
   return evoStage(pm.pokedex_no) >= 2 ? '闪耀' : '进化';
 }
 async function grantExp(pm, exp) {
@@ -702,16 +719,12 @@ async function feedPm(pm, pts) {
 }
 
 // ---------- 进化 ----------
-function evoStage(no) { // 0基础 1一段 2二段
-  let s = 0, cur = no;
-  const from = {}; POKEMON.forEach(p => { if (p.e) from[p.e] = p.no; });
-  while (from[cur] !== undefined) { cur = from[cur]; s++; }
-  return s;
+function evoStage(no) { // 0基础 1一段 2二段（祖先有几个就是第几阶）
+  return Math.max(0, evoAncestors(no).length - 1);
 }
 function canEvolve(pm) {
-  const info = PK_BY_NO[pm.pokedex_no];
-  // 无进化链的宝可梦：经验满 SHINY_EXP 即进入闪耀形态
-  if (!info.e) {
+  // 没有后续进化的宝可梦：经验满 SHINY_EXP 即进入闪耀形态
+  if (!hasNextEvo(pm.pokedex_no)) {
     if (pm.shiny) return { ok: false };
     return pm.exp >= CONFIG.SHINY_EXP ? { ok: true, shiny: true } : { ok: false, why: `经验 ${pm.exp}/${CONFIG.SHINY_EXP}` };
   }
@@ -719,6 +732,36 @@ function canEvolve(pm) {
   const needExp = stage === 0 ? CONFIG.EVO_EXP_1 : CONFIG.EVO_EXP_2;  // 各段进化所需经验
   if (pm.exp < needExp) return { ok: false, why: `经验 ${pm.exp}/${needExp}` };
   return { ok: true, needExp, stage };
+}
+// 分支进化：让玩家选要进成哪一只（伊布）
+function pickEvoTarget(pm, targets) {
+  return new Promise(resolve => {
+    const modal = document.createElement('div');
+    modal.className = 'modal-mask';
+    modal.innerHTML = `
+      <div class="modal" style="max-width:420px;width:calc(100% - 40px)">
+        <h3>✨ ${pm.name} 要进化成哪一只？</h3>
+        <div class="form-hint" style="margin-top:6px">它有 ${targets.length} 种进化形态，选一只吧（经验已经够了）</div>
+        <div class="evo-pick">
+          ${targets.map(no => {
+            const t = pmType(no);
+            return `<button class="evo-pick-item" data-pick="${no}">
+              <img src="${spritePath(no, false)}" alt="">
+              <b>${PK_BY_NO[no].name}</b>
+              <small style="color:${TYPE_COLOR[t] || '#888'}">${TYPE_NAME[t] || ''}</small>
+            </button>`;
+          }).join('')}
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button class="btn-cancel" data-cancel style="flex:1">先不进化</button>
+        </div>
+      </div>`;
+    const done = v => { modal.remove(); resolve(v); };
+    modal.querySelectorAll('[data-pick]').forEach(b => { b.onclick = () => done(Number(b.dataset.pick)); });
+    modal.querySelector('[data-cancel]').onclick = () => done(null);
+    modal.addEventListener('click', e => { if (e.target === modal) done(null); });
+    document.body.appendChild(modal);
+  });
 }
 async function evolvePm(pm) {
   const c = canEvolve(pm);
@@ -733,7 +776,14 @@ async function evolvePm(pm) {
     return;
   }
   const fromNo = pm.pokedex_no;
-  const toNo = PK_BY_NO[fromNo].e;
+  const targets = evoTargets(fromNo);
+  if (!targets.length) return;
+  let toNo = targets[0];
+  if (targets.length > 1) {
+    const picked = await pickEvoTarget(pm, targets);
+    if (picked == null) return;        // 选择取消：经验保持不变，下次还能进
+    toNo = picked;
+  }
   // 进化消耗掉这管经验（不再花积分，越往后进化需要越多经验）
   const leftExp = pm.exp - c.needExp;
   await DB.updatePokemon(pm.id, { pokedex_no: toNo, name: (pm.shiny ? '✨' : '') + PK_BY_NO[toNo].name, exp: leftExp });
@@ -746,15 +796,18 @@ async function evolvePm(pm) {
   }
 }
 
-// ---------- 捕捉（必出新：每次一定抓到没抓过的） ----------
+// ---------- 捕捉（必出新：每次一定抓到没抓过的；只出基础形态） ----------
+// 基础形态 = 没有任何宝可梦能进化成它（进化后的形态只能靠进化获得）
+function isBaseForm(no) { return PK_EVOLVE_FROM[no] === undefined; }
 async function catchOne() {
   if (S.balls < 1) { toast('没有精灵球啦～攒积分买一个吧'); return; }
   // 从候选池里剔除已经拥有的编号（闪耀家族整链视为已收集）
   const owned = ownedNumbers();
+  const baseOnly = list => list.filter(no => isBaseForm(no) && !owned.has(no));
   const rare = Math.random() < CONFIG.RARITY.rare;
-  let pool = CATCH_POOL[rare ? 'rare' : 'common'].filter(no => !owned.has(no));
-  if (!pool.length) pool = CATCH_POOL.common.concat(CATCH_POOL.rare).filter(no => !owned.has(no));
-  if (!pool.length) { toast('🏆 图鉴已经集满，没有新的宝可梦啦！'); return; }  // 集满不扣球
+  let pool = baseOnly(CATCH_POOL[rare ? 'rare' : 'common']);
+  if (!pool.length) pool = baseOnly(CATCH_POOL.common.concat(CATCH_POOL.rare));
+  if (!pool.length) { toast('🏆 基础形态都抓齐啦，剩下的要靠进化获得！'); return; }  // 集满不扣球
   await DB.addItemLog('ball', -1, '捕捉消耗', DB.today());
   S.balls--;
   const no = pool[Math.floor(Math.random() * pool.length)];
@@ -1552,12 +1605,12 @@ function showCardDetail(pm) {
         <div class="exp-track"><div class="exp-fill" style="width:${expPct}%"></div></div>
         ${evoChainLine(pm.pokedex_no)}
         ${evoFamily(pm.pokedex_no).length > 1 ? '<div class="chain-tip">👆 点上面的名字，可以看每个形态的详情</div>' : ''}
-        ${((info.e || !pm.shiny)) ? `<div class="ptcg-evo ${evo.ok ? 'ok' : ''}">${evo.ok ? (evo.shiny ? '✨ 可以进入闪耀形态啦！' : '✨ 可以进化啦！') : (evo.why ? '『' + evo.why + '』' : '')}</div>` : ''}
+        ${((hasNextEvo(pm.pokedex_no) || !pm.shiny)) ? `<div class="ptcg-evo ${evo.ok ? 'ok' : ''}">${evo.ok ? (evo.shiny ? '✨ 可以进入闪耀形态啦！' : '✨ 可以进化啦！') : (evo.why ? '『' + evo.why + '』' : '')}</div>` : ''}
       </div>
       <div class="ptcg-btns">
         <button class="btn-lead" ${isLead ? 'disabled' : ''}>${isLead ? '⭐ 出战' : '出战'}</button>
         <button class="btn-feed" ${maxed ? 'disabled' : ''}>${maxed ? '✨ 已满级' : '🍬 喂糖果'}</button>
-        ${(info.e || evo.ok) ? `<button class="btn-evo" ${evo.ok ? '' : 'disabled'}>${evo.shiny ? '✨ 闪耀' : '进化'}</button>` : ''}
+        ${(hasNextEvo(pm.pokedex_no) || evo.ok) ? `<button class="btn-evo" ${evo.ok ? '' : 'disabled'}>${evo.shiny ? '✨ 闪耀' : '进化'}</button>` : ''}
         <button class="btn-close">✕ 关闭</button>
       </div>
     </div>
@@ -1657,16 +1710,27 @@ function showDexMissing(no) {
   ov.querySelector('.btn-close').onclick = () => ov.classList.add('hidden');
 }
 
-// 进化链展示（每个形态都可点开自己的详情，进化后前一阶也能看）
+// 进化链展示（每个形态都可点开自己的详情，进化后前一阶也能看；分支用「/」并列，如伊布）
 function evoChainLine(no) {
-  const chain = [no];
+  const node = (c, isCur) => `<span class="tap ${isCur ? 'cur' : ''}" data-evo="${c}" title="查看 ${PK_BY_NO[c].name} 的详情"><img src="${spritePath(c, false)}" alt="">${PK_BY_NO[c].name}</span>`;
+  const parts = evoAncestors(no).filter(c => c !== no).map(c => node(c, false));
+  parts.push(node(no, true));
+  // 往下走：单线继续延伸，遇到分支则把几个分支并列显示后停止
   let cur = no;
-  while (PK_BY_NO[cur] && PK_BY_NO[cur].e) { cur = PK_BY_NO[cur].e; chain.push(cur); }
-  while (PK_EVOLVE_FROM[chain[0]] !== undefined) chain.unshift(PK_EVOLVE_FROM[chain[0]]);
-  return `<div class="ptcg-chain">${chain.map(c => {
-    const curPm = c === no;
-    return `<span class="tap ${curPm ? 'cur' : ''}" data-evo="${c}" title="查看 ${PK_BY_NO[c].name} 的详情"><img src="${spritePath(c, false)}" alt="">${PK_BY_NO[c].name}</span>`;
-  }).join('<i>→</i>')}</div>`;
+  for (let guard = 0; guard < 20; guard++) {
+    const t = evoTargets(cur);
+    if (!t.length) break;
+    if (t.length > 1) { parts.push(t.map(c => node(c, false)).join('<i>/</i>')); break; }
+    parts.push(node(t[0], false));
+    cur = t[0];
+  }
+  // 自己是分支里的某一支：把"兄弟姐妹"也并列出来（伊布家族）
+  if (!hasNextEvo(no)) {
+    const parent = PK_EVOLVE_FROM[no];
+    const sibs = parent !== undefined ? evoTargets(parent).filter(c => c !== no) : [];
+    if (sibs.length) parts.push(sibs.map(c => node(c, false)).join('<i>/</i>'));
+  }
+  return `<div class="ptcg-chain">${parts.join('<i>→</i>')}</div>`;
 }
 // 把详情卡里的进化链做成可点（点某一形态 → 打开它的详情）
 function bindChainClicks(ov) {
@@ -1678,8 +1742,8 @@ function bindChainClicks(ov) {
 function stageLabelByNo(no) {
   const info = PK_BY_NO[no];
   if (!info) return '';
-  if (!info.e && PK_EVOLVE_FROM[no] === undefined) return '无进化';
   const s = evoStage(no);
+  if (!hasNextEvo(no)) return s === 0 ? '无进化' : '最终形态';
   return s === 0 ? '基础形态' : (s === 1 ? '一阶形态' : '最终形态');
 }
 
@@ -1691,30 +1755,25 @@ function catchZoneHTML() {
       <button class="btn-big" data-action="catch" ${S.balls < 1 ? 'disabled' : ''}>${POKE_ICON.ball('#e53935')} 捕捉宝可梦（1 个球）</button>
       <button class="btn-big buy" data-action="buyball" ${S.balance < CONFIG.BALL_PRICE ? 'disabled' : ''}>${POKE_ICON.master()} 买精灵球（${CONFIG.BALL_PRICE} 分）</button>
     </div>
-    <div class="catch-hint">每次必抓到新宝可梦（不重复）· 连续 ${CONFIG.STREAK_DAYS_FOR_BALL} 天全勤送球，还会随机让一只进入闪耀形态✨</div>
+    <div class="catch-hint">每次必抓到「没抓过的基础形态」（不重复）· 进化后的形态要靠喂养进化获得 · 连续 ${CONFIG.STREAK_DAYS_FOR_BALL} 天全勤送球，还会随机让一只进入闪耀形态✨</div>
   `;
 }
 
 // ---------- 图鉴 ----------
-// 某编号的完整进化链（含自身，按 祖先 → 后代 排列）
+// 某编号的整个家族（祖先 + 自己 + 所有后代，分支全部展开；仅用于"是否同族"判断）
 function evoFamily(no) {
-  const chain = [no];
-  let cur = no;
-  while (PK_BY_NO[cur] && PK_BY_NO[cur].e) { cur = PK_BY_NO[cur].e; chain.push(cur); }
-  while (PK_EVOLVE_FROM[chain[0]] !== undefined) chain.unshift(PK_EVOLVE_FROM[chain[0]]);
-  return chain;
+  return evoAncestors(no).concat(evoDescendants(no));
 }
 function dexGot() {
   const got = {};
   const shinyOwned = new Set();
   S.pokemons.forEach(p => {
-    const fam = evoFamily(p.pokedex_no);
-    const idx = fam.indexOf(p.pokedex_no);
     // 进化不会抹掉走过的形态：当前形态 + 它的所有前置形态都算已收集
-    fam.slice(0, idx + 1).forEach(no => { got[no] = true; });
+    evoAncestors(p.pokedex_no).forEach(no => { got[no] = true; });
     if (p.shiny) {
-      // 闪耀形态按整条进化链生效：家族各阶段都点亮并标 ✨（含尚未进化到的后代）
-      fam.forEach(no => { got[no] = true; shinyOwned.add(no); });
+      // 闪耀形态按整条进化链生效：祖先和后代（含分支）都点亮并标 ✨
+      evoAncestors(p.pokedex_no).forEach(no => { got[no] = true; shinyOwned.add(no); });
+      evoDescendants(p.pokedex_no).forEach(no => { got[no] = true; shinyOwned.add(no); });
     }
   });
   return { got, shinyOwned };

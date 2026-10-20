@@ -1,8 +1,10 @@
 // ============================================================
 // 宝可梦数据表 - 初代 151 只
 // no: 图鉴编号(即图片文件名)  name: 中文名
-// e: 进化为哪只(编号)  rarity: 稀有度 common常见/rare稀有
-// 捕捉池 = 所有"没有进化前体"的宝可梦（运行时自动计算）
+// e:  进化后是哪只(编号，单线进化)
+// ev: 进化后可选的多只(编号数组，分支进化，如伊布) —— 有 ev 时忽略 e
+// rarity: 稀有度 common常见/rare稀有
+// 捕捉池 = 所有"没有进化前体"的宝可梦（运行时自动计算）→ 精灵球只能抓基础形态
 // ============================================================
 
 const POKEMON = [
@@ -158,8 +160,8 @@ const POKEMON = [
   { no: 105, name: '嘎啦嘎啦' },
   { no: 106, name: '飞腿郎' },
   { no: 107, name: '快拳郎' },
-  // --- 伊布家族（分支进化简化为独立捕捉） ---
-  { no: 133, name: '伊布',    rarity: 'rare' },
+  // --- 伊布家族（分支进化：伊布可以选进化成三只中的一只） ---
+  { no: 133, name: '伊布',    rarity: 'rare', ev: [134, 135, 136] },
   { no: 134, name: '水伊布',  rarity: 'rare' },
   { no: 135, name: '雷伊布',  rarity: 'rare' },
   { no: 136, name: '火伊布',  rarity: 'rare' },
@@ -184,9 +186,12 @@ const POKEMON = [
 const PK_BY_NO = {};
 POKEMON.forEach(p => { PK_BY_NO[p.no] = p; });
 
-// 谁是我的进化前体（被指向的编号）
+// 谁是我的进化前体（被指向的编号）；分支进化（ev 数组）逐个登记
 const PK_EVOLVE_FROM = {};
-POKEMON.forEach(p => { if (p.e) PK_EVOLVE_FROM[p.e] = p.no; });
+POKEMON.forEach(p => {
+  if (p.ev && p.ev.length) p.ev.forEach(n => { PK_EVOLVE_FROM[n] = p.no; });
+  else if (p.e) PK_EVOLVE_FROM[p.e] = p.no;
+});
 
 // 捕捉池：没有进化前体的才能被精灵球捕捉
 const CATCH_POOL = {
