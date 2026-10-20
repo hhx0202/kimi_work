@@ -2593,15 +2593,16 @@ function parentTaskPanel() {
       </div>
       <details style="margin-top:10px">
         <summary style="font-size:13px;color:var(--ink-soft);cursor:pointer">🏷️ 管理历史类别（${allCategories().length} 个，含任务里用过的；删掉的不再出现在下拉里）</summary>
-        <div style="margin-top:8px;line-height:2">
+        <div class="cat-tags">
           ${allCategories().map(c => `
-            <span style="display:inline-flex;align-items:center;gap:4px;background:#e3f2fd;border-radius:999px;padding:3px 10px;margin:3px;font-size:12px">
-              ${catIcon(c)} ${c}
-              <button class="btn-icon" data-action="parent-del-cat" data-cat="${escHTML(c)}" title="从下拉里移除">✕</button>
+            <span class="cat-tag">
+              <span class="cat-tag-ico">${catIcon(c)}</span>
+              <span class="cat-tag-name">${c}</span>
+              <button class="cat-tag-x" data-action="parent-del-cat" data-cat="${escHTML(c)}" title="从下拉里移除">✕</button>
             </span>
           `).join('')}
-          <span style="display:inline-flex;align-items:center;gap:4px;margin:3px">
-            <input id="pt-newcat" placeholder="新增类别" style="width:110px;border:1px solid #e0e0e0;border-radius:999px;padding:4px 10px;font-size:12px">
+          <span class="cat-add">
+            <input id="pt-newcat" class="cat-add-inp" placeholder="新增类别">
             <button class="chip" data-action="parent-add-cat">添加</button>
           </span>
         </div>
@@ -3242,7 +3243,7 @@ function modePanel() {
           </div>
           <button class="btn-primary" data-action="parent-demo-exit">↩ 退出演示</button>
         </div>
-        <button class="btn-danger" data-action="parent-reset-demo" style="width:100%;margin-top:6px">🔄 重置演示数据（重新生成示例）</button>
+        <button class="btn-danger btn-pts" data-action="parent-reset-demo" style="width:100%;margin-top:8px">🔄 重置演示数据（重新生成示例）</button>
       </div>
     `;
   }
@@ -3392,11 +3393,11 @@ function parentPmPanel() {
       </div>
       <div class="input-row">
         <input id="pt-givepts" type="number" placeholder="积分数量" value="50">
-        <button class="btn-primary" data-action="parent-givepts" style="flex:1">奖励积分</button>
+        <button class="btn-primary btn-pts" data-action="parent-givepts" style="flex:1">奖励积分</button>
       </div>
       <div class="input-row">
         <input id="pt-minuspts" type="number" placeholder="扣分数量" value="5">
-        <button class="btn-danger" data-action="parent-minuspts" style="flex:1">扣分</button>
+        <button class="btn-danger btn-pts" data-action="parent-minuspts" style="flex:1">扣分</button>
       </div>
       <div class="input-row">
         <button class="btn-primary" data-action="parent-giveball" style="flex:1">送精灵球 ×1</button>

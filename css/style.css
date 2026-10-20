@@ -307,6 +307,32 @@ body {
   border-radius: 999px; padding: 8px 14px; font-size: 13px; cursor: pointer; font-weight: 700;
 }
 .chip.red { border-color: #ef9a9a; background: #ffebee; color: #c62828; }
+/* 家长端「管理历史类别」：一行一个小胶囊，名称不换行，图标缩到 15px 免得把行撑高 */
+.cat-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.cat-tag {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  padding: 4px 5px 4px 9px; background: #e3f2fd; border: 1px solid #bbdefb;
+  border-radius: 999px; font-size: 13px; font-weight: 700; color: #1565c0;
+  line-height: 1.5; white-space: nowrap;
+}
+.cat-tag-ico { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 15px; height: 15px; }
+.cat-tag-ico svg, .cat-tag-ico img { display: block; width: 15px; height: 15px; }
+.cat-tag-name { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cat-tag-x {
+  display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center;
+  width: 19px; height: 19px; padding: 0; border: 0; border-radius: 50%;
+  background: rgba(239, 83, 80, .13); color: #e53935;
+  font-size: 11px; line-height: 1; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.cat-tag-x:active { background: rgba(239, 83, 80, .28); }
+.cat-add { display: inline-flex; align-items: center; gap: 6px; }
+.cat-add-inp {
+  width: 104px; padding: 6px 12px; font-size: 13px;
+  border: 1px solid #e0e0e0; border-radius: 999px; font-family: inherit;
+}
+.cat-add-inp:focus { outline: none; border-color: var(--blue); }
+.cat-add .chip { padding: 6px 14px; font-size: 13px; }
 /* 常用任务标签：图标 + 名称 + 分数 + ✕；单击=添加任务，长按=编辑标签（见 bindQuickLongPress） */
 .quick-chip {
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
@@ -355,6 +381,14 @@ textarea {
   font-size: 12px; font-weight: 700; color: #fff;
   background: #ef5350;
 }
+/* 奖励/扣分是一对，字号、内边距、粗细必须一致（.btn-danger 默认是小号行内删除按钮） */
+.btn-pts {
+  padding: 11px 22px; font-size: 14px; font-weight: 800;
+  white-space: nowrap; min-width: 0;
+}
+.btn-primary.btn-pts { box-shadow: 0 3px 0 #1565c0; }
+.btn-danger.btn-pts { box-shadow: 0 3px 0 #c62828; background: linear-gradient(135deg, #ef5350, #e53935); }
+.btn-pts:active { transform: translateY(2px); box-shadow: none; }
 .prow {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 0; border-bottom: 1px solid #f5f5f5; font-size: 14px;
