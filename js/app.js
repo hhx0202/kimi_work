@@ -1309,23 +1309,19 @@ function taskTypeLabel(t) {
   if (t.schedule === 'weekly') return '多日';
   return '';
 }
-// 任务排序：家长调整的 sort 优先，其次按名称
+// 任务排序（家长端、孩子端、进度详情共用同一套，家长拖完孩子端才会跟着变）：
+// 家长调整的 sort 优先 → 类别顺序（全未排序时的默认观感）→ 名称
 function taskSort(a, b) {
   const sa = a.sort || 0, sb = b.sort || 0;
   if (sa !== sb) return sa - sb;
+  const ca = catOrder(a.category), cb = catOrder(b.category);
+  if (ca !== cb) return ca - cb;
   return (a.title || '').localeCompare(b.title || '', 'zh');
 }
-// 必做/选做分区内直接平铺任务（不再按类别分组块），排序：类别顺序 → 家长排序(sort) → 名称
+// 必做/选做分区内直接平铺任务（不再按类别分组块），排序交给 taskSort
 function catSectionHTML(tasks, title) {
   if (!tasks.length) return '';
-  const arr = tasks.slice().sort((a, b) => {
-    // 提交后保持卡片原位（不沉底），只按类别/排序/名称排列
-    const ca = catOrder(a.category), cb = catOrder(b.category);
-    if (ca !== cb) return ca - cb;
-    const s1 = a.sort || 0, s2 = b.sort || 0;
-    if (s1 !== s2) return s1 - s2;
-    return (a.title || '').localeCompare(b.title || '', 'zh');
-  });
+  const arr = tasks.slice().sort(taskSort);
   return `<div class="section-title" style="margin:16px 4px 6px">${title}</div>
     <div class="task-list">${arr.map(taskCardHTML).join('')}</div>`;
 }
@@ -1446,13 +1442,7 @@ function showProgressDetail(kind) {
   const date = S.viewDate;
   const list = dayTasksForProgress(date)
     .filter(t => (t.required !== false) === isReq)
-    .sort((a, b) => {
-      const ca = catOrder(a.category), cb = catOrder(b.category);
-      if (ca !== cb) return ca - cb;
-      const s1 = a.sort || 0, s2 = b.sort || 0;
-      if (s1 !== s2) return s1 - s2;
-      return (a.title || '').localeCompare(b.title || '', 'zh');
-    });
+    .sort(taskSort);
   const done = list.filter(t => logOn(t.id, date)).length;
   const full = list.length > 0 && done === list.length;
   const bonus = isReq ? CONFIG.REQUIRED_DONE_BONUS : CONFIG.OPTIONAL_DONE_BONUS;
