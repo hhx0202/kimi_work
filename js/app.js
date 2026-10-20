@@ -305,6 +305,12 @@ async function refreshAll() {
     S.logs[d][l.task_id] = { done: !!l.completed, progress: l.progress || 0, approved: l.approved === false ? false : true };
   });
   S.pokemons = pokemons;
+  // 老数据兜底：pokedex_no 缺失/写错时按名字找回并回写（否则阶段角标会误标成「基础」）
+  const badPms = S.pokemons.filter(p => { const no = pkNoOf(p); return no !== null && no !== Number(p.pokedex_no); });
+  if (badPms.length) {
+    await Promise.all(badPms.map(p => DB.updatePokemon(p.id, { pokedex_no: pkNoOf(p) })));
+    badPms.forEach(p => { p.pokedex_no = pkNoOf(p); });
+  }
   // 已封顶的闪耀形态宝可梦经验归零（修正历史遗留的溢出经验）
   const cappedPms = S.pokemons.filter(p => isMaxed(p) && p.exp);
   if (cappedPms.length) {
@@ -357,15 +363,25 @@ function taskPending(taskId) {
   const d = DB.today();
   return S.pointLogs.some(l => l.log_date === d && l.task_id === taskId && l.confirmed === false);
 }
-function taskProgress(taskId) { // 多日任务按子任务分数算进度；普通任务按 progress 累计
+// 子任务在父任务里的权重：优先分数；旧数据/演示数据可能全是 0 分，则退回 percent，最后按条数均分
+function childWeight(k, mode) {
+  if (mode === 'points') return k.points || 0;
+  if (mode === 'percent') return k.percent || 0;
+  return 1;
+}
+function childWeightMode(kids) {
+  if (kids.some(k => (k.points || 0) > 0)) return 'points';
+  if (kids.some(k => (k.percent || 0) > 0)) return 'percent';
+  return 'count';
+}
+function taskProgress(taskId) { // 多日任务按子任务权重算进度；普通任务按 progress 累计
   const kids = allChildTasks(taskId);
   if (kids.length) {
-    const total = kids.reduce((s, k) => s + (k.points || 0), 0);
+    const mode = childWeightMode(kids);
+    const total = kids.reduce((s, k) => s + childWeight(k, mode), 0);
     if (!total) return 0;
     let got = 0;
-    kids.forEach(k => {
-      for (const d in S.logs) { const l = S.logs[d][k.id]; if (l && (l.completed || l.done)) { got += (k.points || 0); break; } }
-    });
+    kids.forEach(k => { if (isTaskDoneEver(k.id)) got += childWeight(k, mode); });
     return Math.min(100, Math.round(got / total * 100));
   }
   let sum = 0;
@@ -682,7 +698,9 @@ function isMaxed(pm) {
 // 进化阶段标签：✨ / 基础 / 一阶 / 二阶
 function evoStageLabel(pm) {
   if (pm.shiny) return '✨';
-  const s = evoStage(pm.pokedex_no);
+  const no = pkNoOf(pm);                 // 旧数据 pokedex_no 缺失时按名字找回，避免误标「基础」
+  if (no === null) return '基础';
+  const s = evoStage(no);
   return s === 0 ? '基础' : (s === 1 ? '一阶' : '二阶');
 }
 // 下一管经验满时会怎样：进化 / 进入闪耀形态
@@ -1004,7 +1022,7 @@ function cardGlitterHTML() {
 // 特效家族（18 个属性归到 8 种表现，避免样式爆炸）
 const FX_BY_TYPE = {
   fire: 'ember',                                              // 火星上飘
-  water: 'wave',                                              // 底部青蓝海浪带 + 水光扫过（不遮挡立绘）
+  water: 'wave',                                              // 整卡水波：浪花纹底 + 水滴波纹 + 气泡 + 水光
   electric: 'spark',                                          // 电网闪烁
   grass: 'leaf', bug: 'leaf',                                 // 叶片飘落
   ice: 'snow',                                                // 雪花飘落
@@ -1015,8 +1033,11 @@ const FX_BY_TYPE = {
 };
 function fxKeyOf(type) { return FX_BY_TYPE[type] || 'wind'; }
 // 卡面特效层：纯 CSS 无限循环（不占 JS 定时器，手机上也稳）
+// 水系多一层子元素：伪元素只有两个不够用（浪花纹底 + 水滴波纹 + 气泡要各自跑各自的动画）
 function cardFxHTML(type) {
-  return `<div class="ptcg-fx fx-${fxKeyOf(type)}"></div>`;
+  const key = fxKeyOf(type);
+  const extra = key === 'wave' ? '<span class="wv wv-ripple"></span><span class="wv wv-bubble"></span>' : '';
+  return `<div class="ptcg-fx fx-${key}">${extra}</div>`;
 }
 
 // ---------- Toast ----------
@@ -1700,7 +1721,15 @@ function showDexMissing(no) {
       </div>
       <div class="ptcg-foot">
         <div class="ptcg-exprow">📚 这只还没收集到</div>
-        <div class="chain-tip">🥚 用精灵球捕捉新宝可梦，图鉴会自动点亮</div>
+        <div class="chain-tip">${isBaseForm(no)
+          ? '🥚 基础形态 · 用精灵球就能直接抓到，图鉴会自动点亮'
+          : `🧬 由 ${PK_BY_NO[PK_EVOLVE_FROM[no]] ? PK_BY_NO[PK_EVOLVE_FROM[no]].name : '前一个形态'} 进化而来 · 精灵球抓不到，得把它养大`}</div>
+        ${(() => {                                        // 后续进化方向：让人知道抓到之后能变成什么
+          const evs = evoTargets(no);
+          if (!evs.length) return '';
+          const names = evs.map(n => PK_BY_NO[n].name).join(' / ');
+          return `<div class="chain-tip">${evs.length > 1 ? `🔀 养大后可以在「${names}」里选一个` : `🧬 养大后会进化成 ${names}`}</div>`;
+        })()}
       </div>
       <div class="ptcg-btns dex-btns" style="grid-template-columns:1fr">
         <button class="btn-close">✕ 关闭</button>
@@ -2421,11 +2450,15 @@ function parentTaskPanel() {
             <span class="${prog >= 100 ? 'ok' : 'miss'}">${prog >= 100 ? '✓' : prog + '%'}</span>
           </div>
           ${kids.map(k => {
-            const kdone = taskProgress(k.id) >= (k.percent || 0);
+            const kdone = isTaskDoneEver(k.id);
+            const wMode = childWeightMode(kids);
+            const wTotal = kids.reduce((s, x) => s + childWeight(x, wMode), 0) || 1;
+            const share = Math.round(childWeight(k, wMode) / wTotal * 100);
+            const ptsText = (k.points || 0) > 0 ? `+${k.points}分 · ` : '';
             return `
             <div class="prow" style="padding-left:26px">
               <span>${kdone ? '✅' : '·'}</span>
-              <div class="grow">${k.title} <small style="color:#90a4ae">${k.percent || 0}%</small></div>
+              <div class="grow">${k.title} <small style="color:#90a4ae">${ptsText}占 ${share}%</small></div>
               <button class="btn-danger" data-action="parent-del" data-tid="${k.id}">删</button>
             </div>`;
           }).join('')}`;

@@ -185,6 +185,16 @@ const POKEMON = [
 // ---------- 运行时索引（勿改） ----------
 const PK_BY_NO = {};
 POKEMON.forEach(p => { PK_BY_NO[p.no] = p; });
+// 名称 → 编号（老数据里 pokedex_no 丢了也能按名字找回）
+const PK_NO_BY_NAME = {};
+POKEMON.forEach(p => { PK_NO_BY_NAME[p.name] = p.no; });
+// 把一条宝可梦记录解析出正确的图鉴编号（兼容只存了名字的旧数据）
+function pkNoOf(pm) {
+  if (!pm) return null;
+  if (PK_BY_NO[pm.pokedex_no]) return Number(pm.pokedex_no);
+  if (pm.name && PK_NO_BY_NAME[pm.name] !== undefined) return PK_NO_BY_NAME[pm.name];
+  return null;
+}
 
 // 谁是我的进化前体（被指向的编号）；分支进化（ev 数组）逐个登记
 const PK_EVOLVE_FROM = {};

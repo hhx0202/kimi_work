@@ -1,7 +1,7 @@
 # 🤝 Kimi的任务岛 · Agent 交接文档
 
 > 给接手开发者的完整上下文。先读本文件 + README.md，再动手。
-> **最后更新：2026-10-20**（数据库 `sql/upgrade_all.sql` 已由用户在 Supabase 执行完毕，线上可直接用真库）
+> **最后更新：2026-10-21**（数据库 `sql/upgrade_all.sql` 已由用户在 Supabase 执行完毕，线上可直接用真库）
 
 ## 一、产品全貌（用户要什么）
 
@@ -34,11 +34,11 @@
 | 进化 | **无等级**，经验满一管即进化（基础 300 → 一阶，再 500 → 二阶，再满 100 → ✨闪耀形态），不花积分；闪耀形态经验封顶 | ✅ |
 | 图鉴 | 151 只官方中文介绍 + 每只 4 个官方招式；未收集 = 剪影卡（不剧透），**151 格全部可点**；闪耀按整条进化链点亮 | ✅ |
 | 卡牌 | 小卡网格 + 翻牌 PTCG 大卡：属性边框/场景背景/**4 招式（点行展开官方说明）**/进化链/图鉴介绍 | ✅ |
-| 卡面特效 | 9 组属性氛围（火/水/电/草虫/冰/毒/超能幽灵龙妖精/岩地钢格斗/飞行一般）+ 闪耀金色星雨 + 全息光带；列表小卡也有同款粒子 | ✅ |
+| 卡面特效 | 9 组属性氛围（火/水/电/草虫/冰/毒/超能幽灵龙妖精/岩地钢格斗/飞行一般）+ 闪耀金色星雨 + 全息光带；列表小卡也有同款粒子。**水系是整卡水波**：浪花纹底（无缝平铺）+ 水下蓝调 + 底部水滴波纹扩散 + 上升气泡 + 水光扫过 | ✅ |
 | 家长端 | 奖励积分/扣分/送球/待确认审批/积分流水（带时间，可撤销）/统计/错误日志/规则设置 | ✅ |
 | 孩子端 | 双进度条、按类别分区（校内在前）、历史日期切换（只读）、打卡日历、提交流程 | ✅ |
 | 类别 | 类别自动记忆（下拉可选历史类别）+ 家长端管理 + 孩子端分区 + 规则小抄 | ✅ |
-| 子任务 | 百分比自动归一化 + 多日任务 ✏️ 编辑（标题/积分/子任务/完成奖） | ✅ |
+| 子任务 | 每个子任务都带分数（父任务总分 = 子任务之和），进度按子任务权重算；历史 0 分子任务自动按 percent / 条数均分兜底，不会卡在 0%；百分比自动归一化 + 多日任务 ✏️ 编辑 | ✅ |
 | 排序 | 必做/选做两区平铺、↑↓ + 长按拖动（650ms），卡片标注属性（单次/重复/多日/子任务） | ✅ |
 | 分享 | 成就图生成，长按保存发朋友圈 | ✅ |
 | 素材 | 302 动图 + 151 高清插画 + 151 属性 + 151 招式表 | ✅ |
@@ -98,7 +98,8 @@
 - **打卡链路**：`checkin`（写 `done` + `approved=false` + 待发积分）→ `cancelSubmission`（撤销）→ `confirmPending`（审批发分）→ `undoPoint`（撤销已发分）
 - **全清奖**：`isAllDone` / `cleanupAllClearPending`（异步，防重复）；任务下架/撤销时要连带清理待发奖励
 - **任务详情 / 清单**：`showTaskDetail(id)`、`showProgressDetail(kind)`、`taskStatusOf(taskId, date)`
-- **进化链**：`expThreshold / canEvolve / evolvePm / isMaxed / evoStageLabel`；图鉴家族 `evoFamily / dexGot / ownedNumbers`
+- **进化链**：`expThreshold / canEvolve / evolvePm / isMaxed / evoStageLabel`；图鉴家族 `evoFamily / dexGot / ownedNumbers`；`pkNoOf` 按名字兜底修老数据的 `pokedex_no`
+- **多日进度**：`taskProgress / childWeight / childWeightMode / isTaskDoneEver`（权重优先分数 → percent → 条数均分）
 - **喂养**：`openFeed(pmId)`（自定义分数 + 「刚好进化」）、`feedPm(pm, pts)`（喂完重开详情卡）
 - **卡面**：`showCardDetail / showDexDetail / showDexMissing / movesBlockHTML / bindMoveClicks`；特效 `FX_BY_TYPE / fxKeyOf / cardFxHTML / cardGlitterHTML`
 - **消息卡**：`pushNotice / noticesHTML / ackNotice`（存 `LK('notices')`）；触发点在 `giveBall / givePts / minusPts / confirmPending / applyOverduePenalty`

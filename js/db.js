@@ -22,7 +22,7 @@ const DB = (() => {
   // ==========================================================
   const K = { tasks: P + 'tasks', logs: P + 'logs', pms: P + 'pokemons', pts: P + 'points', items: P + 'items' };
   const K_SEED_VER = P + 'seedver';
-  const SEED_VER = 2;   // 演示数据版本：升版本时会给已有的演示数据补一次测试内容
+  const SEED_VER = 3;   // 演示数据版本：升版本时会给已有的演示数据补一次测试内容 / 修一次历史数据
 
   // 演示用宝可梦：覆盖「基础 / 一阶 / 最终 / 无进化链 / 闪耀形态 / 临进化」各阶段，方便测试
   const DEMO_PMS = [
@@ -81,7 +81,9 @@ const DB = (() => {
           id++;
           if (s.subtasks) {
             for (const [t, pct] of s.subtasks) {
-              rows.push({ id: id++, title: t, category: s.category, points: 0, schedule: 'child', deadline: null, parent_id: pid, percent: pct, required: true, active: true, created_at: nowISO() });
+              // 子任务按占比分到父任务的分数（0 分会让进度条永远不动）
+              const pts = Math.max(1, Math.round(s.points * pct / 100));
+              rows.push({ id: id++, title: t, category: s.category, points: pts, schedule: 'child', deadline: null, parent_id: pid, percent: pct, required: true, active: true, created_at: nowISO() });
             }
           }
         }
@@ -94,8 +96,9 @@ const DB = (() => {
         lsSet(K_SEED_VER, SEED_VER);
         return;
       }
-      // 已有演示数据：升级到新版本时补一次测试用宝可梦 / 积分 / 精灵球（只补一次）
-      if (Number(lsGet(K_SEED_VER, 1)) < SEED_VER) {
+      const prevVer = Number(lsGet(K_SEED_VER, 1));
+      // v1 → v2：补一批测试用宝可梦 / 积分 / 精灵球（只补一次）
+      if (prevVer < 2) {
         const d0 = today();
         const pms = dGet(K.pms);
         dSet(K.pms, pms.concat(demoPmRows(pms.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1)));
@@ -105,8 +108,37 @@ const DB = (() => {
         const its = dGet(K.items);
         its.push({ id: its.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1, log_date: d0, item: 'ball', amount: 25, reason: '演示测试精灵球' });
         dSet(K.items, its);
-        lsSet(K_SEED_VER, SEED_VER);
       }
+      // v2 → v3：修历史演示数据
+      //   ① 多日任务的子任务之前都是 0 分 → 完成也不涨进度，这里按占比把父任务分数分下去
+      //   ② 宝可梦记录缺 pokedex_no → 按名字补回来（否则阶段角标会误标成「基础」）
+      if (prevVer < 3) {
+        const tasks = dGet(K.tasks);
+        const parents = tasks.filter(t => t.schedule === 'weekly');
+        parents.forEach(p => {
+          const kids = tasks.filter(k => k.parent_id === p.id);
+          if (!kids.length) return;
+          const total = kids.reduce((s, k) => s + (k.points || 0), 0);
+          if (total > 0) return;                       // 已经有分数就不动
+          const pctSum = kids.reduce((s, k) => s + (k.percent || 0), 0);
+          kids.forEach(k => {
+            const share = pctSum > 0 ? (k.percent || 0) / pctSum : 1 / kids.length;
+            k.points = Math.max(1, Math.round((p.points || 0) * share));
+          });
+          p.points = kids.reduce((s, k) => s + k.points, 0);   // 父任务总分 = 子任务之和
+        });
+        dSet(K.tasks, tasks);
+        const pms = dGet(K.pms);
+        let changed = false;
+        pms.forEach(p => {
+          if (typeof PK_NO_BY_NAME !== 'undefined' && !PK_BY_NO[p.pokedex_no] && PK_NO_BY_NAME[p.name] !== undefined) {
+            p.pokedex_no = PK_NO_BY_NAME[p.name];
+            changed = true;
+          }
+        });
+        if (changed) dSet(K.pms, pms);
+      }
+      lsSet(K_SEED_VER, SEED_VER);
     },
     async getTasks() { return [...dGet(K.tasks)]; },
     async addTask({ title, category, points, schedule = 'daily', deadline = null, parent_id = null, percent = null, required = true, start_date = null, end_date = null, hint = null, sort = 0, note = null, bonus = null }) {

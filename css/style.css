@@ -796,36 +796,76 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   background: radial-gradient(circle at 50% 104%, rgba(255, 120, 20, .32), transparent 62%);
   animation: fx-breathe 3.4s ease-in-out infinite;
 }
-/* 水：脚下一层水面 —— 水位线浪花 + 蓝色水体 + 水下光带 + 上升小泡沫，只压底部 30% 不挡立绘
-   为什么用 SVG 画浪线：纯渐变做不出连续的浪头，之前那版白色低透明度波纹在浅蓝卡面上等于看不见 */
+/* 水：整张卡都是水 —— 浪花纹平铺 + 水下蓝调 + 水滴波纹从底部扩散 + 上升气泡 + 水光扫过
+   之前那版只压底部 30%，看着像"站在水边"，跟别的属性铺满整张卡不搭。
+   现在照日本「青海波」的思路：重复浪花纹当底，白线下面垫一层深蓝描边，
+   浅蓝卡面上也看得见；纹样位移都取 tile 的整数倍，循环无缝。 */
 .fx-wave::before {
-  inset: auto -16% -6px -16%;
-  height: 30%;
+  inset: -12%;
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='30' viewBox='0 0 120 30'%3E%3Cpath d='M0 12 Q15 2 30 12 T60 12 T90 12 T120 12' fill='none' stroke='%23ffffff' stroke-opacity='.55' stroke-width='7' stroke-linecap='round'/%3E%3Cpath d='M0 12 Q15 2 30 12 T60 12 T90 12 T120 12' fill='none' stroke='%23ffffff' stroke-opacity='.92' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E"),
-    radial-gradient(circle, rgba(255, 255, 255, .8) 0 1.6px, transparent 2.4px),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0) 0 15px, rgba(255, 255, 255, .28) 15px 18px, rgba(255, 255, 255, 0) 18px 33px),
-    linear-gradient(180deg, rgba(122, 198, 255, .2) 0%, rgba(58, 142, 238, .5) 32%, rgba(26, 96, 196, .68) 100%);
-  background-size: 120px 30px, 40px 46px, 100% 66px, 100% 100%;
-  background-repeat: repeat-x, repeat, repeat, repeat-x;
-  background-position: 0 0, 14px 34px, 0 48%, 0 0;
-  animation: fx-wave-roll 5.6s linear infinite;
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='232' height='96' viewBox='0 0 232 96'%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cpath d='M0 30 Q29 12 58 30 T116 30 T174 30 T232 30' stroke='%231a5cbf' stroke-opacity='.14' stroke-width='6'/%3E%3Cpath d='M0 30 Q29 12 58 30 T116 30 T174 30 T232 30' stroke='%23ffffff' stroke-opacity='.62' stroke-width='1.8'/%3E%3Cpath d='M0 68 Q29 50 58 68 T116 68 T174 68 T232 68' stroke='%231a5cbf' stroke-opacity='.11' stroke-width='6'/%3E%3Cpath d='M0 68 Q29 50 58 68 T116 68 T174 68 T232 68' stroke='%23ffffff' stroke-opacity='.38' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E"),
+    radial-gradient(58% 40% at 28% 20%, rgba(255, 255, 255, .30), rgba(255, 255, 255, 0) 72%),
+    radial-gradient(46% 34% at 74% 64%, rgba(190, 240, 255, .26), rgba(190, 240, 255, 0) 74%),
+    radial-gradient(120% 88% at 50% 118%, rgba(16, 104, 196, .40), rgba(16, 104, 196, 0) 74%),
+    linear-gradient(180deg, rgba(160, 220, 255, .12) 0%, rgba(96, 178, 245, .09) 45%, rgba(28, 118, 208, .24) 100%);
+  background-size: 232px 96px, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+  background-position: 0 0, 0 0, 0 0, 0 0, 0 0;
+  animation: fx-water-drift 22s linear infinite, fx-water-glow 7s ease-in-out infinite;
 }
-@keyframes fx-wave-roll {
-  from { background-position: 0 0, 14px 34px, 0 48%, 0 0; transform: translateY(0); }
-  50%  { transform: translateY(-3px); }
-  to   { background-position: -240px 0, 14px -58px, -66px 48%, -240px 0; transform: translateY(0); }
+@keyframes fx-water-drift {
+  from { background-position: 0 0, 0 0, 0 0, 0 0, 0 0; }
+  to   { background-position: 464px -192px, 0 0, 0 0, 0 0, 0 0; }   /* 2 个 tile，无缝 */
+}
+@keyframes fx-water-glow {
+  0%, 100% { opacity: .82; }
+  50%      { opacity: 1; }
+}
+/* 水滴波纹：从底部水面一圈圈荡开（两层错开，像接连滴了两滴） */
+.fx-wave .wv { position: absolute; inset: 0; pointer-events: none; }
+.fx-wave .wv-ripple {
+  background-image: repeating-radial-gradient(circle at 50% 76%,
+    rgba(255, 255, 255, .78) 0 2px, rgba(150, 215, 255, .48) 2px 3.4px, rgba(255, 255, 255, 0) 3.4px 28px);
+  transform-origin: 50% 76%;
+  animation: fx-wv-ripple 7s ease-out infinite;
+}
+.fx-wave .wv-ripple::after {
+  content: ''; position: absolute; inset: 0;
+  background-image: repeating-radial-gradient(circle at 26% 90%,
+    rgba(255, 255, 255, .58) 0 1.8px, rgba(150, 215, 255, .34) 1.8px 3px, rgba(255, 255, 255, 0) 3px 25px);
+  transform-origin: 26% 90%;
+  animation: fx-wv-ripple 9.5s ease-out infinite;
+  animation-delay: -4.5s;
+}
+@keyframes fx-wv-ripple {
+  0%   { transform: scale(.3); opacity: 0; }
+  10%  { opacity: .72; }
+  60%  { opacity: .34; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+/* 气泡：从水底一颗颗飘上去，到顶就淡出（background-position 位移是 tile 的整数倍） */
+.fx-wave .wv-bubble {
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, .9) 0 1.6px, rgba(255, 255, 255, .28) 1.6px 2.3px, transparent 2.7px),
+    radial-gradient(circle, rgba(214, 244, 255, .72) 0 1.1px, transparent 1.8px);
+  background-size: 54px 74px, 38px 52px;
+  background-position: 8px 40px, 26px 18px;
+  animation: fx-wv-bubble 10s linear infinite;
+}
+@keyframes fx-wv-bubble {
+  from { background-position: 8px 40px, 26px 18px; }
+  to   { background-position: 8px -108px, 26px -138px; }
 }
 /* 水光扫过：明亮的斜向流光，像阳光落在水面上 */
 .fx-wave::after {
-  background: linear-gradient(112deg, transparent 40%, rgba(255, 255, 255, .58) 47%, rgba(140, 215, 255, .45) 52%, transparent 62%);
-  background-size: 250% 250%;
-  animation: fx-water-sheen 6.2s ease-in-out infinite;
+  background: linear-gradient(108deg, transparent 36%, rgba(255, 255, 255, .48) 45%, rgba(196, 240, 255, .36) 51%, transparent 61%);
+  background-size: 260% 260%;
+  animation: fx-water-sheen 6.8s ease-in-out infinite;
   opacity: 0;
 }
 @keyframes fx-water-sheen {
   0%, 100% { background-position: 120% 0; opacity: 0; }
-  26%      { opacity: .65; }
+  26%      { opacity: .7; }
   62%      { background-position: -40% 0; opacity: 0; }
 }
 /* 电：电光点闪烁 + 一道斜向电流扫过 */
