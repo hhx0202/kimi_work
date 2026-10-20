@@ -121,3 +121,33 @@ function catIcon(cat, name) {
   const r = CAT_ICON_RULES.find(x => (cat || '').includes(x.match));
   return r ? r.icon() : POKE_ICON.ball(catIconColor(cat));
 }
+
+// ---------- 可按 key 存取 / 随机分配的图标（常用任务标签用） ----------
+// 存 key 而不是存 SVG：重建列表、换设备后图形都一样，也不会把一大段 SVG 写进 localStorage
+const POKE_ICON_KEY_MAP = {
+  'ball-red':     () => POKE_ICON.ball('#e53935'),
+  'ball-green':   () => POKE_ICON.ball('#66bb6a'),
+  'ball-blue':    () => POKE_ICON.ball('#2f6db3'),
+  'great':        () => POKE_ICON.great(),
+  'ultra':        () => POKE_ICON.ultra(),
+  'master':       () => POKE_ICON.master(),
+  'tm-pink':      () => POKE_ICON.tm('#ec407a'),
+  'tm-cyan':      () => POKE_ICON.tm('#26c6da'),
+  'badge':        () => POKE_ICON.badge('#ffb300'),
+  'dex':          () => POKE_ICON.dex(),
+  'candy':        () => POKE_ICON.candy(),
+  'stone-purple': () => POKE_ICON.stone('#7e57c2'),
+  'stone-red':    () => POKE_ICON.stone('#ef5350'),
+};
+const POKE_ICON_KEYS = Object.keys(POKE_ICON_KEY_MAP);
+function catIconByKey(key) {
+  const f = POKE_ICON_KEY_MAP[key];
+  return f ? f() : POKE_ICON.ball(catIconColor(String(key || '?')));
+}
+// 随机一个图标 key；oldKey=要换掉的旧 key，used=已占用的 key（尽量不重复）
+function randomPokeIconKey(oldKey, used) {
+  let pool = POKE_ICON_KEYS.filter(k => k !== oldKey && !(used && used.has(k)));
+  if (!pool.length) pool = POKE_ICON_KEYS.filter(k => k !== oldKey);
+  if (!pool.length) pool = POKE_ICON_KEYS;
+  return pool[Math.floor(Math.random() * pool.length)];
+}

@@ -2260,7 +2260,9 @@ function bindActions() {
     else if (act === 'parent-del-cat') { deleteCat(btn.dataset.cat); render(); }
     else if (act === 'parent-add-cat') { const c = ($('pt-newcat').value || '').trim(); if (c) { saveCat(c); $('pt-newcat').value = ''; render(); } }
     else if (act === 'parent-edit-weekly') openWeeklyEditor(Number(tid));
-    else if (act === 'parent-quick') appendBatch(loadQuick()[Number(btn.dataset.idx)]);
+    else if (act === 'parent-quick') openQuickAddTask(Number(btn.dataset.idx));
+    else if (act === 'parent-quick-edit') openQuickEdit(Number(btn.dataset.idx));
+    else if (act === 'parent-quick-add') openQuickEdit(-1);
     else if (act === 'parent-del-quick') delQuick(Number(btn.dataset.idx));
     else if (act === 'parent-parse') parseBatch();
     else if (act === 'parent-exit') { S.role = 'kid'; localStorage.setItem(LK('role'), 'kid'); localStorage.setItem(LK('parent_authed'), '1'); render(); }
@@ -2287,10 +2289,6 @@ function bindActions() {
     // 家长端已移除「放生」入口（防误点），deletePokemon 保留给未来扩展
     else if (act === 'parent-confirm') confirmPending();
     else if (act === 'parent-undo') undoPoint(Number(btn.dataset.plid));
-    else if (act === 'parent-copy-last') copyLastAssign();
-    else if (act === 'parent-save-tpl') saveTemplate();
-    else if (act === 'parent-load-tpl') loadTemplate(Number(btn.dataset.tpl));
-    else if (act === 'parent-del-tpl') deleteTemplate(Number(btn.dataset.tpl));
     else if (act === 'share') shareCard();
   };
 }
@@ -2380,6 +2378,98 @@ function renderParent() {
   bindActions();
   enableDragSort('#pt-task-list-req');
   enableDragSort('#pt-task-list-opt');
+  bindQuickLongPress();
+}
+
+// 长按标签的时间戳：手机 touchend 后合成 click 有时绕过捕获拦截，openQuickAddTask 里再兜一层
+let quickLongPressAt = 0;
+
+// 常用任务标签：长按 = 编辑标签（单击由 body 的委托处理，长按后要吞掉紧随的那次 click）
+function bindQuickLongPress() {
+  const box = document.getElementById('pt-quick-list');
+  if (!box) return;
+  const HOLD = 420;   // 比系统长按（约 500ms）早触发，避免被「选择文字」抢走
+  let timer = null, startX = 0, startY = 0, fired = false, cur = null;
+  // 触摸时浏览器会补发 mousedown / mouseleave，若也当成手势开始/取消，长按会被自己清掉
+  let touchMode = false, touchOff = null;
+
+  const clearSel = () => {
+    try { const s = window.getSelection && window.getSelection(); if (s && s.rangeCount) s.removeAllRanges(); } catch (e) {}
+  };
+  const cancel = () => {
+    clearTimeout(timer); timer = null;
+    if (cur) cur.classList.remove('pressed');
+    cur = null;
+  };
+  const start = (el, x, y) => {
+    if (!el) return;
+    if (timer) clearTimeout(timer);
+    cur = el;
+    el.classList.add('pressed');
+    startX = x; startY = y; fired = false;
+    timer = setTimeout(() => {
+      timer = null; fired = true;
+      quickLongPressAt = Date.now();
+      el.classList.remove('pressed');
+      clearSel();   // 系统若已开始选字，先把选区清掉再弹编辑框
+      if (navigator.vibrate) { try { navigator.vibrate(12); } catch (e) {} }
+      openQuickEdit(Number(el.dataset.idx));
+      swallowNextClick();   // 松手后浏览器补发的 click 会点在遮罩上把弹窗关掉，这里吞掉这一次
+    }, HOLD);
+  };
+  const moved = (x, y) => Math.abs(x - startX) > 14 || Math.abs(y - startY) > 12;
+  // 只吞掉紧随长按的那一次 click（松手后浏览器补发的 click 会点在遮罩上把弹窗关掉）；
+  // 超过 500ms 的点击放行，避免影响用户马上点弹窗里的按钮
+  const swallowNextClick = () => {
+    const t0 = Date.now();
+    const fn = ev => {
+      document.removeEventListener('click', fn, true);
+      if (Date.now() - t0 > 500) return;
+      ev.stopPropagation(); ev.preventDefault();
+    };
+    document.addEventListener('click', fn, true);
+    setTimeout(() => document.removeEventListener('click', fn, true), 900);
+  };
+
+  box.addEventListener('touchstart', e => {
+    touchMode = true;
+    clearTimeout(touchOff);
+    if (e.target.closest('.qc-x')) return;
+    const t = e.touches[0];
+    start(e.target.closest('.quick-chip'), t.clientX, t.clientY);
+  }, { passive: true });
+  box.addEventListener('touchmove', e => {
+    if (!timer) return;
+    const t = e.touches[0];
+    if (moved(t.clientX, t.clientY)) cancel();
+  }, { passive: true });
+  const endTouch = () => {
+    cancel();
+    clearTimeout(touchOff);
+    touchOff = setTimeout(() => { touchMode = false; }, 700);
+  };
+  box.addEventListener('touchend', endTouch);
+  box.addEventListener('touchcancel', endTouch);   // 长按已触发时 timer 已清空，这里只清理按压态
+  box.addEventListener('mousedown', e => {
+    if (touchMode || e.button !== 0 || e.target.closest('.qc-x')) return;
+    start(e.target.closest('.quick-chip'), e.clientX, e.clientY);
+  });
+  box.addEventListener('mousemove', e => { if (!touchMode && timer && moved(e.clientX, e.clientY)) cancel(); });
+  box.addEventListener('mouseup', () => { if (!touchMode) cancel(); });
+  box.addEventListener('mouseleave', () => { if (!touchMode) cancel(); });
+  // 关键：手机长按会弹「选择文字/复制」菜单，必须先禁用，否则系统选中会打断长按计时
+  box.addEventListener('contextmenu', e => {
+    if (e.target.closest('.quick-chip')) e.preventDefault();
+  });
+  box.addEventListener('selectstart', e => {
+    if (e.target.closest('.quick-chip')) e.preventDefault();
+  });
+  // 长按触发后浏览器还会补一次 click —— 捕获阶段拦掉，避免又打开「添加任务」
+  box.addEventListener('click', e => {
+    if (!fired) return;
+    fired = false;
+    e.stopPropagation(); e.preventDefault();
+  }, true);
 }
 // 家长端日期导航条（切换后任务面板/布置都针对所选日期）
 function parentDateNav() {
@@ -2409,6 +2499,7 @@ function parentTaskPanel() {
   const reqTs = ts.filter(t => t.required !== false).sort(taskSort);
   const optTs = ts.filter(t => t.required === false).sort(taskSort);
   const wts = weeklyTasks();
+  const qts = quickTasks();
   const pIsToday = S.parentDate === DB.today();
   return `
     <div class="panel">
@@ -2454,27 +2545,21 @@ function parentTaskPanel() {
           }).join('')}`;
         }).join('')}
       ` : ''}
-      <h3 style="margin-top:16px">快速布置 <small style="font-weight:400">点一下填进输入框，改完再发布</small></h3>
-      <div class="tpl-row">
-        <button class="chip red" data-action="parent-copy-last">📋 复制上次布置</button>
-        <button class="chip red" data-action="parent-save-tpl">⭐ 存为模板</button>
+      <div style="margin-top:16px;display:flex;align-items:center;gap:8px">
+        <h3 style="margin:0;flex:1">⭐ 常用任务 <small style="font-weight:400">单击添加 · 长按编辑标签</small></h3>
+        <button class="chip quick-add" data-action="parent-quick-add" title="新增一个常用任务标签">＋</button>
       </div>
-      ${lsGet(K_TPL, []).length ? `
-      <div class="tpl-row" style="margin-top:8px">
-        <small style="align-self:center;color:var(--ink-soft);font-size:12px">我的模板</small>
-        ${lsGet(K_TPL, []).map((t, i) => `
-          <button class="chip" data-action="parent-load-tpl" data-tpl="${i}" title="点=填入输入框，✖=删除">${t.name}<span style="margin-left:6px;color:#c62828;cursor:pointer" data-action="parent-del-tpl" data-tpl="${i}">✖</span></button>
-        `).join('')}
+      <div class="tpl-row" id="pt-quick-list" style="margin-top:8px">
+        ${qts.length
+          ? qts.map((it, i) => `
+            <div class="chip quick-chip" data-action="parent-quick" data-idx="${i}" title="单击=添加任务，长按=编辑标签">
+              ${catIconByKey(it.iconKey)}
+              <span class="qc-name">${escHTML(it.title)}</span>
+              <span class="qc-pts">+${it.points}</span>
+              <span class="qc-x" data-action="parent-del-quick" data-idx="${i}" title="从常用任务里删掉">✕</span>
+            </div>`).join('')
+          : '<div class="empty-tip" style="padding:4px 0">还没有常用任务，点右上角 ＋ 加一个</div>'}
       </div>
-      ` : ''}
-      ${loadQuick().length ? `
-      <div class="tpl-row" style="margin-top:8px">
-        <small style="align-self:center;color:var(--ink-soft);font-size:12px">常用任务</small>
-        ${loadQuick().slice(0, 12).map((it, i) => `
-          <button class="chip" data-action="parent-quick" data-idx="${i}" title="点=加到输入框末尾，✕=删除">${catIcon(it.category, it.title)} ${it.title} +${it.points}<span style="margin-left:6px;color:#c62828;cursor:pointer" data-action="parent-del-quick" data-idx="${i}">✕</span></button>
-        `).join('')}
-      </div>
-      ` : ''}
       <h3 style="margin-top:16px">新建任务</h3>
       <div class="input-row">
         <textarea id="pt-title" placeholder="任务名称（末尾可加 {提示}）" style="flex:2;min-height:44px"></textarea>
@@ -2561,7 +2646,7 @@ async function saveParentTask() {
   $('pt-title').value = '';
   $('pt-deadline').value = '';
   $('pt-children').value = '';
-  await refreshAll(); recordAssign(); render();
+  await refreshAll(); render();
   toast('已添加');
 }
 // 智能分隔：| 逗号 分号 顿号 都认；"名称 数字"空一格也认
@@ -2755,8 +2840,8 @@ function openTaskEditor(id) {
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
-// ---------- 快速布置：复制上次 / 命名模板 / 最近用过 → 都填进输入框编辑 ----------
-const K_LAST = LK('last_assign'), K_TPL = LK('templates'), K_QUICK = LK('quick_tasks');
+// ---------- 常用任务：家长自己维护的快捷标签（单击→弹窗确认添加，长按→改名称/分数） ----------
+const K_QUICK = LK('quick_tasks');
 function lsGet(k, d) { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch { return d; } }
 function lsSet(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
 
@@ -2833,72 +2918,156 @@ function catOrder(cat) {
   return i >= 0 ? i : 1000;
 }
 
-// 任务 → 批量框文本（中括号语法；类别/分数用默认值时省略，可往返解析）
-function itemLine(it) {
-  let s = it.title || '';
-  if (it.hint) s += `{${it.hint}}`;
-  if (it.category && it.category !== '作业') s += `[${it.category}]`;
-  if (it.points && it.points !== 10) s += `[${it.points}]`;
-  if (it.required === false) s += '[选做]';
-  return s;
-}
-
-function fillBatch(items) {
-  const ta = $('pt-batch');
-  ta.value = items.map(itemLine).join('\n');
-  ta.focus();
-}
-
-function appendBatch(it) {
-  const ta = $('pt-batch');
-  const line = itemLine(it);
-  ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + line;
-  ta.focus();
-}
-
-// 发布任务后调用：记忆本次布置（供"复制上次布置"）+ 积累"常用任务"
-function recordAssign() {
-  const daily = todayTasks().filter(t => t.schedule === 'daily').map(t => ({
-    title: t.title, category: t.category, points: t.points, required: t.required !== false,
-  }));
-  if (daily.length) lsSet(K_LAST, { date: DB.today(), items: daily });
-  mergeQuick(daily);
-}
-
-// 常用任务：合并去重，新的排前面，最多 20 个
-function mergeQuick(items) {
-  const q = loadQuick();
-  const seen = new Set(); const out = [];
-  for (const it of [...items, ...q]) { const k = `${it.title}|${it.points}`; if (!seen.has(k)) { seen.add(k); out.push(it); } }
-  lsSet(K_QUICK, out.slice(0, 20));
-}
-
-// 常用任务列表：首次用默认模板(TPL) + 老的"最近用过"合并初始化，之后可增删
-function loadQuick() {
+// 常用任务列表：老数据没有 iconKey 的补一个随机图标并回写（同一标签之后图标固定）
+function quickTasks() {
   let q = lsGet(K_QUICK, null);
   if (q === null) {
+    // 首次使用：用默认模板 + 老的「最近用过」初始化一次（图标随机且尽量不重样）
     const seed = TPL.map(t => ({ title: t.title, category: t.category, points: t.points, required: true }));
     const old = lsGet(LK('recent_tasks'), []);
-    const seen = new Set(); const out = [];
-    for (const it of [...old, ...seed]) { const k = `${it.title}|${it.points}`; if (!seen.has(k)) { seen.add(k); out.push(it); } }
-    q = out;
-    lsSet(K_QUICK, q);
+    const seen = new Set(); const used = new Set(); const out = [];
+    for (const it of [...old, ...seed]) {
+      const k = `${it.title}|${it.points}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const key = it.iconKey && POKE_ICON_KEYS.includes(it.iconKey) ? it.iconKey : randomPokeIconKey(null, used);
+      used.add(key);
+      out.push({ ...it, iconKey: key });
+    }
+    q = out; lsSet(K_QUICK, q);
+    return q;
   }
+  if (!Array.isArray(q)) { q = []; lsSet(K_QUICK, q); return q; }
+  // 老数据没图标 key（或 key 已失效）→ 补一个随机的并回写
+  const used = new Set(q.map(it => it.iconKey).filter(k => POKE_ICON_KEYS.includes(k)));
+  let changed = false;
+  q = q.map(it => {
+    if (it.iconKey && POKE_ICON_KEYS.includes(it.iconKey)) return it;
+    changed = true;
+    const key = randomPokeIconKey(null, used);
+    used.add(key);
+    return { ...it, iconKey: key };
+  });
+  if (changed) lsSet(K_QUICK, q);
   return q;
 }
+function saveQuickList(list) { lsSet(K_QUICK, list); }
 
 function delQuick(idx) {
-  const q = loadQuick();
+  const q = quickTasks();
+  if (!q[idx]) return;
   q.splice(idx, 1);
-  lsSet(K_QUICK, q);
+  saveQuickList(q);
   render();
+  toast('已从常用任务删除（只是删标签，不影响已布置的任务）');
 }
 
-function copyLastAssign() {
-  const snap = lsGet(K_LAST, null);
-  if (!snap || !snap.items || !snap.items.length) { toast('还没有上次布置的记录，发布过任务后就能复制了'); return; }
-  fillBatch(snap.items);
-  toast(`已填入上次布置的 ${snap.items.length} 个任务，改完点「解析并添加」`);
+// 长按 / ＋：新建（idx=-1）或编辑常用任务标签（只改名称和分数，图标不变）
+function openQuickEdit(idx) {
+  const isNew = idx < 0;
+  const q = quickTasks();
+  const it = isNew ? { title: '', points: 10, category: '作业', required: true } : q[idx];
+  if (!it) return;
+  const modal = document.createElement('div');
+  modal.className = 'modal-mask';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:400px;width:calc(100% - 40px)">
+      <h3>${isNew ? '➕ 新增常用任务' : '✏️ 编辑常用任务'}</h3>
+      <label>任务名称</label>
+      <input id="qe-title" value="${escHTML(it.title)}" placeholder="如：语文作业" style="width:100%">
+      <label>分数</label>
+      <input id="qe-pts" type="number" value="${it.points || 10}" placeholder="10" style="width:100%">
+      <div class="form-hint">这里只是保存一个标签，点它时才真正添加任务。</div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        ${isNew ? '' : '<button class="btn-danger" data-del style="flex:1">删除</button>'}
+        <button class="btn-cancel" data-cancel style="flex:1">取消</button>
+        <button class="btn-primary" data-save style="flex:2">保存</button>
+      </div>
+    </div>
+  `;
+  const close = () => modal.remove();
+  modal.querySelector('[data-cancel]').onclick = close;
+  const delBtn = modal.querySelector('[data-del]');
+  if (delBtn) delBtn.onclick = () => { close(); delQuick(idx); };
+  modal.querySelector('[data-save]').onclick = () => {
+    const title = modal.querySelector('#qe-title').value.trim();
+    if (!title) { toast('任务名称不能为空'); return; }
+    const points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt(modal.querySelector('#qe-pts').value) || 10));
+    const list = quickTasks();
+    if (isNew) {
+      if (list.some(x => x.title === title && Number(x.points) === points)) { toast('已有同名的常用任务了'); return; }
+      list.push({ title, points, category: it.category, required: true, iconKey: randomPokeIconKey(null, new Set(list.map(x => x.iconKey))) });
+    } else {
+      list[idx] = { ...list[idx], title, points };
+    }
+    saveQuickList(list);
+    close(); render();
+    toast(isNew ? '已加到常用任务' : '已更新标签');
+  };
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const inp = modal.querySelector('#qe-title');
+  // 手机上不自动弹键盘（长按后键盘会顶起遮住弹窗），桌面才自动聚焦
+  if (inp && !('ontouchstart' in window)) { inp.focus(); inp.select && inp.select(); }
+}
+
+// 单击标签：弹出添加任务表单，确认后按当前日期落任务
+function openQuickAddTask(idx) {
+  if (Date.now() - quickLongPressAt < 800) return;   // 长按刚弹过编辑框，忽略紧随的合成 click
+  const it = quickTasks()[idx];
+  if (!it) return;
+  const modal = document.createElement('div');
+  modal.className = 'modal-mask';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:420px;width:calc(100% - 40px)">
+      <h3>➕ 添加任务</h3>
+      <label>任务名称</label>
+      <textarea id="qa-title" rows="2" style="width:100%">${escHTML(it.title)}</textarea>
+      <label>类别</label>
+      <div class="input-row" style="margin-top:0">
+        ${catSelectHTML('qa-cat', it.category || '作业', 'flex:1')}
+      </div>
+      <label>分数 / 必做</label>
+      <div class="input-row" style="margin-top:0">
+        <input id="qa-pts" type="number" value="${it.points || 10}" placeholder="积分">
+        <select id="qa-req">
+          <option value="1" ${it.required !== false ? 'selected' : ''}>必做</option>
+          <option value="0" ${it.required === false ? 'selected' : ''}>选做</option>
+        </select>
+      </div>
+      <label>布置到</label>
+      <select id="qa-schedule">
+        <option value="once">只 ${S.parentDate} 这一次</option>
+        <option value="daily">每天都有（重复）</option>
+      </select>
+      <div class="form-hint">确认后立刻加到 ${S.parentDate} 的任务里。</div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn-cancel" data-cancel style="flex:1">取消</button>
+        <button class="btn-primary" data-ok style="flex:2">确认添加</button>
+      </div>
+    </div>
+  `;
+  const close = () => modal.remove();
+  modal.querySelector('[data-cancel]').onclick = close;
+  modal.querySelector('[data-ok]').onclick = async () => {
+    const raw = modal.querySelector('#qa-title').value.trim();
+    const { title, hint } = splitHint(raw);
+    if (!title) { toast('任务名称不能为空'); return; }
+    const category = readCat('qa-cat');
+    const points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt(modal.querySelector('#qa-pts').value) || 10));
+    const required = modal.querySelector('#qa-req').value !== '0';
+    const schedule = modal.querySelector('#qa-schedule').value === 'daily' ? 'daily' : 'once';
+    const bindDate = schedule === 'once' ? S.parentDate : null;
+    saveCat(category);
+    await DB.addTask({ title, hint, category, points, schedule, required, start_date: bindDate, end_date: bindDate });
+    close();
+    await refreshAll(); render();
+    toast(`已添加「${title}」`);
+  };
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const inp = modal.querySelector('#qa-title');
+  if (inp && !('ontouchstart' in window)) { inp.focus(); inp.select && inp.select(); }
 }
 
 // 解析一行批量任务：整行 = 任务名；类别/分数/选做用 [中括号] 或 (小括号) 指定。
@@ -2965,39 +3134,6 @@ function parseBatchLines(text) {
   return text.split('\n').map(l => l.trim()).filter(Boolean).map(parseTaskLine).filter(Boolean);
 }
 
-function saveTemplate() {
-  const text = $('pt-batch').value.trim();
-  if (!text) { toast('输入框是空的，先填任务再存模板'); return; }
-  const items = parseBatchLines(text);
-  if (!items.length) { toast('没解析到有效任务'); return; }
-  const name = prompt('模板名称（如：周末套餐）：', '');
-  if (!name) return;
-  const tpl = lsGet(K_TPL, []);
-  if (tpl.some(t => t.name === name)) { toast('已有同名模板，先删旧的'); return; }
-  tpl.push({ name, items });
-  lsSet(K_TPL, tpl);
-  toast(`已保存模板「${name}」`);
-  render();
-}
-
-function loadTemplate(i) {
-  const tpl = lsGet(K_TPL, []);
-  const t = tpl[i];
-  if (!t) return;
-  fillBatch(t.items);
-  toast(`已填入模板「${t.name}」，改完点「解析并添加」`);
-}
-
-function deleteTemplate(i) {
-  const tpl = lsGet(K_TPL, []);
-  const t = tpl[i];
-  if (!t) return;
-  if (!confirm(`删除模板「${t.name}」？`)) return;
-  tpl.splice(i, 1);
-  lsSet(K_TPL, tpl);
-  render();
-}
-
 async function parseBatch() {
   const text = $('pt-batch').value.trim();
   if (!text) { toast('粘贴内容为空'); return; }
@@ -3012,7 +3148,6 @@ async function parseBatch() {
   }
   $('pt-batch').value = '';
   await refreshAll();
-  recordAssign();
   render();
   toast(`成功添加 ${n} 个单次任务`);
 }

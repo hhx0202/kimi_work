@@ -27,7 +27,7 @@
 | 进度条 | 必做、选做两条进度条**都可点开该组清单**（完成 N/M + 全清奖 + 每行状态），再点某行 → 该任务详情；分母 = `dayTasksForProgress()`，与条上数字严格一致 | ✅ |
 | 家长消息 | 任务页顶端消息卡（送球/扣分/审批通过/额外奖励），孩子点「知道啦」才消失，多条可一键全确认；Tab 有未读角标；存本机，刷新不丢 | ✅ |
 | 出错提示 | 全局 `error`/`unhandledrejection`/DB 报错 → 顶部红条（可展开堆栈、一键复制），同类 5 秒合并，最多 30 条；家长中心「🐞 错误日志」可查 | ✅ |
-| 快速布置 | 复制上次布置 / 命名模板 / 最近用过 → 都填进批量框编辑后发布 | ✅ |
+| 常用任务 | 家长自维护标签（图标+名称+分数+✕）：单击开「添加任务」表单确认、长按改名称/分数、＋ 新增（图标随机分配） | ✅ |
 | 演示 | intro.html 介绍页 + **演示模式**（独立 `kmd_` 数据，家长端进入/退出/重置） | ✅ |
 | 捕捉 | 必出新且**只出基础形态**（`CATCH_POOL` = 没有进化前体的编号）；进化形态只能靠喂养进化获得，伊布分支进化会弹选择框；基础形态抓齐后不扣球；**闪耀形态不由捕捉产出** | ✅ |
 | 喂养 | 1 分 = 1 exp，可自定义积分数、「🚀 刚好进化」一键补齐；喂完**停在详情页** | ✅ |
@@ -105,7 +105,7 @@
 - **消息卡**：`pushNotice / noticesHTML / ackNotice`（存 `LK('notices')`）；触发点在 `giveBall / givePts / minusPts / confirmPending / applyOverduePenalty`
 - **错误日志**：`reportError / showErrBanner / errorLogPanel / openErrorLog`（存 `LK('errors')`）
 - **类别**：`allCategories / catSelectHTML / onCatSelectChange / readCat`（新建任务、编辑、多日布置都用同一套下拉）
-- **快速布置**：`recordAssign / copyLastAssign / saveTemplate / loadTemplate / appendBatch / parseBatchLines`（localStorage：`km_last_assign` / `km_templates` / `km_recent_tasks`）
+- **常用任务**：`quickTasks / saveQuickList / openQuickEdit / openQuickAddTask / delQuick / bindQuickLongPress`（localStorage `km_quick_tasks`，每项 `{title,category,points,required,iconKey}`；图标 key 池在 `js/poke-icons.js` 的 `POKE_ICON_KEY_MAP`）。长按手势要用 `touchMode` 屏蔽合成的 mousedown/mouseleave，并在松手后吞掉那次合成 click，否则弹窗会被遮罩点击关掉
 - **规则设置**：`SETTING_FIELDS`（app.js 顶部）+ `parentSettingsPanel / openSettings`
 - **动画**：`showCatch / showEvolve / showShiny / showLevelUp / shareCard`（CSS 在 `style.css` 末尾）
 

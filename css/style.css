@@ -307,6 +307,28 @@ body {
   border-radius: 999px; padding: 8px 14px; font-size: 13px; cursor: pointer; font-weight: 700;
 }
 .chip.red { border-color: #ef9a9a; background: #ffebee; color: #c62828; }
+/* 常用任务标签：图标 + 名称 + 分数 + ✕；单击=添加任务，长按=编辑标签（见 bindQuickLongPress） */
+.quick-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+/* 手机长按不能选中文字/弹复制菜单，否则会打断长按手势 */
+.quick-chip, .quick-chip * {
+  -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+}
+/* 图标/文字不接收指针事件：长按的落点变成标签本身，系统就不会当作文本去选字（✕ 仍可点） */
+.quick-chip svg, .quick-chip .qc-name, .quick-chip .qc-pts { pointer-events: none; }
+.quick-chip .qc-name { max-width: 10em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-chip .qc-pts { color: #ef6c00; font-size: 12px; }
+.quick-chip .qc-x {
+  color: #c62828; padding: 0 4px; border-radius: 50%; font-weight: 400; line-height: 1.1;
+}
+.quick-chip.pressed { transform: scale(.95); box-shadow: 0 0 0 2px rgba(21, 101, 192, .35) inset; }
+.quick-add { flex: 0 0 auto; padding: 6px 14px; font-size: 18px; line-height: 1.35; }
 
 .input-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 /* 输入框加大加高，手机编辑方便；下拉（选择类）字号小、宽度窄 */

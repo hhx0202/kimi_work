@@ -126,15 +126,14 @@ demo 模式首次打开自动生成 4 个示例任务 + 1 个新手精灵球。
 
 **远程接口（AI agent 改任务）**：项目自带 Supabase REST API，本地 agent 可按 [`AGENT-API.md`](AGENT-API.md) 的规范直接增删改任务——家长发一句话，agent 解析成任务后调用接口，无需写后端。
 
-### 快速布置日常任务（家长端）
+### 常用任务（家长端）
 
-三个入口**都填进同一个批量输入框，编辑后再发布**，避免误发：
+家长端有一排**常用任务标签**（图标 + 名称 + 分数 + ✕），日常布置全靠它：
 
-- **📋 复制上次布置**：一键把上次发布的任务拼好填进输入框，删改今天的差异后「解析并添加」→ 每天布置几秒搞定
-- **⭐ 存为模板 / 命名模板**：把一组任务存成模板（如"周末套餐"），点模板填入输入框；点 ✖ 删除
-- **最近用过**：发布过的任务自动去重积累，点一下**追加到输入框末尾**（近似任务快速加进来）
-
-常用快捷模板（点一下填入输入框）默认在 `js/app.js` 顶部 `TPL` 数组里，可自行增删。
+- **单击标签**：弹出添加任务表单（名称/类别/分数/必做选做/布置到哪天都已预填），点「确认添加」立刻加到任务列表
+- **长按标签**：打开编辑标签页，只改名称和分数（不影响已布置的任务）
+- **＋**：新增一个常用任务标签（图标随机分配），**✕**：从常用任务里删掉
+- 首次使用会按 `js/app.js` 顶部 `TPL` 数组预置一批（语文作业/数学作业/跳绳…），存 localStorage（`km_quick_tasks`）
 
 ## 宝可梦系统
 
@@ -211,7 +210,7 @@ demo 模式首次打开自动生成 4 个示例任务 + 1 个新手精灵球。
 - 规则数值改 `js/config.js`；宝可梦数据改 `js/pokemon-data.js`；属性改 `js/pokemon-types.js`
 - 新加动画：CSS 在 `css/style.css`，逻辑在 `js/app.js` 的 `showCatch / showEvolve / showLevelUp / showCardDetail`
 - 待确认积分逻辑在 `js/app.js`：`checkin`（写待确认流水）、`pendingPointsPanel / confirmPending / undoPoint`（家长端）
-- 快速布置在 `js/app.js`：`recordAssign / copyLastAssign / saveTemplate / loadTemplate / appendBatch / parseBatchLines`，模板和"最近用过"存 localStorage（`km_last_assign` / `km_templates` / `km_recent_tasks`）
+- 常用任务在 `js/app.js`：`quickTasks / saveQuickList / openQuickEdit / openQuickAddTask / delQuick / bindQuickLongPress`，标签存 localStorage（`km_quick_tasks`）；图标 key 池在 `js/poke-icons.js`（`POKE_ICON_KEY_MAP / randomPokeIconKey / catIconByKey`）
 - 本地验证：改完直接刷新浏览器即可（demo 模式无后端依赖）
 - 无构建步骤、无 node_modules，纯静态，可整体复制/上传 GitHub
 - 素材体积：sprites 11MB + artwork 22MB = 约 33MB，GitHub Pages 托管无压力
