@@ -62,6 +62,50 @@ const CAT_ICON_RULES = [
   { match: '编程', icon: () => POKE_ICON.ultra() },
 ];
 
+// 名称 → 图标规则（更具体，优先于类别匹配；任务标题里含这些词就用对应图标）
+const CAT_ICON_NAME_RULES = [
+  { match: '读', icon: () => POKE_ICON.dex() },
+  { match: '书', icon: () => POKE_ICON.dex() },
+  { match: '绘本', icon: () => POKE_ICON.dex() },
+  { match: '故事', icon: () => POKE_ICON.dex() },
+  { match: '古诗', icon: () => POKE_ICON.dex() },
+  { match: '课文', icon: () => POKE_ICON.dex() },
+  { match: '背诵', icon: () => POKE_ICON.dex() },
+  { match: '英语', icon: () => POKE_ICON.tm('#ec407a') },
+  { match: '英文', icon: () => POKE_ICON.tm('#ec407a') },
+  { match: '单词', icon: () => POKE_ICON.tm('#ec407a') },
+  { match: '数学', icon: () => POKE_ICON.stone('#7e57c2') },
+  { match: '算术', icon: () => POKE_ICON.stone('#7e57c2') },
+  { match: '口算', icon: () => POKE_ICON.stone('#7e57c2') },
+  { match: '绳', icon: () => POKE_ICON.badge('#ffb300') },
+  { match: '跑步', icon: () => POKE_ICON.badge('#ffb300') },
+  { match: '球', icon: () => POKE_ICON.badge('#ffb300') },
+  { match: '游泳', icon: () => POKE_ICON.badge('#ffb300') },
+  { match: '骑车', icon: () => POKE_ICON.badge('#ffb300') },
+  { match: '运动', icon: () => POKE_ICON.badge('#ffb300') },
+  { match: '锻炼', icon: () => POKE_ICON.badge('#ffb300') },
+  { match: '户外', icon: () => POKE_ICON.badge('#ffb300') },
+  { match: '琴', icon: () => POKE_ICON.stone('#ef5350') },
+  { match: '舞', icon: () => POKE_ICON.stone('#ef5350') },
+  { match: '画', icon: () => POKE_ICON.stone('#ef5350') },
+  { match: '唱', icon: () => POKE_ICON.stone('#ef5350') },
+  { match: '乐器', icon: () => POKE_ICON.stone('#ef5350') },
+  { match: '字', icon: () => POKE_ICON.tm('#26c6da') },
+  { match: '写字', icon: () => POKE_ICON.tm('#26c6da') },
+  { match: '书法', icon: () => POKE_ICON.tm('#26c6da') },
+  { match: '碗', icon: () => POKE_ICON.candy() },
+  { match: '垃圾', icon: () => POKE_ICON.candy() },
+  { match: '扫地', icon: () => POKE_ICON.candy() },
+  { match: '拖地', icon: () => POKE_ICON.candy() },
+  { match: '洗衣', icon: () => POKE_ICON.candy() },
+  { match: '整理', icon: () => POKE_ICON.candy() },
+  { match: '叠', icon: () => POKE_ICON.candy() },
+  { match: '浇花', icon: () => POKE_ICON.candy() },
+  { match: '编程', icon: () => POKE_ICON.ultra() },
+  { match: '代码', icon: () => POKE_ICON.ultra() },
+  { match: '机器人', icon: () => POKE_ICON.ultra() },
+];
+
 // 兜底：按类别名哈希稳定分配一种精灵球颜色
 const BALL_COLORS = ['#e53935', '#42a5f5', '#66bb6a', '#fbc02d', '#ab47bc'];
 function catIconColor(cat) {
@@ -69,8 +113,11 @@ function catIconColor(cat) {
   for (const ch of String(cat)) h = (h * 31 + (ch.codePointAt(0) || 0)) % 997;
   return BALL_COLORS[h % BALL_COLORS.length];
 }
-// 返回类别对应的 SVG 图标 HTML
-function catIcon(cat) {
+// 返回任务对应的 SVG 图标 HTML（cat=类别，name=任务名；先按名称精准匹配，再按类别，最后兜底）
+function catIcon(cat, name) {
+  const n = name || '';
+  const byName = CAT_ICON_NAME_RULES.find(x => n.includes(x.match));
+  if (byName) return byName.icon();
   const r = CAT_ICON_RULES.find(x => (cat || '').includes(x.match));
   return r ? r.icon() : POKE_ICON.ball(catIconColor(cat));
 }

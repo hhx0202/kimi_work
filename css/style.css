@@ -74,16 +74,23 @@ body {
 @keyframes pop { 50% { transform: scale(1.35); } }
 
 /* ---------- 内容区 ---------- */
-.page { padding: 16px 16px 96px; max-width: 720px; margin: 0 auto; }
+.page { padding: 16px 16px calc(120px + env(safe-area-inset-bottom)); max-width: 720px; margin: 0 auto; }
 
 /* 进度卡 */
 .progress-card {
   background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
   padding: 16px; margin-bottom: 16px;
+  display: flex; flex-direction: column; gap: 14px;   /* 每组进度条之间留足间距，避免必做/选做贴在一起 */
 }
-.progress-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
-.progress-head b { font-size: 18px; }
-.progress-head span { color: var(--ink-soft); font-size: 13px; }
+/* 每一组「标题 + 进度条」独立成块 */
+.progress-item { display: flex; flex-direction: column; }
+.progress-item + .progress-item {
+  border-top: 1px dashed rgba(0, 0, 0, .07);   /* 多组之间再加一条分隔线，视觉上不粘连 */
+  padding-top: 12px;
+}
+.progress-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; column-gap: 12px; row-gap: 4px; margin-bottom: 10px; }
+.progress-head b { font-size: 18px; line-height: 1.35; }
+.progress-head span { color: var(--ink-soft); font-size: 13px; text-align: right; flex: 0 1 auto; }
 .progress-track { height: 16px; background: #eceff1; border-radius: 999px; overflow: hidden; }
 .progress-fill {
   height: 100%; border-radius: 999px; transition: width .5s ease;
@@ -92,6 +99,11 @@ body {
 .progress-fill.full { background: linear-gradient(90deg, #ffb300, #ffe082); animation: shine 1.2s linear infinite; }
 @keyframes shine { to { background-position: 200% 0; } }
 .progress-fill.full { background-size: 200% 100%; }
+/* 必做/选做进度条可点击 → 弹出任务清单 */
+.progress-item.clickable { cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; transition: transform .12s; }
+.progress-item.clickable:active { transform: scale(.985); }
+.pd-tap { margin-top: 6px; text-align: right; font-size: 11px; color: #b0bec5; letter-spacing: .3px; }
+.progress-item.clickable:active .pd-tap { color: var(--blue); }
 
 /* ---------- 任务卡片 ---------- */
 .task-card {
@@ -123,6 +135,14 @@ body {
 .task-card.done .btn-done {
   background: linear-gradient(135deg, #66bb6a, #43a047); box-shadow: 0 4px 0 #2e7d32;
 }
+/* 已提交（待家长审批）态：按下观感，卡片保持原位 */
+.task-card.submitted { opacity: .9; border-color: #c5cae9; }
+.task-card.submitted .emoji { background: #e8eaf6; }
+.task-card.submitted .btn-done.submitted-btn {
+  background: linear-gradient(135deg, #5c6bc0, #3949ab);
+  box-shadow: 0 2px 0 #283593;
+  transform: translateY(2px);
+}
 .task-card.just-done { animation: done-jump .5s ease; }
 @keyframes done-jump { 30% { transform: translateY(-8px) scale(1.03); } }
 
@@ -146,6 +166,12 @@ body {
   position: fixed; bottom: 24px; right: 12px; z-index: 60;
   display: flex; flex-direction: column; gap: 8px;
 }
+/* 孩子端"登出"悬浮按钮：移到 tabbar 上方，避免遮挡"家长"入口；并支持拖动 */
+#kid-logout-fab {
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  cursor: grab; touch-action: none;
+}
+#kid-logout-fab:active { cursor: grabbing; }
 .fab-btn {
   border: 0; cursor: pointer; font-size: 12px; font-weight: 600;
   padding: 9px 14px; border-radius: 999px;
@@ -192,6 +218,8 @@ body {
   padding: 16px; margin-bottom: 6px; text-align: center;
 }
 .catch-zone .ball-row { display: flex; justify-content: center; gap: 6px; margin: 10px 0; min-height: 28px; flex-wrap: wrap; }
+.catch-actions { display: flex; flex-direction: column; gap: 14px; }
+.catch-zone > .btn-big:not(:last-child) { margin-bottom: 10px; }
 .mini-ball {
   width: 24px; height: 24px; border-radius: 50%; position: relative;
   background: linear-gradient(#e53935 50%, #fff 50%); border: 2px solid #263238;
@@ -217,8 +245,11 @@ body {
   background: var(--card); border-radius: 14px; box-shadow: var(--shadow);
   aspect-ratio: 1; display: flex; flex-direction: column;
   align-items: center; justify-content: center; position: relative; overflow: hidden;
-  cursor: pointer;
+  cursor: pointer; transition: transform .12s;
 }
+.dex-cell:active { transform: scale(.94); }
+.dex-cell.unknown { cursor: pointer; }
+.dex-cell.unknown:active { transform: scale(.94); }
 .dex-cell img { width: 46px; height: 46px; image-rendering: pixelated; }
 .dex-cell .no { font-size: 9px; color: var(--ink-soft); position: absolute; top: 3px; left: 6px; }
 .dex-cell.unknown img { filter: brightness(0) opacity(.6); }
@@ -367,10 +398,77 @@ details.log-fold summary { cursor: pointer; font-weight: 800; font-size: 15px; c
 details.log-fold .prow { padding: 8px 0; }
 details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; margin-left: 6px; }
 
-/* 全勤闪光：星光雨 */
-.shiny-rain { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.shiny-rain i { position: absolute; font-style: normal; font-size: 18px; color: #fff59d; text-shadow: 0 0 10px #ffd54f, 0 0 20px #ffeb3b; animation: starGlow 2.4s ease-in-out infinite; }
-@keyframes starGlow { 0%, 100% { opacity: .2; transform: scale(.7); } 50% { opacity: 1; transform: scale(1.15); } }
+/* ---------- 全勤闪光：全屏星光雨 + 光芒 + 光环 ---------- */
+/* 背景：旋转光芒 + 呼吸光晕 */
+.shiny-bg { position: absolute; inset: 0; pointer-events: none; display: grid; place-items: center; }
+.shiny-rays {
+  width: 680px; height: 680px; max-width: 140vw; max-height: 140vw; border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg,
+    rgba(255, 236, 120, .18) 0deg 5deg, transparent 5deg 16deg);
+  animation: rays-spin 12s linear infinite;
+  -webkit-mask-image: radial-gradient(circle, #000 28%, transparent 72%);
+  mask-image: radial-gradient(circle, #000 28%, transparent 72%);
+}
+@keyframes rays-spin { to { transform: rotate(360deg); } }
+.shiny-halo {
+  position: absolute; left: 50%; top: 50%; width: 340px; height: 340px; margin: -170px 0 0 -170px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 224, 130, .55), rgba(255, 193, 7, .12) 55%, transparent 72%);
+  animation: halo-pulse 2.4s ease-in-out infinite;
+}
+@keyframes halo-pulse { 0%, 100% { transform: scale(.86); opacity: .6; } 50% { transform: scale(1.22); opacity: 1; } }
+
+/* 星光雨：从屏幕上方一路飘落到下方
+   注意 animation-fill-mode: both —— 否则延迟期间会沿用元素默认样式（全亮），
+   延迟一到又跳到 0% 的淡出帧，出现"露头不到 1s 就没了"的假象 */
+.shiny-rain { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.shiny-rain i.rain {
+  position: absolute; top: -12vh; font-style: normal; color: #fffbd6; opacity: 0;
+  text-shadow: 0 0 8px #ffe082, 0 0 18px #ffd54f, 0 0 34px rgba(255, 193, 7, .85);
+  animation: star-fall var(--dur, 3s) linear var(--delay, 0s) infinite;
+  animation-fill-mode: both;
+  will-change: transform, opacity;
+}
+@keyframes star-fall {
+  0%   { transform: translate3d(0, -10vh, 0) scale(.35) rotate(0deg); opacity: 0; }
+  10%  { opacity: 1; }
+  55%  { opacity: .95; }
+  100% { transform: translate3d(var(--drift, 0px), 112vh, 0) scale(1.05) rotate(240deg); opacity: 0; }
+}
+/* 宝可梦周围扩散的光环 */
+.shiny-ring {
+  position: absolute; left: 50%; top: 50%; width: 130px; height: 130px;
+  margin: -65px 0 0 -65px; border: 3px solid rgba(255, 235, 130, .95); border-radius: 50%;
+  pointer-events: none; animation: ring-out 2.2s ease-out infinite;
+}
+.shiny-ring.r2 { animation-delay: 1.1s; border-color: rgba(255, 255, 255, .7); }
+@keyframes ring-out { 0% { transform: scale(.55); opacity: .95; } 100% { transform: scale(2.5); opacity: 0; } }
+/* 闪光宝可梦：描边发光 + 轻轻漂浮（用 .overlay.gold 提高优先级，压过 .ov-mon.reveal） */
+.overlay.gold .ov-mon.shiny-mon {
+  filter: drop-shadow(0 0 14px #ffe082) drop-shadow(0 0 34px rgba(255, 193, 7, .8)) saturate(1.25) brightness(1.08);
+  animation: mon-reveal .7s cubic-bezier(.2, 1.6, .4, 1) forwards,
+             mon-float 2.8s ease-in-out .7s infinite;
+}
+@keyframes mon-float { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-8px) scale(1.03); } }
+/* SHINY! 徽章 */
+.ov-badge {
+  font-size: 12px; font-weight: 900; letter-spacing: .28em; color: #3e2723;
+  background: linear-gradient(135deg, #ffe082, #ffb300);
+  padding: 4px 14px; border-radius: 999px; margin-top: 2px;
+  box-shadow: 0 0 22px rgba(255, 193, 7, .8);
+  animation: badge-pop .5s cubic-bezier(.2, 1.6, .4, 1) .15s both;
+}
+@keyframes badge-pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+/* 金色流光标题 */
+.overlay.gold .ov-title {
+  background: linear-gradient(90deg, #fff8e1, #ffd54f, #fff8e1, #ffb300, #fff8e1);
+  background-size: 300% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: none; filter: drop-shadow(0 2px 10px rgba(255, 193, 7, .6));
+  animation: title-shine 2.4s linear infinite;
+}
+@keyframes title-shine { to { background-position: 300% 0; } }
+.overlay.gold .ov-sub { color: #ffe9b5; }
 
 /* 日历 */
 .cal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
@@ -399,6 +497,7 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .modal {
   background: #fff; border-radius: 20px; padding: 18px 20px; width: 100%; max-width: 400px;
   text-align: left; border: 1px solid #f0f2f5; box-shadow: 0 16px 40px rgba(31,64,98,.16);
+  max-height: calc(100vh - 48px); overflow-y: auto;   /* 内容多时弹窗内部滚动，不超出屏幕 */
 }
 .modal h3 {
   font-size: 15px; margin: 0 0 14px; display: flex; align-items: center; gap: 6px;
@@ -418,6 +517,35 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .modal .row { display: flex; gap: 10px; }
 .modal .row button { flex: 1; }
 .modal .btn-primary, .modal .btn-cancel, .modal .btn-danger { font-size: 13px; padding: 9px 16px; }
+
+/* 任务详情弹窗：信息表（截止日期等） */
+.td-meta { margin-top: 10px; border-radius: 14px; background: #f8fafc; border: 1px solid #eef2f6; padding: 2px 12px; }
+.td-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px dashed rgba(0, 0, 0, .06); font-size: 13px; }
+.td-row:last-child { border-bottom: 0; }
+.td-k { flex: 0 0 auto; font-size: 12px; color: var(--ink-soft); }
+.td-v { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; text-align: right; font-weight: 700; color: var(--ink); }
+.td-date { font-size: 15px; letter-spacing: .5px; }
+.td-none { font-weight: 500; color: #b0bec5; }
+.td-from { font-weight: 500; font-size: 11px; color: var(--ink-soft); }
+.td-pts { font-weight: 900; color: #f57f17; }
+.td-st.ok { color: #2e7d32; }
+.td-st.pend { color: #1565c0; }
+.td-st.todo { font-weight: 500; color: var(--ink-soft); }
+
+/* 必做/选做 进度条弹出的任务清单 */
+.pd-list { margin-top: 10px; max-height: 52vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.pd-row { display: flex; align-items: center; gap: 8px; padding: 10px 8px; border-bottom: 1px solid #f5f5f5; border-radius: 10px; cursor: pointer; font-size: 13px; transition: background .12s; }
+.pd-row:active { background: #f1f8e9; }
+.pd-ico { display: flex; flex: 0 0 24px; align-items: center; justify-content: center; width: 24px; height: 24px; }
+.pd-ico svg, .pd-ico img { width: 22px; height: 22px; }
+.pd-name { display: flex; flex: 1 1 auto; flex-direction: column; gap: 2px; min-width: 0; font-weight: 700; color: var(--ink); }
+.pd-row.ok .pd-name { color: #90a4ae; }
+.pd-dl { font-size: 11px; font-weight: 500; color: var(--ink-soft); }
+.pd-pts { flex: 0 0 auto; font-size: 12px; font-weight: 800; color: #f57f17; }
+.pd-st { flex: 0 0 auto; padding: 3px 8px; border-radius: 999px; background: #eceff1; color: #78909c; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.pd-st.ok { background: #e8f5e9; color: #2e7d32; }
+.pd-st.pend { background: #e3f2fd; color: #1565c0; }
+.pd-foot { margin-top: 10px; font-size: 11px; color: var(--ink-soft); text-align: center; }
 .btn-cancel { border: 0; border-radius: 999px; padding: 12px; background: #eceff1; color: var(--ink-soft); cursor: pointer; font-weight: 700; }
 .shake-x { animation: shake-x .4s; }
 @keyframes shake-x { 20%,60% { transform: translateX(-8px); } 40%,80% { transform: translateX(8px); } }
@@ -429,7 +557,10 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   background: radial-gradient(circle at 50% 40%, #1a237e, #000 75%);
   color: #fff;
 }
-.overlay.gold { background: radial-gradient(circle at 50% 40%, #4e342e, #000 75%); }
+.overlay.gold {
+  background: radial-gradient(circle at 50% 42%, #2a1b52 0%, #140b28 46%, #05030a 100%);
+  overflow: hidden;
+}
 .overlay.hidden { display: none; }
 
 .ov-stage { position: relative; width: 260px; height: 260px; display: grid; place-items: center; }
@@ -511,7 +642,30 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   font-size: 16px; font-weight: 800; color: #fff;
   background: linear-gradient(135deg, #7e57c2, #5e35b1); box-shadow: 0 3px 0 #4527a0;
 }
-.feed-opts button:disabled { filter: grayscale(1); opacity: .5; }
+.feed-opts button:disabled { filter: grayscale(1); opacity: .5; box-shadow: none; cursor: not-allowed; }
+/* 「刚好喂到下一阶段」一键按钮：单独占一行 */
+.feed-opts button.feed-exact { flex: 1 1 100%; background: linear-gradient(135deg, #26c6da, #00acc1); box-shadow: 0 3px 0 #00838f; }
+.feed-opts button.feed-exact:disabled { background: #eceff1; color: #90a4ae; }
+/* 「全部」按钮：低调一点 */
+.feed-opts button.feed-all { background: linear-gradient(135deg, #90a4ae, #607d8b); box-shadow: 0 3px 0 #455a64; }
+/* 喂糖果弹窗：余额/经验概览 */
+.feed-sub { font-size: 12px; color: #607d8b; margin: 0 0 2px; text-align: center; line-height: 1.6; }
+.feed-sub b { color: #5e35b1; }
+/* 自定义积分数输入 */
+.feed-custom { display: flex; gap: 8px; margin-top: 12px; }
+.feed-custom input {
+  flex: 1; min-width: 0; width: auto; margin: 0; box-sizing: border-box;
+  border: 1.5px solid #e3e8ef; border-radius: 12px; padding: 11px 12px;
+  font-size: 15px; font-weight: 700; text-align: center; font-family: inherit; background: #fafbfd;
+}
+.feed-custom input:focus { outline: none; border-color: #7e57c2; background: #fff; }
+.feed-go {
+  flex: 0 0 88px; border: 0; cursor: pointer; border-radius: 12px;
+  font-size: 15px; font-weight: 800; color: #fff;
+  background: linear-gradient(135deg, #7e57c2, #5e35b1); box-shadow: 0 3px 0 #4527a0;
+}
+.feed-go:active { transform: translateY(2px); box-shadow: none; }
+.feed-hint { font-size: 11px; color: #90a4ae; text-align: center; margin-top: 10px; line-height: 1.6; }
 
 /* 空状态 */
 .empty-tip { text-align: center; color: var(--ink-soft); padding: 30px 0; font-size: 14px; }
@@ -551,7 +705,13 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 @keyframes twinkle { 50% { opacity: .35; transform: scale(.85); } }
 
 /* ---------- 卡牌详情（PTCG 风格） ---------- */
-.overlay.card-view { background: radial-gradient(circle at 50% 30%, #2a2a45, #0b0b1a 80%); }
+.overlay.card-view {
+  background: radial-gradient(circle at 50% 30%, #2a2a45, #0b0b1a 80%);
+  /* 卡面内容变多（4 个招式 + 说明）后可能高过屏幕：顶部对齐 + 可滚动，靠 margin:auto 保持垂直居中 */
+  justify-content: flex-start; overflow-y: auto; padding: 16px 0;
+  -webkit-overflow-scrolling: touch;
+}
+.overlay.card-view .ptcg { margin: auto 0; flex: 0 0 auto; }
 .ptcg {
   width: min(320px, 90vw); border-radius: 20px; padding: 14px 14px 12px;
   border: 3px solid var(--tc, #a8a878);
@@ -579,13 +739,225 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   font-size: 12px; padding: 3px 10px; border-radius: 999px;
   box-shadow: 0 2px 6px rgba(0,0,0,.35);
 }
+/* 闪光卡面的星星特效
+   旧实现只有一个伪元素 + translateY(140%)：百分比是按伪元素自身高度算的（一行字≈30px），
+   实际只下移四十来像素，星星基本停在卡面上方，所以"露头几帧就没了"。
+   现在：多颗星各自从卡面上方落到卡面下方（px 位移），负延迟让它一打开就铺满。 */
 .ptcg-glitter { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.ptcg-glitter::after {
-  content: '✦ ✧ ✨ ⭐ ✦ ✧'; position: absolute; top: -20%; left: 10%;
-  font-size: 22px; color: #ffd54f; animation: glitter-fall 2.2s linear infinite;
-  text-shadow: 0 0 8px #ffb300;
+.ptcg-glitter i {
+  position: absolute; left: var(--x, 50%); top: 0;
+  font-style: normal; color: #fff8d0; opacity: 0; line-height: 1;
+  text-shadow: 0 0 8px #ffe082, 0 0 18px #ffb300;
+  animation: card-spark var(--dur, 2.6s) linear var(--delay, 0s) infinite;
+  animation-fill-mode: both;
+  will-change: transform, opacity;
 }
-@keyframes glitter-fall { to { transform: translateY(140%); } }
+@keyframes card-spark {
+  0%   { transform: translate3d(0, -24px, 0) scale(.35) rotate(0deg); opacity: 0; }
+  12%  { opacity: 1; }
+  70%  { opacity: .95; }
+  100% { transform: translate3d(var(--drift, 0px), var(--fall, 320px), 0) scale(1.05) rotate(220deg); opacity: 0; }
+}
+/* 全息光带：斜向扫过卡面 */
+.ptcg-glitter::after {
+  content: ''; position: absolute; top: -60%; left: 0; width: 45%; height: 220%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .62), rgba(255, 241, 170, .35), transparent);
+  transform: rotate(16deg) translateX(-160%);
+  animation: holo-sweep 3.4s ease-in-out infinite;
+}
+@keyframes holo-sweep {
+  0%         { transform: rotate(16deg) translateX(-160%); opacity: 0; }
+  12%        { opacity: 1; }
+  60%, 100%  { transform: rotate(16deg) translateX(320%); opacity: 0; }
+}
+/* 闪光卡面：立绘发光 + 轻微上浮 */
+.ptcg-art.shiny-art img {
+  filter: drop-shadow(0 0 10px #ffe082) drop-shadow(0 0 26px rgba(255, 193, 7, .8)) saturate(1.15) brightness(1.05);
+  animation: art-float 3.2s ease-in-out infinite;
+}
+@keyframes art-float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-6px) scale(1.03); }
+}
+/* ---------- 卡面属性特效（按宝可梦属性自动匹配） ----------
+   全部是纯 CSS 无限循环：伪元素 + 重复渐变当粒子，不用 JS 定时器，手机上也不掉帧。
+   位移统一用 background-position，而且位移量都是 background-size 的整数倍，
+   这样循环起来是无缝的，不会出现"跑完一遍就断掉"的观感。 */
+.ptcg-fx { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.ptcg-fx::before, .ptcg-fx::after { content: ''; position: absolute; inset: -15%; }
+@keyframes fx-breathe {
+  0%, 100% { opacity: .35; transform: scale(.96); }
+  50%      { opacity: .85; transform: scale(1.04); }
+}
+/* 火：火星往上飘 + 底部暖光 */
+.fx-ember::before {
+  background-image:
+    radial-gradient(circle, rgba(255, 214, 130, .95) 0, rgba(255, 214, 130, .95) 2px, transparent 2.6px),
+    radial-gradient(circle, rgba(255, 138, 40, .9) 0, rgba(255, 138, 40, .9) 1.6px, transparent 2.2px),
+    radial-gradient(circle, rgba(255, 246, 200, .9) 0, rgba(255, 246, 200, .9) 2.6px, transparent 3.2px);
+  background-size: 56px 88px, 40px 66px, 80px 110px;
+  background-position: 0 0, 18px 24px, -12px 40px;
+  animation: fx-ember-rise 4.2s linear infinite;
+  opacity: .95;
+}
+@keyframes fx-ember-rise {
+  from { background-position: 0 0, 18px 24px, -12px 40px; }
+  to   { background-position: 0 -176px, 18px -198px, -12px -220px; }
+}
+.fx-ember::after {
+  background: radial-gradient(circle at 50% 104%, rgba(255, 120, 20, .32), transparent 62%);
+  animation: fx-breathe 3.4s ease-in-out infinite;
+}
+/* 水：气泡不断上浮 */
+.fx-bubble::before {
+  background-image:
+    radial-gradient(circle, transparent 52%, rgba(255, 255, 255, .8) 58%, rgba(170, 220, 255, .35) 70%, transparent 74%),
+    radial-gradient(circle, transparent 50%, rgba(255, 255, 255, .55) 58%, transparent 68%);
+  background-size: 46px 62px, 70px 94px;
+  background-position: 0 0, 26px 40px;
+  animation: fx-bubble-rise 5.2s linear infinite;
+  opacity: .9;
+}
+@keyframes fx-bubble-rise {
+  from { background-position: 0 0, 26px 40px; }
+  to   { background-position: 0 -186px, 26px -188px; }
+}
+.fx-bubble::after {
+  background: radial-gradient(circle at 50% 0%, rgba(90, 160, 255, .22), transparent 60%);
+  animation: fx-breathe 4s ease-in-out infinite;
+}
+/* 电：电光点闪烁 + 一道斜向电流扫过 */
+.fx-spark::before {
+  background-image:
+    radial-gradient(circle, #fff 0, #fff 1.8px, rgba(255, 241, 118, .9) 2.4px, transparent 3.2px),
+    radial-gradient(circle, #fffde7 0, #fffde7 1.2px, transparent 2px);
+  background-size: 44px 58px, 30px 40px;
+  background-position: 0 0, 14px 18px;
+  animation: fx-spark-drift 3.6s linear infinite, fx-blit 1.1s steps(2, end) infinite;
+}
+@keyframes fx-spark-drift {
+  from { background-position: 0 0, 14px 18px; }
+  to   { background-position: 0 -174px, 14px -160px; }
+}
+@keyframes fx-blit { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+.fx-spark::after {
+  background: linear-gradient(118deg, transparent 38%, rgba(255, 255, 255, .85) 47%, rgba(255, 244, 150, .55) 51%, transparent 58%);
+  background-size: 260% 260%;
+  animation: fx-zap 2.8s ease-in-out infinite;
+}
+@keyframes fx-zap {
+  0%, 62%, 100% { background-position: 130% 0; opacity: 0; }
+  68%           { opacity: 1; }
+  86%           { background-position: -30% 0; opacity: 0; }
+}
+/* 草 / 虫：叶片缓缓飘落 */
+.fx-leaf::before {
+  background-image:
+    radial-gradient(ellipse 3.2px 6px at center, rgba(120, 200, 80, .95), transparent 72%),
+    radial-gradient(ellipse 2.4px 4.6px at center, rgba(184, 230, 128, .9), transparent 72%),
+    radial-gradient(ellipse 2px 4px at center, rgba(90, 160, 60, .75), transparent 72%);
+  background-size: 62px 84px, 46px 62px, 78px 104px;
+  background-position: 0 0, 22px 30px, 40px 16px;
+  animation: fx-leaf-fall 6s linear infinite;
+  opacity: .85;
+}
+@keyframes fx-leaf-fall {
+  from { background-position: 0 0, 22px 30px, 40px 16px; }
+  to   { background-position: 0 168px, 22px 186px, 40px 208px; }
+}
+.fx-leaf::after {
+  background: radial-gradient(circle at 50% 100%, rgba(120, 200, 80, .18), transparent 62%);
+  animation: fx-breathe 5s ease-in-out infinite;
+}
+/* 冰：雪花慢慢落 */
+.fx-snow::before {
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, .95) 0, rgba(255, 255, 255, .95) 2.2px, transparent 2.8px),
+    radial-gradient(circle, rgba(225, 245, 255, .85) 0, rgba(225, 245, 255, .85) 1.4px, transparent 2px);
+  background-size: 52px 72px, 34px 48px;
+  background-position: 0 0, 20px 26px;
+  animation: fx-snow-fall 7.5s linear infinite;
+  opacity: .9;
+}
+@keyframes fx-snow-fall {
+  from { background-position: 0 0, 20px 26px; }
+  to   { background-position: 0 216px, 20px 192px; }
+}
+.fx-snow::after {
+  background: radial-gradient(circle at 50% 8%, rgba(200, 240, 255, .3), transparent 58%);
+  animation: fx-breathe 4.6s ease-in-out infinite;
+}
+/* 毒：紫色毒泡上浮 */
+.fx-toxic::before {
+  background-image:
+    radial-gradient(circle, transparent 54%, rgba(216, 140, 224, .85) 60%, transparent 72%),
+    radial-gradient(circle, rgba(190, 100, 210, .8) 0, rgba(190, 100, 210, .8) 1.8px, transparent 2.6px);
+  background-size: 44px 60px, 58px 78px;
+  background-position: 0 0, 24px 34px;
+  animation: fx-toxic-rise 5.6s linear infinite;
+  opacity: .85;
+}
+@keyframes fx-toxic-rise {
+  from { background-position: 0 0, 24px 34px; }
+  to   { background-position: 0 -180px, 24px -156px; }
+}
+.fx-toxic::after {
+  background: radial-gradient(circle at 50% 100%, rgba(160, 64, 160, .26), transparent 62%);
+  animation: fx-breathe 4.4s ease-in-out infinite;
+}
+/* 超能 / 妖精 / 龙 / 幽灵：中心灵光呼吸 + 星点闪动 */
+.fx-aura::before {
+  background: radial-gradient(circle at 50% 52%, rgba(255, 255, 255, .5), rgba(205, 180, 255, .3) 38%, transparent 66%);
+  animation: fx-breathe 3.2s ease-in-out infinite;
+}
+.fx-aura::after {
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, .95) 0, rgba(255, 255, 255, .95) 1.8px, transparent 2.6px),
+    radial-gradient(circle, rgba(240, 220, 255, .9) 0, rgba(240, 220, 255, .9) 1.2px, transparent 2px);
+  background-size: 66px 66px, 44px 44px;
+  background-position: 0 0, 26px 20px;
+  animation: fx-aura-drift 8s linear infinite, fx-blit 2.4s ease-in-out infinite;
+}
+@keyframes fx-aura-drift {
+  from { background-position: 0 0, 26px 20px; }
+  to   { background-position: 0 -132px, 26px -132px; }
+}
+/* 岩石 / 地面 / 钢 / 格斗：细碎尘土横向飘 */
+.fx-dust::before {
+  background-image:
+    radial-gradient(circle, rgba(180, 160, 120, .8) 0, rgba(180, 160, 120, .8) 1.8px, transparent 2.6px),
+    radial-gradient(circle, rgba(140, 120, 90, .65) 0, rgba(140, 120, 90, .65) 1.2px, transparent 2px);
+  background-size: 58px 46px, 38px 32px;
+  background-position: 0 0, 18px 14px;
+  animation: fx-dust-drift 6.5s linear infinite;
+  opacity: .8;
+}
+@keyframes fx-dust-drift {
+  from { background-position: 0 0, 18px 14px; }
+  to   { background-position: 116px -46px, 76px -32px; }
+}
+.fx-dust::after {
+  background: linear-gradient(0deg, rgba(150, 130, 90, .18), transparent 55%);
+  animation: fx-breathe 5.4s ease-in-out infinite;
+}
+/* 飞行 / 一般：气流斜着掠过 */
+.fx-wind::before {
+  background-image:
+    repeating-linear-gradient(102deg, transparent 0 14px, rgba(255, 255, 255, .55) 14px 16px, transparent 16px 34px),
+    repeating-linear-gradient(96deg, transparent 0 26px, rgba(255, 255, 255, .3) 26px 27px, transparent 27px 52px);
+  background-size: 120px 84px, 160px 120px;
+  background-position: 0 0, 40px 20px;
+  animation: fx-wind-slide 3.6s linear infinite;
+  opacity: .7;
+}
+@keyframes fx-wind-slide {
+  from { background-position: 0 0, 40px 20px; }
+  to   { background-position: 120px -84px, 160px -120px; }
+}
+.fx-wind::after {
+  background: linear-gradient(100deg, transparent 40%, rgba(255, 255, 255, .25) 50%, transparent 60%);
+  animation: fx-breathe 4.2s ease-in-out infinite;
+}
 .ptcg-skill {
   margin-top: 10px; background: rgba(255,255,255,.75); border-radius: 12px; padding: 10px 12px;
 }
@@ -593,6 +965,38 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .ptcg-move { color: #fff; padding: 2px 10px; border-radius: 8px; }
 .ptcg-skill em { font-style: normal; font-weight: 900; font-size: 17px; color: #263238; }
 .ptcg-skill p { font-size: 12px; color: #546e7a; margin-top: 5px; line-height: 1.4; }
+
+/* ---------- 招式区（4 个招式，点一行展开说明） ---------- */
+.ptcg-moves {
+  margin-top: 10px; background: rgba(255, 255, 255, .8);
+  border-radius: 12px; padding: 8px 10px 6px;
+}
+.pmv-head { display: flex; align-items: baseline; gap: 6px; font-size: 12px; font-weight: 900; color: #37474f; }
+.pmv-head small { font-size: 10px; font-weight: 500; color: #90a4ae; }
+.pmv {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center; gap: 6px; padding: 5px 2px; cursor: pointer;
+  border-top: 1px dashed rgba(0, 0, 0, .07); transition: background .12s;
+}
+.pmv:active { background: rgba(255, 255, 255, .7); }
+.pmv.open { background: rgba(255, 255, 255, .7); }
+.pmv-t {
+  font-size: 10px; font-weight: 800; color: #fff; padding: 1px 6px;
+  border-radius: 6px; white-space: nowrap; box-shadow: 0 1px 2px rgba(0, 0, 0, .18);
+}
+.pmv-n { font-size: 13px; font-weight: 800; color: #263238; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pmv-p { font-style: normal; font-weight: 900; font-size: 13px; color: #37474f; min-width: 24px; text-align: right; }
+.pmv-p.none { color: #b0bec5; }
+.pmv-c { font-size: 10px; font-weight: 700; color: #78909c; background: #eceff1; border-radius: 6px; padding: 1px 5px; white-space: nowrap; }
+.pmv-c.special { color: #1565c0; background: #e3f2fd; }
+.pmv-c.status { color: #6a1b9a; background: #f3e5f5; }
+.pmv-d { display: none; grid-column: 1 / -1; margin: 2px 0 3px; font-size: 11px; line-height: 1.6; color: #546e7a; }
+.pmv.open .pmv-d { display: block; }
+.pmv.locked { cursor: default; opacity: .6; }
+/* 未收集的剪影卡 */
+.ptcg-missing .ptcg-art img { filter: brightness(0) opacity(.42); }
+.ptcg-missing .ptcg-name { color: #eceff1; }
+.ptcg-missing .ptcg-type { background: #78909c; }
 .ptcg-foot { margin-top: 10px; color: #263238; }
 .ptcg-exprow { font-size: 11px; font-weight: 700; margin-bottom: 4px; }
 .ptcg-chain { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
@@ -603,6 +1007,10 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .ptcg-chain span.cur { background: #ffd54f; box-shadow: 0 2px 6px rgba(255,193,7,.5); }
 .ptcg-chain img { width: 22px; height: 22px; image-rendering: pixelated; }
 .ptcg-chain i { font-style: normal; font-size: 12px; }
+/* 进化链每个形态可点开自己的详情 */
+.ptcg-chain span.tap { cursor: pointer; transition: transform .12s, box-shadow .12s; }
+.ptcg-chain span.tap:hover, .ptcg-chain span.tap:active { transform: translateY(-1px); box-shadow: 0 3px 8px rgba(0, 0, 0, .16); }
+.chain-tip { margin-top: 6px; text-align: center; font-size: 10px; color: #90a4ae; }
 .ptcg-evo { margin-top: 8px; text-align: center; font-size: 12px; font-weight: 800; color: #6a5c1d; }
 .ptcg-evo.ok { color: #e65100; animation: evo-pulse .9s infinite; }
 @keyframes evo-pulse { 50% { transform: scale(1.08); color: #ff8f00; } }
@@ -617,6 +1025,9 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .ptcg-btns .btn-evo:disabled { filter: grayscale(1); opacity: .5; box-shadow: none; }
 .ptcg-btns .btn-close { background: rgba(0,0,0,.4); }
 .ptcg-btns .btn-lead:disabled { filter: grayscale(1); opacity: .5; box-shadow: none; }
+/* 只读「图鉴形态」详情：两个按钮 */
+.ptcg-btns.dex-btns { grid-template-columns: repeat(2, 1fr); }
+.ptcg-btns.dex-btns .btn-owned { background: linear-gradient(135deg, #4fc3f7, #0288d1); box-shadow: 0 3px 0 #01579b; }
 
 /* ---------- 可选任务 ---------- */
 .task-card.optional { border: 2px dashed #ffd54f; }
@@ -659,18 +1070,25 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .share-tip { margin-top: 14px; font-size: 14px; color: #ffd54f; font-weight: 700; }
 
 @media (min-width: 640px) {
-  .page { padding-bottom: 40px; }
+  /* 桌面端同样要留出底部导航/fab 的高度，不能缩小，否则滚到底会被挡住 */
+  .page { padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
   .tabbar { max-width: 720px; left: 50%; transform: translateX(-50%); border-radius: 20px 20px 0 0; }
 }
 
-/* 长期任务倒计时徽章 */
+/* 长期任务倒计时徽章（不刺眼：蓝 / 琥珀 / 紫，替换原来的棕 + 红） */
 .dl-badge {
-  display: inline-block; font-size: 11px; font-weight: 700; color: #fff;
-  background: #8d6e63; border-radius: 999px; padding: 2px 8px; margin-left: 6px;
+  display: inline-block; font-size: 11px; font-weight: 700;
+  color: #1565c0; background: linear-gradient(135deg, #e3f2fd, #d3ecfb);
+  border: 1px solid #b3e0f7; border-radius: 999px; padding: 2px 8px; margin-left: 6px;
   vertical-align: middle; white-space: nowrap;
 }
 .dl-badge.urgent {
-  background: #e53935;
+  color: #b26a00; background: linear-gradient(135deg, #fff8e1, #ffefc2);
+  border-color: #ffe0a3;
+}
+.dl-badge.overdue {
+  color: #5e35b1; background: linear-gradient(135deg, #ede7f6, #e4dbf7);
+  border-color: #d3c6f0;
 }
 
 /* 必做/选做标记（低调浅色） */
@@ -686,7 +1104,7 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .task-card.child-card { padding: 8px 12px; }
 
 /* 多日任务超期扣分提示 */
-.dl-penalty { margin-top: 4px; font-size: 11px; color: #e53935; }
+.dl-penalty { margin-top: 6px; font-size: 11px; color: #b26a00; }
 
 /* 手机窄屏：任务卡紧凑，名称完整显示（不再剩单字宽） */
 @media (max-width: 480px) {
@@ -702,6 +1120,14 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   font-size: 11px; font-weight: 700; color: #fff; background: #7e57c2;
   display: inline-block; border-radius: 8px; padding: 2px 8px; margin-bottom: 4px;
 }
+/* 家长中心顶部：牌子跟在标题后面一行，不挤占标题 */
+.topbar .title .demo-tag {
+  margin: 0 0 0 8px; vertical-align: middle;
+  font-style: normal; font-size: 11px; letter-spacing: .3px;
+  box-shadow: 0 2px 6px rgba(126, 87, 194, .35);
+}
+/* 类别下拉的「自定义类别」输入框：独占一行 */
+.input-row .cat-custom { flex: 1 1 100%; }
 /* 积分到账提示条 */
 .pts-notice {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -714,3 +1140,92 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   padding: 14px 16px; margin-bottom: 12px; font-size: 15px; font-weight: 600; color: #ef6c00;
   display: flex; align-items: center; gap: 10px;
 }
+
+/* ---------- 孩子端「家长消息」卡（任务页顶端，点一下确认） ---------- */
+.notice-stack {
+  display: flex; flex-direction: column; gap: 10px; margin: 0 0 12px;
+  animation: notice-in .35s cubic-bezier(.2, 1.4, .4, 1) both;
+}
+@keyframes notice-in { from { opacity: 0; transform: translateY(-10px); } }
+.notice-head {
+  display: flex; align-items: baseline; gap: 8px; padding: 0 4px;
+  font-size: 13px; font-weight: 800; color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .18);
+}
+.notice-head small { font-weight: 600; opacity: .9; font-size: 11px; }
+.notice-card {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  background: var(--card); border-radius: 16px; box-shadow: var(--shadow);
+  padding: 12px; border-left: 6px solid #90a4ae;
+  transition: transform .15s ease;
+}
+.notice-card:active { transform: scale(.985); }
+.notice-card.ball { border-left-color: #e53935; background: linear-gradient(180deg, #fff, #fff6f6); }
+.notice-card.minus { border-left-color: #8e24aa; background: linear-gradient(180deg, #fff, #faf5ff); }
+.notice-card.points { border-left-color: #43a047; background: linear-gradient(180deg, #fff, #f4fbf4); }
+.notice-card.bonus { border-left-color: #fb8c00; background: linear-gradient(180deg, #fff, #fffaf2); }
+.notice-ic { font-size: 22px; line-height: 1; flex: none; }
+.notice-body { flex: 1; min-width: 0; }
+.notice-title { font-size: 14px; font-weight: 800; line-height: 1.35; }
+.notice-meta { font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+.notice-ok {
+  flex: none; font-size: 12px; font-weight: 800; color: #fff; white-space: nowrap;
+  background: linear-gradient(135deg, #66bb6a, #43a047); box-shadow: 0 3px 0 #2e7d32;
+  border-radius: 999px; padding: 7px 12px;
+}
+.notice-card.ball .notice-ok { background: linear-gradient(135deg, #ef5350, #e53935); box-shadow: 0 3px 0 #b71c1c; }
+.notice-card.minus .notice-ok { background: linear-gradient(135deg, #ab47bc, #8e24aa); box-shadow: 0 3px 0 #6a1b9a; }
+.notice-card.bonus .notice-ok { background: linear-gradient(135deg, #ffa726, #fb8c00); box-shadow: 0 3px 0 #e65100; }
+.notice-all {
+  align-self: center; border: 0; cursor: pointer;
+  background: rgba(255, 255, 255, .88); color: var(--ink-soft);
+  font-size: 12px; font-weight: 700; border-radius: 999px;
+  padding: 7px 16px; box-shadow: var(--shadow);
+}
+/* 底部「任务」页签的未读角标 */
+.tabbar button { position: relative; }
+.tab-dot {
+  position: absolute; top: 2px; left: 50%; margin-left: 2px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #ee4444; color: #fff; font-size: 10px; font-style: normal; font-weight: 800;
+  border-radius: 999px; box-shadow: 0 2px 6px rgba(238, 68, 68, .45);
+}
+
+/* ---------- 异常提示条（固定顶部，可展开/复制，方便下次排查） ---------- */
+#err-banner {
+  position: fixed; left: 50%; top: 8px; transform: translateX(-50%);
+  z-index: 999; width: calc(100% - 24px); max-width: 560px;
+  background: #fff3f3; border: 1px solid #ef9a9a; border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(198, 40, 40, .22);
+  padding: 10px 12px; animation: err-in .25s ease both;
+}
+@keyframes err-in { from { opacity: 0; transform: translate(-50%, -12px); } }
+#err-banner .err-row { display: flex; align-items: center; gap: 8px; }
+#err-banner .err-ic { font-size: 18px; flex: none; }
+#err-banner .err-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#err-banner .err-main b { font-size: 12px; color: #c62828; }
+#err-banner .err-main span {
+  font-size: 12px; color: #5d4037;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#err-banner .err-btn {
+  flex: none; border: 0; cursor: pointer; font-size: 11px; font-weight: 800;
+  padding: 6px 10px; border-radius: 999px; color: #fff;
+  background: #c62828; box-shadow: 0 2px 0 #8e0000;
+}
+#err-banner .err-btn.ghost { background: #fff; color: #c62828; box-shadow: inset 0 0 0 1px #ef9a9a; }
+#err-banner .err-stack {
+  margin-top: 8px; max-height: 180px; overflow: auto;
+  font-size: 11px; line-height: 1.5; color: #4e342e;
+  background: #fff; border-radius: 8px; padding: 8px;
+  white-space: pre-wrap; word-break: break-all;
+}
+/* 家长端错误日志列表 */
+.err-item { background: #fafafa; border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; font-size: 12px; }
+.err-item b { color: #c62828; font-size: 12px; }
+.err-item span { color: #90a4ae; margin-left: 6px; font-size: 11px; }
+.err-item p { margin: 4px 0 0; color: #37474f; word-break: break-all; }
+.err-item small { color: #78909c; word-break: break-all; display: block; margin-top: 2px; }
+.err-item pre { font-size: 11px; white-space: pre-wrap; word-break: break-all; color: #546e7a; margin-top: 4px; }
+.err-item summary { cursor: pointer; color: #607d8b; margin-top: 4px; font-size: 11px; }

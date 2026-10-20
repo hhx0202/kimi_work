@@ -1,6 +1,7 @@
-# 🤝 Kimi 任务岛 - Agent 交接文档
+# 🤝 Kimi的任务岛 · Agent 交接文档
 
 > 给接手开发者的完整上下文。先读本文件 + README.md，再动手。
+> **最后更新：2026-10-20**（数据库 `sql/upgrade_all.sql` 已由用户在 Supabase 执行完毕，线上可直接用真库）
 
 ## 一、产品全貌（用户要什么）
 
@@ -8,100 +9,136 @@
 
 **用户核心诉求（决策史）**：
 - 双端：家长手机布置 / 孩子平板查看打卡
-- 激励是核心：宝可梦收集、升级、进化，**越炫越好**
+- 激励是核心：宝可梦收集、喂养、进化，**越炫越好**
 - 免费、简单、纯前端优先
-- 布置任务必须手机输入友好（已做：逗号/分号/顿号/竖线/空格都当分隔符）
-- 任务分三类 + 必选/可选（见 README）
-- 长期任务用**子任务模式**：家长拆子任务配百分比，孩子勾子任务累计进度（不是让孩子自己填百分比）
+- 布置任务必须手机输入友好（逗号/分号/顿号/竖线/空格都当分隔符）
+- 任务分三类 + 必做/选做（见 README）
+- 长期任务用**子任务模式**：家长拆子任务配分数，孩子勾子任务累计进度
 - 家长要能一键生成成就图发朋友圈（已做：html2canvas）
 
-## 二、当前已完成（2026-10-19 全部通过无头浏览器验证）
+## 二、当前已完成
 
 | 模块 | 功能 | 状态 |
 |---|---|---|
-| 任务 | daily/once/weekly(子任务)/必选可选/批量粘贴/日历 | ✅ |
-| 奖励 | 任务积分、必选全清+5、可选全清+3、连击7天送球 | ✅ |
-| 积分防误点 | 待确认后发放：孩子打卡✅/经验/连击照算，积分进待发池，家长一键确认，确认后逐条撤销 | ✅ |
-| 快速布置 | 复制上次布置 / 命名模板 / 最近用过 → 都填进批量输入框编辑后发布 | ✅ |
-| 演示 | intro.html 介绍页 + **演示模式**（独立 kmd_ 数据，家长端进入/退出/重置，部署后可给别人演示） | ✅ |
-| 捕捉 | 必出新（不重复，集满不扣球）；闪光改**连续全勤随机点亮已有**（星光雨动画） | ✅ |
-| 进化 | 经验满一管即进化（100/300/600），不再看等级/花积分 | ✅ |
-| 图鉴 | 151 只官方中文介绍（PokeAPI）+ 卡牌详情展示 | ✅ |
-| 图标 | 手绘宝可梦风 SVG（球系/图鉴/徽章/TM…）替换类别/tab/功能图标 | ✅ |
-| 家长端 | 奖励积分 / 扣分 / 送球（已移除宝可梦管理+放生防误点）；流水显示时间并折叠 | ✅ |
-| 孩子端 | 额外奖励/扣分分类展示 + 历史日期切换（前一天/后一天/回到今天，历史只读）+ 双进度条 | ✅ |
-| 类别 | 类别自动记忆 + 家长端历史类别管理 + 孩子端按类别分区（校内排最前） + 规则小抄 | ✅ |
-| 子任务 | 百分比自动归一化（不填自动均分 / 全填≠100 等比缩放=100）+ 长期任务 ✏️ 编辑（标题/积分/子任务） | ✅ |
-| 体验 | 新建任务默认「只做一次」+ 批量输入改名「自动识别」并写明默认值 | ✅ |
-| 宝可梦 | 捕捉(5%闪光/15%稀有/重复返20)、喂养升级、进化 | ✅ |
-| 卡牌 | 小卡网格 + 翻牌 PTCG 大卡（属性场景背景/技能/进化链） | ✅ |
-| 图鉴 | 151 格剪影/点亮/闪光✨ | ✅ |
+| 任务 | daily/once/weekly(子任务)/必做可选/批量粘贴/日历 | ✅ |
+| 奖励 | 任务积分、必做全清+5、选做全清+5、连续全勤 7 天送球、多日完成奖 | ✅ |
+| 提交/审批 | 孩子点「完成」→ 卡片原地变**已提交**（按下态，不挪位），再点可撤销；家长「待确认积分」审批后 → **已完成**；积分先进待发池 | ✅ |
+| 详情 | 卡片点开详情弹窗：截止日期（子任务自动跟随多日任务并标注来源）/开始日期/分类/分数/当前状态/所属任务；无截止写「不限日期」 | ✅ |
+| 进度条 | 必做、选做两条进度条**都可点开该组清单**（完成 N/M + 全清奖 + 每行状态），再点某行 → 该任务详情；分母 = `dayTasksForProgress()`，与条上数字严格一致 | ✅ |
+| 家长消息 | 任务页顶端消息卡（送球/扣分/审批通过/额外奖励），孩子点「知道啦」才消失，多条可一键全确认；Tab 有未读角标；存本机，刷新不丢 | ✅ |
+| 出错提示 | 全局 `error`/`unhandledrejection`/DB 报错 → 顶部红条（可展开堆栈、一键复制），同类 5 秒合并，最多 30 条；家长中心「🐞 错误日志」可查 | ✅ |
+| 快速布置 | 复制上次布置 / 命名模板 / 最近用过 → 都填进批量框编辑后发布 | ✅ |
+| 演示 | intro.html 介绍页 + **演示模式**（独立 `kmd_` 数据，家长端进入/退出/重置） | ✅ |
+| 捕捉 | 必出新（不重复，集满不扣球）；**闪耀形态不由捕捉产出**，改为连续全勤随机点亮已有 | ✅ |
+| 喂养 | 1 分 = 1 exp，可自定义积分数、「🚀 刚好进化」一键补齐；喂完**停在详情页** | ✅ |
+| 进化 | **无等级**，经验满一管即进化（基础 300 → 一阶，再 500 → 二阶，再满 100 → ✨闪耀形态），不花积分；闪耀形态经验封顶 | ✅ |
+| 图鉴 | 151 只官方中文介绍 + 每只 4 个官方招式；未收集 = 剪影卡（不剧透），**151 格全部可点**；闪耀按整条进化链点亮 | ✅ |
+| 卡牌 | 小卡网格 + 翻牌 PTCG 大卡：属性边框/场景背景/**4 招式（点行展开官方说明）**/进化链/图鉴介绍 | ✅ |
+| 卡面特效 | 9 组属性氛围（火/水/电/草虫/冰/毒/超能幽灵龙妖精/岩地钢格斗/飞行一般）+ 闪耀金色星雨 + 全息光带；列表小卡也有同款粒子 | ✅ |
+| 家长端 | 奖励积分/扣分/送球/待确认审批/积分流水（带时间，可撤销）/统计/错误日志/规则设置 | ✅ |
+| 孩子端 | 双进度条、按类别分区（校内在前）、历史日期切换（只读）、打卡日历、提交流程 | ✅ |
+| 类别 | 类别自动记忆（下拉可选历史类别）+ 家长端管理 + 孩子端分区 + 规则小抄 | ✅ |
+| 子任务 | 百分比自动归一化 + 多日任务 ✏️ 编辑（标题/积分/子任务/完成奖） | ✅ |
+| 排序 | 必做/选做两区平铺、↑↓ + 长按拖动（650ms），卡片标注属性（单次/重复/多日/子任务） | ✅ |
 | 分享 | 成就图生成，长按保存发朋友圈 | ✅ |
-| 素材 | 302 动图 + 151 高清插画 + 151 属性数据 | ✅ |
+| 素材 | 302 动图 + 151 高清插画 + 151 属性 + 151 招式表 | ✅ |
 | 数据 | 双模式（demo localStorage / supabase 真库）；localhost 自动 demo、线上自动真库 | ✅ |
-| 多日任务 | 子任务独立计分（进度=已得/总分）、完成奖励 bonus 可配、超期每日扣分、完成即隐藏 | ✅ |
-| 布置 | 批量框只加单次任务（防误操作）；重复任务走新建菜单；任务可编辑关联进多日任务 | ✅ |
-| 分区排序 | 必做/选做两区平铺、家长 ↑↓+长按拖动排序、卡片显式标注属性（单次/重复/多日/子任务） | ✅ |
-| 家长编辑 | 通用编辑弹窗（名称/类别/分数/必做/类型/提示/关联多日/删除）、名称提示多行输入 | ✅ |
-| 打卡 | 打卡日历在孩子「我的」页（维度：全部每日/必做全清/选做全清/单个重复任务）、完成统计、打卡记录下拉 | ✅ |
-| 规则设置 | 家长「⚙️ 规则设置」动态调 11 项分值/经验/全勤，存 settings 表全家同步 | ✅ |
-| 叮嘱 | 家长每日叮嘱（notes 表，随日期切换，孩子端展示） | ✅ |
-| 图标 | 类别图标统一 poke-icons.js 手绘宝可梦风 SVG（校内/学校/作业=精灵球） | ✅ |
-| 顶部短句 | 123 条宝可梦鼓励+小知识，按小时稳定换句 | ✅ |
+| 视觉 | 标题统一「Kimi的任务岛」（无空格）；宝可梦风 SVG 图标；123 条顶部短句按小时换 | ✅ |
 
 ## 三、技术架构速览
 
 - **纯静态前端**：无构建、无 node_modules，双击 `start.bat`（或 `python serve.py`）起服务器即可跑
-- **免后端**：前端直连 Supabase（anon key），所有逻辑在浏览器
+- **免后端**：前端直连 Supabase（publishable key），所有逻辑在浏览器
 - **关键文件**：
   - `js/config.js` — 全部游戏规则数值（改规则只动这里）
   - `js/pokemon-data.js` — 151 只中文名/进化链/稀有度
-  - `js/pokemon-types.js` — 151 只属性（卡牌配色用）
+  - `js/pokemon-types.js` — 151 只属性（卡牌配色 + 特效分组用）
+  - `js/pokemon-flavor.js` — 151 只官方中文图鉴介绍（PokeAPI 抓取）
+  - `js/pokemon-moves.js` — 151 只各最多 4 个官方招式 `[[名,属性,威力,分类,说明]]`；由 `tools/fetch_moves.js` 生成（缓存可重跑）
   - `js/poke-icons.js` — 手绘宝可梦风 SVG 图标库 + 类别图标规则（`CAT_ICON_RULES`）
   - `js/db.js` — 数据层，demo/supabase 双实现，接口一致（含 notes/settings）
-  - `js/app.js` — 主程序（渲染 + 游戏逻辑 + 动画）
+  - `js/app.js` — 主程序（渲染 + 游戏逻辑 + 动画），约 3500 行
   - `css/style.css` — 全部样式与动画
-  - `sql/upgrade_all.sql` — 唯一建库脚本（幂等，Supabase 只跑它）
-- **数据模型**（Supabase，建表/升级全部合并在一个文件 `sql/upgrade_all.sql`，幂等可重复执行）：
-  - `tasks`：title/category/points/schedule(daily=重复/once=单次/weekly=多日/child=子任务)/deadline/parent_id/percent/required/active/**start_date/end_date/hint/sort/bonus**
-  - `task_logs`：task_id/log_date/completed/progress（task_id+log_date 唯一，删除任务保留历史）
-  - `pokemon`：name/pokedex_no/level/exp/shiny
+  - `sql/upgrade_all.sql` — 唯一建库脚本（幂等，Supabase 只跑它；**已执行**）
+- **数据模型**（Supabase，建表/升级全部合并在 `sql/upgrade_all.sql`，幂等可重复执行）：
+  - `tasks`：title/category/points/schedule(daily=重复/once=单次/weekly=多日/child=子任务)/deadline/parent_id/percent/required/active/**start_date/end_date/hint/sort/bonus**/note(兼容占位)
+  - `task_logs`：task_id/log_date/completed/progress/**approved**（`approved=false`=已提交待审批，默认 true 兼容旧数据；task_id+log_date 唯一，删任务保留历史）
+  - `pokemon`：name/pokedex_no/level(遗留不用)/exp/shiny
   - `point_logs`：log_date/amount/reason/confirmed(是否已发放)/task_id(撤销回退)/created_at(发生时间)（余额=SUM(confirmed)）
   - `item_logs`：item('ball')/amount/reason（球数=SUM）
   - `notes`：log_date(唯一)/note（家长每日叮嘱，随日期切换展示）
-  - `settings`：key/value（家长「⚙️ 规则设置」覆盖 config 数值，全家同步）
+  - `settings`：key/value（「⚙️ 规则设置」覆盖 config，全家同步）
 
-## 四、规则配置（config.js 全在这；家长可在页面「⚙️ 规则设置」动态调整其中 11 项，存 settings 表）
+## 四、规则数值（`js/config.js`；家长端「⚙️ 规则设置」可动态改其中 13 项，存 settings 表）
 
-家长密码(2048) / 必做全清奖(5) / 选做全清奖(5) / 多日完成奖(10) / 多日超期每日扣(5) / 出战经验(1) / 连击送球天数(7) / 送球数(1) / 买球价(100) / 闪光概率(5%) / 重复返还(20) / 每级经验(100) / 进化经验门槛(100,300,600) / 等级上限(100) / 默认类别列表
+| 项 | 值 | 可动态改 |
+|---|---|---|
+| 家长密码 `PARENT_PASSWORD` | 2048 | — |
+| 必做全清 `REQUIRED_DONE_BONUS` | 5 | ✅ |
+| 选做全清 `OPTIONAL_DONE_BONUS` | 5 | ✅ |
+| 多日完成 `WEEKLY_DONE_BONUS` | 10 | ✅ |
+| 多日超期每日扣 `OVERDUE_DAILY_PENALTY` | 5 | ✅ |
+| 单任务积分上限 `MAX_POINTS_PER_TASK` | 100 | ✅ |
+| 出战每任务经验 `LEAD_EXP_PER_TASK` | 1 | ✅ |
+| 1 积分换经验 `POINTS_TO_EXP` | 1 | ✅ |
+| 进化第 1 段 `EVO_EXP_1` | 300 | ✅ |
+| 进化第 2 段 `EVO_EXP_2` | 500 | ✅ |
+| 闪耀形态 `SHINY_EXP` | 100 | ✅ |
+| 全勤天数 `STREAK_DAYS_FOR_BALL` | 7 | ✅ |
+| 全勤送球 `STREAK_REWARD_BALLS` | 1 | ✅ |
+| 买球价 `BALL_PRICE` | 100 | ✅（已在 SETTING_FIELDS） |
+| 稀有概率 `RARE_PROBABILITY` | 0.15 | — |
+| 默认类别 `DEFAULT_CATEGORIES` | 校内/校外/作业/打卡/阅读/运动/家务/英语/数学/音乐/练字/编程 | — |
 
-## 五、可选下一步（用户提过/合理但未做，供参考）
+> **注意**：`EVO_EXP_1/2`、`SHINY_EXP` 已进 `SETTING_FIELDS`（见 app.js 顶部），改规则优先教家长用「⚙️ 规则设置」，别直接改代码；代码里的值只是默认值。
 
-- 高级球：250 分，稀有概率从 15% 提到 50%（config 加一项即可）
-- 音效：捕捉/进化/升级加 Web Audio 音效（"越炫越好"方向）
-- 捕捉动画更丰富：多几只候选、选择后的额外展示
-- 家长端周报更细：每任务完成率曲线
+## 五、关键实现位置（改哪儿找哪儿）
+
+- **任务渲染/排序**：`renderTasks / catSectionHTML / taskCardHTML / taskSort`；进度用 `dayTasksForProgress(date)`（含已下架但当天完成的任务 + 子任务）
+- **打卡链路**：`checkin`（写 `done` + `approved=false` + 待发积分）→ `cancelSubmission`（撤销）→ `confirmPending`（审批发分）→ `undoPoint`（撤销已发分）
+- **全清奖**：`isAllDone` / `cleanupAllClearPending`（异步，防重复）；任务下架/撤销时要连带清理待发奖励
+- **任务详情 / 清单**：`showTaskDetail(id)`、`showProgressDetail(kind)`、`taskStatusOf(taskId, date)`
+- **进化链**：`expThreshold / canEvolve / evolvePm / isMaxed / evoStageLabel`；图鉴家族 `evoFamily / dexGot / ownedNumbers`
+- **喂养**：`openFeed(pmId)`（自定义分数 + 「刚好进化」）、`feedPm(pm, pts)`（喂完重开详情卡）
+- **卡面**：`showCardDetail / showDexDetail / showDexMissing / movesBlockHTML / bindMoveClicks`；特效 `FX_BY_TYPE / fxKeyOf / cardFxHTML / cardGlitterHTML`
+- **消息卡**：`pushNotice / noticesHTML / ackNotice`（存 `LK('notices')`）；触发点在 `giveBall / givePts / minusPts / confirmPending / applyOverduePenalty`
+- **错误日志**：`reportError / showErrBanner / errorLogPanel / openErrorLog`（存 `LK('errors')`）
+- **类别**：`allCategories / catSelectHTML / onCatSelectChange / readCat`（新建任务、编辑、多日布置都用同一套下拉）
+- **快速布置**：`recordAssign / copyLastAssign / saveTemplate / loadTemplate / appendBatch / parseBatchLines`（localStorage：`km_last_assign` / `km_templates` / `km_recent_tasks`）
+- **规则设置**：`SETTING_FIELDS`（app.js 顶部）+ `parentSettingsPanel / openSettings`
+- **动画**：`showCatch / showEvolve / showShiny / showLevelUp / shareCard`（CSS 在 `style.css` 末尾）
+
+## 六、可选下一步（用户提过/合理但未做）
+
+- 高级球：250 分，稀有概率 15% → 50%（config 加一项即可）
+- 音效：捕捉/进化/闪耀加 Web Audio 音效（"越炫越好"方向）
+- 捕捉动画更丰富：多只候选、选择后的额外展示
+- 家长端周报：每任务完成率曲线
+- 招式表瘦身：目前 69KB 明文，可改为只存招式 ID + 运行时查表
 - 每日积分上限防刷（个人使用需求不强）
 
-## 六、协作约定（用户偏好，务必遵守）
+## 七、协作约定（用户偏好，务必遵守）
 
 1. **中文回复**
-2. **改规则只动 config.js**，不要散落魔法数字；数值也可在家长「⚙️ 规则设置」里动态改
+2. **改规则只动 config.js**，不要散落魔法数字；优先引导用「⚙️ 规则设置」
 3. 动画/特效优先（"越炫越好"是明确要求）
 4. 免费、纯前端优先，尽量不加后端
 5. 手机输入友好（布置任务在手机上）
-6. 改完刷新浏览器即测（demo 模式零依赖），重要改动用无头 Chrome 验证（`~/chrome-ft/chrome-linux64/chrome --headless=new --dump-dom`）
+6. **验证方式**：改完让用户刷新浏览器看；自动化用 `node --check` + node `vm` 切函数跑单测 + fake-DOM 冒烟（本机 Edge headless 在沙箱里渲染不出内容，别浪费时间去跑无头浏览器；Playwright 与 Python 3.8 不兼容，**别升级 Python**）
 7. 素材已全部打包，**不要重新下载**
 8. **数据库 SQL 只更新 `sql/upgrade_all.sql` 一个文件**（幂等），用户只在 Supabase 运行它；不要新建 upgrade_vX 增量文件
 9. 家长密码 2048；config 自动判断：localhost=演示数据、线上域名=真库
-10. **前端字段 ↔ 数据库列必须对齐**：改 `js/db.js` 的 insert/update/select 字段时，同步核对 `sql/upgrade_all.sql` 对应表有没有那列；改表结构同理要查前端。**踩过的坑（2026-10-20）**：`sup.addTask` 曾往 insert 里塞了 `note: null`，而 tasks 表没这列 → 线上正式模式添加任务全挂（PGRST204「找不到 note 列」）；demo(localStorage) 不校验 schema 所以本地正常，造成「demo 能加、正式不能加」的假象。修复 = SQL `add column if not exists note text` + db.js 入参去掉 note。**教训：demo 模式正常 ≠ 正式模式正常，涉及写库的改动必须用线上同款 payload 验证。**
+10. **前端字段 ↔ 数据库列必须对齐**：改 `js/db.js` 的 insert/update/select 字段时，同步核对 `sql/upgrade_all.sql`；改表结构同理要查前端。**踩过的坑（2026-10-20）**：`sup.addTask` 曾往 insert 里塞了 `note: null`，而 tasks 表没这列 → 线上正式模式添加任务全挂（PGRST204「找不到 note 列」）；demo(localStorage) 不校验 schema 所以本地正常，造成「demo 能加、正式不能加」的假象。修复 = SQL `add column if not exists note text` + db.js 入参去掉 note。**教训：demo 模式正常 ≠ 正式模式正常，涉及写库的改动必须用线上同款 payload 验证。**
+11. 临时测试脚本（`_t.js` / `_smoke.js`）用完必须删，别留在仓库里；`tools/_cache_moves.json.tmp` 已被 `.gitignore` 忽略
+12. 部署：`git push` 到 `origin master` 即自动更新 GitHub Pages（`https://hhx0202.github.io/kimi_work/`）
 
-## 七、开发验证技巧
+## 八、开发验证技巧
 
 - 本地：双击 `start.bat`（或 `python serve.py`）→ http://localhost:8000，控制台会打印手机访问地址
 - 手机本地演示：手机和电脑连同一 WiFi，浏览器打开电脑打印的 `http://192.168.x.x:8000`；防火墙弹窗点允许
 - 演示/推荐页：`intro.html`；重置试玩在家长中心 →「🎮 重置试玩数据」
-- demo 模式数据存浏览器 localStorage（键 `km_*`），可打开 DevTools → Application 直接改数据调试
-- 无头验证：`chrome --headless=new --virtual-time-budget=15000 --dump-dom http://127.0.0.1:8000/`（需先清 localStorage 相关测试数据）
-- 切真实数据库：config.js 改 `DB_MODE:'supabase'` + 填 URL/anon key，先跑 `sql/upgrade_all.sql`（唯一建库脚本，幂等）
-- **写库类改动必须验证完整链路**：仅测解析/渲染不够，要确认 app 实际发给 Supabase 的 insert 字段与表列一致。方法：`parseBatch()` 后抓请求体，或用 curl 带 app 同款 payload POST 测一次（PGRST204 就是只测解析没测写库漏掉的）。
+- demo 模式数据存 localStorage（键 `km_*`；演示模式 `kmd_*`），可打开 DevTools → Application 直接改数据调试
+- 切真实数据库：config.js 填 `SUPABASE_URL` / `SUPABASE_ANON_KEY`，先跑 `sql/upgrade_all.sql`（唯一建库脚本，幂等）——**本机线上库已跑过**
+- **写库类改动必须验证完整链路**：仅测解析/渲染不够，要确认 app 实际发给 Supabase 的 insert 字段与表列一致（PGRST204 就是只测解析没测写库漏掉的）
+- 单测写法：读 `js/app.js` 源码按函数名切片，丢进 `vm.createContext`，手工喂 `S`/`CONFIG`/`PK_*`，断言渲染出的 HTML 和状态；冒烟写法：按 `index.html` 的 7 个 `<script>` 顺序把文件拼起来跑，伪造 `document`/`localStorage`
+- 改 CSS 后校验花括号数量（`grep -o` 统计 `{` `}`），改完 `node --check js/*.js`

@@ -106,6 +106,8 @@ alter table tasks add column if not exists schedule text not null default 'daily
 alter table pokemon add column if not exists shiny boolean not null default false;
 alter table tasks add column if not exists deadline date;
 alter table task_logs add column if not exists progress int;
+-- 提交/审批状态：approved=false=孩子已提交待家长审批；approved=true=已审批（默认 true 兼容旧数据，旧打卡记录视为已审批）
+alter table task_logs add column if not exists approved boolean not null default true;
 alter table tasks add column if not exists parent_id bigint;
 alter table tasks add column if not exists percent int;
 alter table tasks add column if not exists required boolean not null default true;

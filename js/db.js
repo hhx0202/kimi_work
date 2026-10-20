@@ -21,6 +21,31 @@ const DB = (() => {
   // 模式一：demo（localStorage 模拟）
   // ==========================================================
   const K = { tasks: P + 'tasks', logs: P + 'logs', pms: P + 'pokemons', pts: P + 'points', items: P + 'items' };
+  const K_SEED_VER = P + 'seedver';
+  const SEED_VER = 2;   // 演示数据版本：升版本时会给已有的演示数据补一次测试内容
+
+  // 演示用宝可梦：覆盖「基础 / 一阶 / 最终 / 无进化链 / 闪耀形态 / 临进化」各阶段，方便测试
+  const DEMO_PMS = [
+    [1,   100, false],   // 妙蛙种子  基础形态 100/300
+    [4,   280, false],   // 小火龙    差 20 分就能进化（测「刚好进化」）
+    [5,    30, false],   // 火恐龙    一阶形态
+    [9,    60, false],   // 水箭龟    最终形态，40 分后进入闪耀形态
+    [7,     0, false],   // 杰尼龟    刚抓到的样子
+    [25,    0, false],   // 皮卡丘
+    [25,    0, true ],   // ✨皮卡丘   整条进化链闪耀形态
+    [126,  70, false],   // 鸭嘴火兽  无进化链（70/100 可测进入闪耀形态）
+  ];
+  function demoPmRows(startId = 1) {
+    return DEMO_PMS.map(([no, exp, shiny], i) => ({
+      id: startId + i,
+      name: PK_BY_NO[no].name,
+      pokedex_no: no,
+      shiny,
+      level: 1,
+      exp,
+      caught_at: nowISO(),
+    }));
+  }
 
   function lsGet(key, def) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? def; } catch { return def; } }
   function lsSet(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
@@ -62,10 +87,25 @@ const DB = (() => {
         }
         dSet(K.tasks, rows);
         dSet(K.logs, []);
-        dSet(K.pms, []);
+        dSet(K.pms, demoPmRows(1));
         // 演示初始积分（已确认发放，孩子可直接花）
-        dSet(K.pts, [{ id: 1, log_date: today0, amount: 100, reason: '演示初始积分', confirmed: true, task_id: null, created_at: nowISO() }]);
-        dSet(K.items, [{ id: 1, log_date: today0, item: 'ball', amount: 5, reason: '演示礼包' }]);
+        dSet(K.pts, [{ id: 1, log_date: today0, amount: 600, reason: '演示初始积分', confirmed: true, task_id: null, created_at: nowISO() }]);
+        dSet(K.items, [{ id: 1, log_date: today0, item: 'ball', amount: 30, reason: '演示礼包' }]);
+        lsSet(K_SEED_VER, SEED_VER);
+        return;
+      }
+      // 已有演示数据：升级到新版本时补一次测试用宝可梦 / 积分 / 精灵球（只补一次）
+      if (Number(lsGet(K_SEED_VER, 1)) < SEED_VER) {
+        const d0 = today();
+        const pms = dGet(K.pms);
+        dSet(K.pms, pms.concat(demoPmRows(pms.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1)));
+        const pts = dGet(K.pts);
+        pts.push({ id: pts.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1, log_date: d0, amount: 500, reason: '演示测试积分', confirmed: true, task_id: null, created_at: nowISO() });
+        dSet(K.pts, pts);
+        const its = dGet(K.items);
+        its.push({ id: its.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1, log_date: d0, item: 'ball', amount: 25, reason: '演示测试精灵球' });
+        dSet(K.items, its);
+        lsSet(K_SEED_VER, SEED_VER);
       }
     },
     async getTasks() { return [...dGet(K.tasks)]; },
@@ -86,13 +126,13 @@ const DB = (() => {
       return dGet(K.logs).filter(r => r.log_date >= start && r.log_date <= end);
     },
     async getTodayLogs() { return demo.getLogsBetween(today(), today()); },
-    async setLog(taskId, date, completed, note = null, progress = null) {
+    async setLog(taskId, date, completed, note = null, progress = null, approved = true) {
       const rows = dGet(K.logs);
       const i = rows.findIndex(r => r.task_id === taskId && r.log_date === date);
       if (i >= 0) {
-        rows[i] = { ...rows[i], completed, completed_at: completed ? nowISO() : null, note, progress };
+        rows[i] = { ...rows[i], completed, completed_at: completed ? nowISO() : null, note, progress, approved };
       } else {
-        rows.push({ id: dNextId(K.logs), task_id: taskId, log_date: date, completed, completed_at: completed ? nowISO() : null, note, progress });
+        rows.push({ id: dNextId(K.logs), task_id: taskId, log_date: date, completed, completed_at: completed ? nowISO() : null, note, progress, approved });
       }
       dSet(K.logs, rows);
     },
@@ -178,9 +218,9 @@ const DB = (() => {
       return data || [];
     },
     async getTodayLogs() { return sup.getLogsBetween(today(), today()); },
-    async setLog(taskId, date, completed, note = null, progress = null) {
+    async setLog(taskId, date, completed, note = null, progress = null, approved = true) {
       const { error } = await sClient().from('task_logs').upsert(
-        { task_id: taskId, log_date: date, completed, completed_at: completed ? nowISO() : null, note, progress },
+        { task_id: taskId, log_date: date, completed, completed_at: completed ? nowISO() : null, note, progress, approved },
         { onConflict: 'task_id,log_date' }
       );
       if (error) sFail(error, '打卡');
