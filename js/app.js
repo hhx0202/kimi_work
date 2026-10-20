@@ -1262,13 +1262,19 @@ function renderTop() {
   bl.parentElement.classList.remove('shake-it'); void bl.parentElement.offsetWidth; bl.parentElement.classList.add('shake-it');
 }
 
+// 日期文本：宽屏显示完整日期，窄屏（≤380）自动换成短格式（同一年只显示 MM-DD），免得被压成三行
+function dateCurHTML(date, isToday) {
+  const full = `${date}${isToday ? '（今天）' : ''}`;
+  const short = `${date.slice(0, 4) === DB.today().slice(0, 4) ? date.slice(5) : date}${isToday ? ' 今天' : ''}`;
+  return `<span class="date-cur" title="${full}"><span class="dc-full">${full}</span><span class="dc-short">${short}</span></span>`;
+}
 // 孩子端日期导航条（查看历史某天的完成情况，历史日期只读）
 function dateNavHTML() {
   const today = DB.today();
   return `
     <div class="date-nav">
       <button class="chip" data-action="date-prev">◀ 前一天</button>
-      <span class="date-cur">${S.viewDate}${S.viewDate === today ? '（今天）' : ''}</span>
+      ${dateCurHTML(S.viewDate, S.viewDate === today)}
       <button class="chip" data-action="date-next" ${S.viewDate >= today ? 'disabled' : ''}>后一天 ▶</button>
       ${S.viewDate !== today ? `<button class="chip red" data-action="date-today">回到今天</button>` : ''}
     </div>
@@ -2883,7 +2889,7 @@ function parentDateNav() {
   return `
     <div class="date-nav">
       <button class="chip" data-action="parent-date-prev">◀ 前一天</button>
-      <span class="date-cur">${S.parentDate}${S.parentDate === today ? '（今天）' : ''}</span>
+      ${dateCurHTML(S.parentDate, S.parentDate === today)}
       <button class="chip" data-action="parent-date-next">后一天 ▶</button>
       ${S.parentDate !== today ? `<button class="chip red" data-action="parent-date-today">回到今天</button>` : ''}
     </div>
@@ -2909,17 +2915,14 @@ function parentTaskPanel() {
   const optTs = ts.filter(t => t.required === false).sort(taskSort);
   const wts = weeklyTasks();
   const qts = quickTasks();
-  const pIsToday = S.parentDate === DB.today();
   return `
     <div class="panel">
       <h3 style="margin-top:12px">布置任务 <small style="font-weight:400">先选日期，再布置那天的任务</small></h3>
       ${parentDateNav()}
       <div class="input-row" style="margin-top:8px">
-        <span style="font-size:13px;color:var(--ink-soft);white-space:nowrap">💬 叮嘱</span>
         <button class="btn-primary" data-action="parent-edit-note" style="flex:2">${S.parentNote ? `📝 编辑叮嘱（${S.parentNote.slice(0, 12)}${S.parentNote.length > 12 ? '…' : ''}）` : '✍️ 写今天的叮嘱'}</button>
       </div>
-      <h3 style="margin-top:8px">📅 ${S.parentDate} 的任务${pIsToday ? '（今天）' : ''} <small style="font-weight:400">长按拖动排序 · 左滑删除</small></h3>
-      <div class="prow sec-head">🔴 必做</div>
+      <div class="prow sec-head" style="margin-top:10px">🔴 必做</div>
       <div id="pt-task-list-req">
       ${reqTs.map(prowRowHTML).join('') || '<div class="empty-tip" style="padding:4px 0">没有必做任务</div>'}
       </div>

@@ -22,7 +22,7 @@ const DB = (() => {
   // ==========================================================
   const K = { tasks: P + 'tasks', logs: P + 'logs', pms: P + 'pokemons', pts: P + 'points', items: P + 'items' };
   const K_SEED_VER = P + 'seedver';
-  const SEED_VER = 4;   // 演示数据版本：升版本时会给已有的演示数据补一次测试内容 / 修一次历史数据
+  const SEED_VER = 5;   // 演示数据版本：升版本时会给已有的演示数据补一次测试内容 / 修一次历史数据
 
   // 演示用宝可梦：覆盖「基础 / 一阶 / 最终 / 无进化链 / 闪耀形态 / 临进化」各阶段，方便测试
   const DEMO_PMS = [
@@ -104,10 +104,17 @@ const DB = (() => {
         }
         dSet(K.tasks, rows);
         dSet(K.logs, []);
-        dSet(K.pms, demoPmRows(1, DEMO_PMS.concat(DEMO_PMS_EXTRA)));
+        // 演示队伍：额外补两张 ✨ 卡（喷火龙 / 快龙），一打开就能看到「普通卡 + 闪耀卡」并存
+        const pmRows = demoPmRows(1, DEMO_PMS.concat(DEMO_PMS_EXTRA));
+        let pnid = pmRows.length + 1;
+        [6, 149].forEach(no => pmRows.push({ id: pnid++, name: PK_BY_NO[no].name, pokedex_no: no, shiny: true, level: 1, exp: 0, caught_at: nowISO() }));
+        dSet(K.pms, pmRows);
         // 演示初始积分（已确认发放，孩子可直接花）
         dSet(K.pts, [{ id: 1, log_date: today0, amount: 1200, reason: '演示初始积分', confirmed: true, task_id: null, created_at: nowISO() }]);
-        dSet(K.items, [{ id: 1, log_date: today0, item: 'ball', amount: 45, reason: '演示礼包' }]);
+        dSet(K.items, [
+          { id: 1, log_date: today0, item: 'ball', amount: 45, reason: '演示礼包' },
+          { id: 2, log_date: today0, item: 'shiny', amount: 3, reason: '演示闪耀卡' },
+        ]);
         lsSet(K_SEED_VER, SEED_VER);
         return;
       }
@@ -170,6 +177,20 @@ const DB = (() => {
         const its = dGet(K.items);
         its.push({ id: its.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1, log_date: d0, item: 'ball', amount: 20, reason: '演示补充精灵球' });
         dSet(K.items, its);
+      }
+      // v4 → v5：演示模式直接送几张闪耀卡（库存）+ 两只最终形态的 ✨ 副本，方便试「使用闪耀卡」和卡片列表效果
+      if (prevVer < 5) {
+        const d0 = today();
+        const its = dGet(K.items);
+        its.push({ id: its.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1, log_date: d0, item: 'shiny', amount: 3, reason: '演示闪耀卡' });
+        dSet(K.items, its);
+        const pms = dGet(K.pms);
+        const haveShinyNo = new Set(pms.filter(r => r.shiny).map(r => Number(r.pokedex_no)));
+        const addNos = [6, 149].filter(no => PK_BY_NO[no] && !haveShinyNo.has(no));   // 喷火龙、快龙 各补一张 ✨ 卡
+        if (addNos.length) {
+          let nid = pms.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1;
+          dSet(K.pms, pms.concat(addNos.map(no => ({ id: nid++, name: PK_BY_NO[no].name, pokedex_no: no, shiny: true, level: 1, exp: 0, caught_at: nowISO() }))));
+        }
       }
       lsSet(K_SEED_VER, SEED_VER);
     },

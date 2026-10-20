@@ -375,13 +375,32 @@ body {
 /* 常用任务「排序」按钮：普通态淡蓝，排序中变绿色「确认」 */
 .quick-sort { flex: 0 0 auto; padding: 6px 12px; font-size: 13px; line-height: 1.35; }
 .quick-sort.active { border-color: #66bb6a; background: #e8f5e9; color: #2e7d32; }
-/* 排序模式：标签变虚线、隐藏 ✕，避免拖的时候手滑删掉 */
+/* 排序模式：标签变虚线；✕ 只是隐藏但保留占位，标签宽度不变，否则一进排序每行能多挤下一个、布局乱跳 */
 #pt-quick-list.sorting .quick-chip {
   border-style: dashed; cursor: grab;
   /* 手机上必须关掉浏览器的滚动/缩放接管，否则长按拖动会被「页面滚动」抢先 */
   touch-action: none; -webkit-user-drag: none;
 }
-#pt-quick-list.sorting .quick-chip .qc-x { display: none; }
+#pt-quick-list.sorting .quick-chip .qc-x { visibility: hidden; pointer-events: none; }
+/* 手机端常用任务固定两列网格：标签名字长短不会再让每行个数乱跳，普通/排序两种状态布局完全一致 */
+@media (max-width: 520px) {
+  #pt-quick-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: stretch; }
+  #pt-quick-list .quick-chip { width: auto; max-width: none; min-width: 0; overflow: hidden; }
+  #pt-quick-list .quick-chip .qc-name { flex: 1 1 auto; min-width: 0; max-width: none; }
+  #pt-quick-list .quick-chip .qc-pts, #pt-quick-list .quick-chip .qc-x { flex: 0 0 auto; }
+}
+/* 更窄（≤400）：两列偏挤，收紧内边距/✕，名字多露 1~2 个字 */
+@media (max-width: 400px) {
+  #pt-quick-list .quick-chip { padding: 7px 10px; gap: 4px; }
+  #pt-quick-list .quick-chip .qc-pts { font-size: 11px; }
+  #pt-quick-list .quick-chip .qc-x { padding: 0 1px; }
+}
+/* 320 档：两列太挤，藏掉分数，保证名字还能看到 4~5 个字 */
+@media (max-width: 360px) {
+  #pt-quick-list { gap: 6px; }
+  #pt-quick-list .quick-chip { padding: 7px 9px; font-size: 12px; }
+  #pt-quick-list .quick-chip .qc-pts { display: none; }
+}
 /* 拖动中的标签：让出指针事件，否则 elementFromPoint 永远只命中它自己 */
 .quick-chip.dragging {
   pointer-events: none; transform: scale(1.06);
@@ -487,9 +506,21 @@ textarea {
 .child-item svg { width: 18px; height: 18px; display: inline-block; vertical-align: -3px; }
 
 /* 孩子端日期导航 */
-.date-nav { display: flex; align-items: center; gap: 8px; margin: 4px 0 6px; }
-.date-nav .date-cur { flex: 1; text-align: center; font-weight: 800; font-size: 14px; color: #455a64; }
+.date-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; row-gap: 6px; margin: 4px 0 6px; }
+.date-nav .chip { white-space: nowrap; flex: 0 0 auto; }
+.date-nav .date-cur { flex: 1; text-align: center; font-weight: 800; font-size: 14px; color: #455a64; white-space: nowrap; }
+.date-cur .dc-short { display: none; }
 .date-nav .chip:disabled { opacity: .4; cursor: default; }
+/* 看历史日期时多出来的「回到今天」独占下一行整行，不把日期挤扁 */
+.date-nav .chip.red { flex: 1 1 100%; }
+/* 窄屏（320~380）：按钮收窄、日期换短格式（MM-DD），保证整行不换行、不堆叠 */
+@media (max-width: 380px) {
+  .date-nav { gap: 6px; }
+  .date-nav .chip { padding: 8px 9px; font-size: 12px; }
+  .date-nav .date-cur { font-size: 13px; letter-spacing: -.2px; }
+  .date-cur .dc-full { display: none; }
+  .date-cur .dc-short { display: inline; }
+}
 
 /* 卡牌图鉴介绍 */
 .ptcg-flavor { margin: 10px 14px 0; font-size: 12px; line-height: 1.8; color: #5d4037; background: rgba(255,255,255,.75); border-radius: 10px; padding: 8px 10px; }

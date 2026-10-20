@@ -44,3 +44,9 @@
 - 需要在手机上手势「自己接管」的元素（拖动排序、左滑、长按），`touchstart` 必须是 `{passive:false}` 才能 `preventDefault()` 掉系统长按选字（放大镜/选区手柄）；passive 监听里调 preventDefault 无效，表现为「长按出来个放大镜但拖不动」。CSS 再补 `touch-action:none` + `user-select:none` + `-webkit-touch-callout:none`。
 - 测手势必须用 CDP `Input.dispatchTouchEvent` 的真实序列（touchStart → 停 300ms → touchMove → touchEnd），且坐标是**视口坐标**，目标在折叠线以下要先 `scrollIntoView`。
 
+## 响应式 / 布局约定（用户对「窄屏堆叠」很敏感）
+- **同一块区域在不同状态（普通 ↔ 排序/选择）布局必须完全一致**：不要用 `display:none` 隐藏标签内的 ✕/分数（宽度会变，每行个数就跳），用 `visibility:hidden` 保留占位。改完用量宽脚本对比两态的 `width + top` 是否逐一相同。
+- 手机端常用任务固定两列：`#pt-quick-list` 在 ≤520 用 `grid-template-columns:repeat(2,minmax(0,1fr))`；`minmax(0,1fr)` 不能省，否则 grid item 的 `min-width:auto` 会顶出屏幕。名字 `flex:1 1 auto; min-width:0`。
+- 日期条这种「左中右三件套 + 可有可无第四件」：日期给两套文本（完整 / MM-DD 短格式）按断点切换，多余的按钮（如「回到今天」）整行独占，别硬挤同一行。
+- 320 / 375 / 390 三档都要截图看，375 档最容易出现「名字只剩 3 个字」。
+
