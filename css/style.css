@@ -384,21 +384,27 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   display: flex; align-items: center; justify-content: center; padding: 24px;
 }
 .modal {
-  background: #fff; border-radius: 24px; padding: 24px; width: 100%; max-width: 360px;
-  text-align: center;
+  background: #fff; border-radius: 20px; padding: 18px 20px; width: 100%; max-width: 400px;
+  text-align: left; border: 1px solid #f0f2f5; box-shadow: 0 16px 40px rgba(31,64,98,.16);
 }
-.modal h3 { margin-bottom: 14px; }
-/* 弹窗控件统一：正常字距、左对齐、同尺寸（不再套用密码框的大字距样式） */
+.modal h3 {
+  font-size: 15px; margin: 0 0 14px; display: flex; align-items: center; gap: 6px;
+  color: var(--ink); padding-bottom: 10px; border-bottom: 2px solid #eef2f6;
+}
+.modal label { display: block; font-size: 11px; color: var(--ink-soft); margin: 8px 0 3px; }
 .modal input, .modal select, .modal textarea {
-  width: 100%; box-sizing: border-box; border: 2px solid #e0e0e0; border-radius: 12px;
-  padding: 12px 14px; font-size: 16px; margin-bottom: 12px; font-family: inherit;
-  text-align: left;
+  width: 100%; box-sizing: border-box; border: 1.5px solid #e3e8ef; border-radius: 9px;
+  padding: 8px 10px; font-size: 13px; margin-bottom: 6px; background: #fafbfd;
+  font-family: inherit; text-align: left; transition: border-color .15s, background .15s;
 }
-.modal select { height: 46px; padding: 0 12px; font-size: 14px; }
-.modal textarea { min-height: 80px; resize: vertical; }
-.modal label { display: block; font-size: 12px; color: var(--ink-soft); margin: 6px 0 2px; text-align: left; }
+.modal input:focus, .modal select:focus, .modal textarea:focus {
+  outline: none; border-color: var(--blue); background: #fff;
+}
+.modal select { height: 36px; padding: 0 8px; font-size: 13px; }
+.modal textarea { min-height: 60px; resize: vertical; }
 .modal .row { display: flex; gap: 10px; }
 .modal .row button { flex: 1; }
+.modal .btn-primary, .modal .btn-cancel, .modal .btn-danger { font-size: 13px; padding: 9px 16px; }
 .btn-cancel { border: 0; border-radius: 999px; padding: 12px; background: #eceff1; color: var(--ink-soft); cursor: pointer; font-weight: 700; }
 .shake-x { animation: shake-x .4s; }
 @keyframes shake-x { 20%,60% { transform: translateX(-8px); } 40%,80% { transform: translateX(8px); } }
