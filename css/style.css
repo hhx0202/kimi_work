@@ -1019,7 +1019,10 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .ptcg-btns button {
   border: 0; cursor: pointer; border-radius: 999px; padding: 10px 4px;
   font-size: 12px; font-weight: 800; color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: clip;
+  min-width: 0; letter-spacing: -.3px;
 }
+@media (max-width: 360px) { .ptcg-btns button { font-size: 11px; padding: 10px 2px; } }
 .ptcg-btns .btn-lead { background: linear-gradient(135deg, #ef5350, #e53935); box-shadow: 0 3px 0 #b71c1c; }
 .ptcg-btns .btn-feed { background: linear-gradient(135deg, #7e57c2, #5e35b1); box-shadow: 0 3px 0 #4527a0; }
 .ptcg-btns .btn-evo { background: linear-gradient(135deg, #ffb300, #fb8c00); box-shadow: 0 3px 0 #e65100; }

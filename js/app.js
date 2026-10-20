@@ -1555,7 +1555,7 @@ function showCardDetail(pm) {
         ${((info.e || !pm.shiny)) ? `<div class="ptcg-evo ${evo.ok ? 'ok' : ''}">${evo.ok ? (evo.shiny ? '✨ 可以进入闪耀形态啦！' : '✨ 可以进化啦！') : (evo.why ? '『' + evo.why + '』' : '')}</div>` : ''}
       </div>
       <div class="ptcg-btns">
-        <button class="btn-lead" ${isLead ? 'disabled' : ''}>${isLead ? '⭐ 出战（伙伴）' : '⭐ 设为出战（伙伴）'}</button>
+        <button class="btn-lead" ${isLead ? 'disabled' : ''}>${isLead ? '⭐ 出战' : '出战'}</button>
         <button class="btn-feed" ${maxed ? 'disabled' : ''}>${maxed ? '✨ 已满级' : '🍬 喂糖果'}</button>
         ${(info.e || evo.ok) ? `<button class="btn-evo" ${evo.ok ? '' : 'disabled'}>${evo.shiny ? '✨ 闪耀' : '进化'}</button>` : ''}
         <button class="btn-close">✕ 关闭</button>
