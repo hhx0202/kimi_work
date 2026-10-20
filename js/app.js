@@ -1673,7 +1673,7 @@ function parentTaskPanel() {
         <textarea id="pt-title" placeholder="任务名称（末尾可加 {提示}）" style="flex:2;min-height:44px"></textarea>
       </div>
       <div class="input-row">
-        <input id="pt-cat" list="cat-options" placeholder="类别(可自定义)" value="打卡" style="flex:1.5">
+        <input id="pt-cat" list="cat-options" placeholder="类别(可自定义)" value="作业" style="flex:1.5">
         <datalist id="cat-options">${loadCats().map(c => `<option value="${c}">`).join('')}</datalist>
         <input id="pt-pts" type="number" placeholder="积分" value="10" style="width:90px">
       </div>
@@ -1719,8 +1719,8 @@ function parentTaskPanel() {
       <button class="btn-primary" data-action="parent-multi" style="width:100%">📅 批量布置多天（日期分隔行）</button>
       <div class="form-hint">一次规划好几天：每行写一个日期（如 <b>10-20</b> / <b>周一</b> / <b>明天</b>），下面几行是那天要做的任务，直到下一个日期行。布置后任务只出现在对应的那天（错过当天则不再出现）。</div>
       <h3 style="margin-top:16px">📥 批量添加单次任务</h3>
-      <div class="form-hint" style="margin-bottom:6px">格式：<b>名称, 类别, 分数, 选做</b>　（除名称外均可省；名称末尾用 <b>{花括号}</b> 圈住小提示）<br>这里添加的是<b>单次任务</b>（当前日期做一次、做完消失）；<b>重复任务（每天都有）</b>请用上方「新建任务 → 重复（每天都有）」单独建，避免批量复制重复建出很多条。</div>
-      <textarea id="pt-batch" placeholder="每行一个任务（除名称外都可省）：&#10;  名称 必填，末尾可加 {小提示} 如 语文作业{先复习生字}&#10;  类别 默认「打卡」（任务分组）&#10;  分数 默认 10&#10;  选做 写「选做」=非必做（默认必做）&#10;&#10;示例：&#10;  语文作业{先复习生字},校内作业,10&#10;  跳绳500个,运动,5,选做&#10;  练字一页 10"></textarea>
+      <div class="form-hint" style="margin-bottom:6px">格式：<b>每行一个任务</b>；类别 / 分数 / 选做用 <b>[中括号] 或 (小括号)</b> 指定（不写用默认，小括号认已认识的类别）<br>这里添加的是<b>单次任务</b>（当前日期做一次、做完消失）；<b>重复任务（每天都有）</b>请用上方「新建任务 → 重复（每天都有）」单独建，避免批量复制重复建出很多条。</div>
+      <textarea id="pt-batch" placeholder="每行一个任务，整行都是任务名：&#10;  语文作业{先复习生字}[校内作业][10]&#10;  跳绳500个(运动)(5)(选做)&#10;  语一号本抄12原文+注释 明默 语预习13 概括写下故事的起因经过结果&#10;&#10;· 类别/分数/选做用 [中括号] 或 (小括号)（中英文都行）指定&#10;· [类别] 默认「作业」　[分数] 默认 10　[选做] = 非必做&#10;· 名称末尾 {花括号} 仍可加小提示，如 语文作业{先复习生字}&#10;· 行尾 空格+数字 会当成分数（上限100），如 练字一页 10"></textarea>
       <button class="btn-primary" data-action="parent-parse" style="margin-top:8px">解析并添加</button>
       <div class="form-hint">批量添加的都是当天的一次性任务，不会重复出现在以后的每天里。</div>
     </div>
@@ -1729,7 +1729,7 @@ function parentTaskPanel() {
 async function saveParentTask() {
   const { title, hint } = splitHint($('pt-title').value.trim());
   if (!title) { toast('请填任务名称'); return; }
-  const category = ($('pt-cat').value || '').trim() || '打卡';
+  const category = ($('pt-cat').value || '').trim() || '作业';
   const points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt($('pt-pts').value) || 10));
   const schedule = $('pt-schedule').value;
   const deadline = (schedule === 'weekly' && $('pt-deadline').value) ? $('pt-deadline').value : null;
@@ -1826,7 +1826,7 @@ function openWeeklyEditor(id) {
     const title = modal.querySelector('#we-title').value.trim();
     if (!title) { toast('任务名称不能为空'); return; }
     const hint = modal.querySelector('#we-hint').value.trim() || null;
-    const category = (modal.querySelector('#we-cat').value || '').trim() || '打卡';
+    const category = (modal.querySelector('#we-cat').value || '').trim() || '作业';
     const deadline = modal.querySelector('#we-deadline').value || null;
     const bonusVal = parseInt(modal.querySelector('#we-bonus').value);
     const bonus = bonusVal ? Math.min(CONFIG.MAX_POINTS_PER_TASK, Math.max(1, bonusVal)) : null;
@@ -1909,7 +1909,7 @@ function openTaskEditor(id) {
     const title = modal.querySelector('#te-title').value.trim();
     if (!title) { toast('任务名称不能为空'); return; }
     const hint = modal.querySelector('#te-hint').value.trim() || null;
-    const category = (modal.querySelector('#te-cat').value || '').trim() || '打卡';
+    const category = (modal.querySelector('#te-cat').value || '').trim() || '作业';
     const points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt(modal.querySelector('#te-pts').value) || 10));
     const required = modal.querySelector('#te-req').value !== '0';
     const oldParent = t.parent_id;
@@ -1970,7 +1970,15 @@ function catOrder(cat) {
   return i >= 0 ? i : 1000;
 }
 
-function itemLine(it) { return `${it.title}${it.hint ? `{${it.hint}}` : ''},${it.category},${it.points}${it.required === false ? ',选做' : ''}`; }
+// 任务 → 批量框文本（中括号语法；类别/分数用默认值时省略，可往返解析）
+function itemLine(it) {
+  let s = it.title || '';
+  if (it.hint) s += `{${it.hint}}`;
+  if (it.category && it.category !== '作业') s += `[${it.category}]`;
+  if (it.points && it.points !== 10) s += `[${it.points}]`;
+  if (it.required === false) s += '[选做]';
+  return s;
+}
 
 function fillBatch(items) {
   const ta = $('pt-batch');
@@ -2030,21 +2038,68 @@ function copyLastAssign() {
   toast(`已填入上次布置的 ${snap.items.length} 个任务，改完点「解析并添加」`);
 }
 
+// 解析一行批量任务：整行 = 任务名；类别/分数/选做用 [中括号] 或 (小括号) 指定。
+// 也兼容旧格式「名称, 类别, 分数, 选做」和「名称 分数」——但只在行尾是数字/选做时才拆，
+// 避免把真实文案里的逗号（如「英背诵书P34,上传视频。」）拆成两个任务。
+// 类别别名（小括号严格模式里认这些词，方便中文输入法直接写括号）
+const CAT_ALIASES = ['语文', '数学', '英语', '科学', '作文', '书法', '单词', '校内', '校外', '打卡', '阅读', '运动', '家务', '音乐', '练字', '编程', '作业'];
+function isKnownCat(c) { return loadCats().includes(c) || CONFIG.DEFAULT_CATEGORIES.includes(c) || CAT_ALIASES.includes(c); }
+function parseTaskLine(line) {
+  let s = line.trim();
+  let category = null, points = null, required = null;
+  // 1) [中括号]：宽松，什么内容都认（数字=分数，选做=选做，其余=类别）
+  s = s.replace(/\[([^\]]*)\]/g, (m, inner) => {
+    inner = inner.trim();
+    if (!inner) return '';
+    if (['选做', '可选', '选', '0'].includes(inner)) required = false;
+    else if (/^\d+$/.test(inner)) points = parseInt(inner);
+    else category = inner;
+    return '';
+  }).trim();
+  // 2) (小括号) 中英文：中文输入法便利，只认明确模式（数字/选做/已认识的类别），
+  //    其余括号内容保留在原位，避免误删任务名里的括号（如「背诵(2-4段)」）
+  const pickParen = (inner, m) => {
+    inner = inner.trim();
+    if (!inner) return '';
+    if (['选做', '可选', '选', '0'].includes(inner)) { required = false; return ''; }
+    if (/^\d+$/.test(inner)) { points = parseInt(inner); return ''; }
+    if (isKnownCat(inner)) { category = inner; return ''; }
+    return m;
+  };
+  s = s.replace(/（([^）]*)）/g, (m, inner) => pickParen(inner, m))
+        .replace(/\(([^)]*)\)/g, (m, inner) => pickParen(inner, m)).trim();
+  // 3) 旧格式「名称, 类别, 分数, 选做」
+  if (category === null && points === null && required === null && /[|,，;；、]/.test(s)) {
+    const parts = s.split(/[|,，;；、]+/).map(x => x.trim()).filter(Boolean);
+    const last = parts[parts.length - 1] || '';
+    if (parts.length >= 2 && (/^\d+$/.test(last) || ['选做', '可选', '选', '0'].includes(last))) {
+      s = parts[0];
+      if (['选做', '可选', '选', '0'].includes(parts[1] || '') && parts.length === 2) required = false;
+      else if (/^\d+$/.test(parts[1] || '')) points = parseInt(parts[1]);
+      else category = parts[1];
+      if (/^\d+$/.test(parts[2] || '')) points = parseInt(parts[2]);
+      if (['选做', '可选', '选', '0'].includes(parts[3] || '')) required = false;
+    }
+  }
+  // 4) 旧格式「名称 分数」（空格隔开）
+  if (category === null && points === null && required === null && /\s+\d+$/.test(s)) {
+    const m = s.match(/^(.*?)\s+(\d+)$/);
+    if (m) { s = m[1].trim(); points = parseInt(m[2]); }
+  }
+  const { title, hint } = splitHint(s);
+  if (!title) return null;
+  return {
+    title,
+    hint,
+    category: category || '作业',
+    points: Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, points || 10)),
+    required: required === false ? false : true,
+  };
+}
+
 // 把输入框文本解析成任务项（与 parseBatch 同规则）
 function parseBatchLines(text) {
-  return text.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
-    const parts = parseFields(line);
-    const { title, hint } = splitHint(parts[0]);
-    let category = '打卡', points = 10, required = true;
-    if (parts[1]) {
-      if (/^\d+$/.test(parts[1])) points = parseInt(parts[1]);
-      else category = parts[1];
-    }
-    if (parts[2] && /^\d+$/.test(parts[2])) points = parseInt(parts[2]);
-    if (parts[3] && ['选做', '可选', '0', '选'].includes(parts[3])) required = false;
-    points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, points));
-    return { title, hint, category, points, required };
-  });
+  return text.split('\n').map(l => l.trim()).filter(Boolean).map(parseTaskLine).filter(Boolean);
 }
 
 function saveTemplate() {
@@ -2133,15 +2188,8 @@ function parseMultiDay(text) {
     const dt = parseDateToken(line, base);
     if (dt) { cur = { date: dt, items: [] }; groups.push(cur); return; }
     if (!cur) return; // 开头不是日期就跳过
-    const parts = parseFields(line);
-    const { title, hint } = splitHint(parts[0]);
-    if (!title) return;
-    let category = '打卡', points = 10, required = true;
-    if (parts[1]) { if (/^\d+$/.test(parts[1])) points = parseInt(parts[1]); else category = parts[1]; }
-    if (parts[2] && /^\d+$/.test(parts[2])) points = parseInt(parts[2]);
-    if (parts[3] && ['选做', '可选', '0', '选'].includes(parts[3])) required = false;
-    points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, points));
-    cur.items.push({ title, hint, category, points, required });
+    const item = parseTaskLine(line);
+    if (item) cur.items.push(item);
   });
   return groups.filter(g => g.items.length);
 }
@@ -2153,8 +2201,8 @@ function openMultiDayAssign() {
     <div class="modal" style="max-width:460px;width:calc(100% - 40px)">
       <h3>📅 批量布置多天</h3>
       <p class="form-hint">每行写一个日期（如 <b>10-20</b> / <b>周一</b> / <b>明天</b>），下面几行是那天要做的任务，直到下一个日期行。任务只出现在对应的那天。</p>
-      <textarea id="md-input" style="min-height:180px" placeholder="10-20&#10;语文作业,校内作业,10&#10;跳绳500个,运动,5,选做&#10;10-21&#10;英语作业,校内作业,10&#10;阅读20分钟,阅读,5"></textarea>
-      <div class="form-hint">任务格式同「自动识别」：名称, 类别, 分数, 选做（除名称外可省）</div>
+      <textarea id="md-input" style="min-height:180px" placeholder="10-20&#10;语文作业{先复习生字}[校内作业][10]&#10;跳绳500个[运动][5][选做]&#10;10-21&#10;英语作业[校内作业][10]&#10;阅读20分钟[阅读][5]"></textarea>
+      <div class="form-hint">任务格式同「批量添加」：每行一个任务，[类别] [分数] [选做] 用中括号或小括号指定（不写用默认；名称末尾 {花括号}=小提示；行尾空格+数字当分数）</div>
       <div style="margin-top:12px;display:flex;gap:8px">
         <button class="btn-cancel" data-cancel style="flex:1">取消</button>
         <button class="btn-primary" data-ok style="flex:2">解析并布置</button>
