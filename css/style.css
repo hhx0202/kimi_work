@@ -519,18 +519,6 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .modal .btn-primary, .modal .btn-cancel, .modal .btn-danger { font-size: 13px; padding: 9px 16px; }
 
 /* 任务详情弹窗：信息表（截止日期等） */
-.td-meta { margin-top: 10px; border-radius: 14px; background: #f8fafc; border: 1px solid #eef2f6; padding: 2px 12px; }
-.td-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px dashed rgba(0, 0, 0, .06); font-size: 13px; }
-.td-row:last-child { border-bottom: 0; }
-.td-k { flex: 0 0 auto; font-size: 12px; color: var(--ink-soft); }
-.td-v { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; text-align: right; font-weight: 700; color: var(--ink); }
-.td-date { font-size: 15px; letter-spacing: .5px; }
-.td-none { font-weight: 500; color: #b0bec5; }
-.td-from { font-weight: 500; font-size: 11px; color: var(--ink-soft); }
-.td-pts { font-weight: 900; color: #f57f17; }
-.td-st.ok { color: #2e7d32; }
-.td-st.pend { color: #1565c0; }
-.td-st.todo { font-weight: 500; color: var(--ink-soft); }
 
 /* 必做/选做 进度条弹出的任务清单 */
 .pd-list { margin-top: 10px; max-height: 52vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
@@ -808,23 +796,36 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   background: radial-gradient(circle at 50% 104%, rgba(255, 120, 20, .32), transparent 62%);
   animation: fx-breathe 3.4s ease-in-out infinite;
 }
-/* 水：气泡不断上浮 */
-.fx-bubble::before {
+/* 水：底部水波光影 + 一道斜向水光（只压底部和边缘，不再有满屏气泡挡立绘） */
+.fx-wave::before {
+  inset: auto -15% -15% -15%;
+  height: 34%;
   background-image:
-    radial-gradient(circle, transparent 52%, rgba(255, 255, 255, .8) 58%, rgba(170, 220, 255, .35) 70%, transparent 74%),
-    radial-gradient(circle, transparent 50%, rgba(255, 255, 255, .55) 58%, transparent 68%);
-  background-size: 46px 62px, 70px 94px;
-  background-position: 0 0, 26px 40px;
-  animation: fx-bubble-rise 5.2s linear infinite;
-  opacity: .9;
+    radial-gradient(ellipse 30px 12px at 50% 100%, rgba(255, 255, 255, .42), transparent 70%),
+    radial-gradient(ellipse 22px 9px at 50% 100%, rgba(150, 215, 255, .4), transparent 72%);
+  background-size: 64px 24px, 48px 20px;
+  background-repeat: repeat-x;
+  background-position: 0 100%, 24px 100%;
+  animation: fx-wave-slide 6.4s linear infinite;
+  opacity: .7;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, .55) 42%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, .55) 42%, #000 100%);
 }
-@keyframes fx-bubble-rise {
-  from { background-position: 0 0, 26px 40px; }
-  to   { background-position: 0 -186px, 26px -188px; }
+@keyframes fx-wave-slide {
+  from { background-position: 0 100%, 24px 100%; }
+  to   { background-position: 256px 100%, 240px 100%; }
 }
-.fx-bubble::after {
-  background: radial-gradient(circle at 50% 0%, rgba(90, 160, 255, .22), transparent 60%);
-  animation: fx-breathe 4s ease-in-out infinite;
+/* 水光扫过：很淡的一层斜光，像阳光透过水面，不遮人物 */
+.fx-wave::after {
+  background: linear-gradient(112deg, transparent 42%, rgba(255, 255, 255, .38) 49%, rgba(130, 205, 255, .26) 53%, transparent 61%);
+  background-size: 250% 250%;
+  animation: fx-water-sheen 7s ease-in-out infinite;
+  opacity: 0;
+}
+@keyframes fx-water-sheen {
+  0%, 100% { background-position: 120% 0; opacity: 0; }
+  30%      { opacity: .55; }
+  62%      { background-position: -40% 0; opacity: 0; }
 }
 /* 电：电光点闪烁 + 一道斜向电流扫过 */
 .fx-spark::before {

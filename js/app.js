@@ -951,7 +951,7 @@ function cardGlitterHTML() {
 // 特效家族（18 个属性归到 8 种表现，避免样式爆炸）
 const FX_BY_TYPE = {
   fire: 'ember',                                              // 火星上飘
-  water: 'bubble',                                            // 水泡上浮
+  water: 'wave',                                              // 底部水波光影（不遮挡立绘）
   electric: 'spark',                                          // 电网闪烁
   grass: 'leaf', bug: 'leaf',                                 // 叶片飘落
   ice: 'snow',                                                // 雪花飘落
@@ -1331,24 +1331,16 @@ function showTaskDetail(id) {
   // 截止日期：优先用自己的，子任务则跟随所属多日任务的截止日期
   const deadline = t.deadline || (parent && parent.deadline) || '';
   const fromParent = !t.deadline && !!deadline;
-  const left = deadlineDaysLeft(deadline);
-  const st = taskStatusOf(t.id, S.viewDate);
+  const left = deadline ? deadlineDaysLeft(deadline) : null;
+  const leftText = left === null ? '' : left < 0 ? `（已超期 ${-left} 天）` : left === 0 ? '（今天截止）' : `（剩 ${left} 天）`;
   const modal = document.createElement('div');
   modal.className = 'modal-mask';
   modal.innerHTML = `
     <div class="modal" style="max-width:420px;width:calc(100% - 40px)">
       <h3>${t.title}${t.required === false ? ' <span class="req-tag opt">选做</span>' : ' <span class="req-tag">必做</span>'}</h3>
-      <div class="td-meta">
-        <div class="td-row"><span class="td-k">📅 截止日期</span><span class="td-v">${deadline
-          ? `<b class="td-date">${deadline}</b>${dlBadgeHTML({ deadline }, left)}${fromParent ? `<small class="td-from">（同多日任务「${parent.title}」）</small>` : ''}`
-          : '<span class="td-none">不限日期</span>'}</span></div>
-        <div class="td-row"><span class="td-k">🚩 开始日期</span><span class="td-v">${t.start_date || '<span class="td-none">不限</span>'}</span></div>
-        <div class="td-row"><span class="td-k">🏷️ 分类类型</span><span class="td-v">${t.category} · ${taskTypeLabel(t)}</span></div>
-        <div class="td-row"><span class="td-k">⭐ 奖励积分</span><span class="td-v td-pts">+${t.points} 分</span></div>
-        <div class="td-row"><span class="td-k">📌 当前状态</span><span class="td-v td-st ${st.key}">${st.text}</span></div>
-        ${parent ? `<div class="td-row"><span class="td-k">📋 所属任务</span><span class="td-v">多日任务「${parent.title}」</span></div>` : ''}
-      </div>
-      ${t.hint ? `<div class="form-hint" style="color:#ef6c00;margin-top:10px">💡 ${t.hint}</div>` : ''}
+      <div class="form-hint" style="margin-top:10px">${t.category} · +${t.points}分 · ${taskTypeLabel(t)}${t.start_date ? ` · 🚩 ${t.start_date} 开始` : ''}${deadline ? ` · 📅 截止 ${deadline}${leftText}${fromParent ? '（随多日任务）' : ''}` : ''}</div>
+      ${parent ? `<div class="form-hint">📋 属于多日任务「${parent.title}」</div>` : ''}
+      ${t.hint ? `<div class="form-hint" style="color:#ef6c00">💡 ${t.hint}</div>` : ''}
       ${isParent ? `
       <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn-ghost" data-act="up" style="font-size:13px;padding:6px 12px">↑ 上移</button>
@@ -1463,12 +1455,17 @@ function showWeeklyChildren(id) {
   const t = S.tasks.find(x => x.id === id);
   if (!t) return;
   const kids = allChildTasks(id);
+  const prog = taskProgress(t.id);
+  const left = deadlineDaysLeft(t.deadline);
+  const dlText = t.deadline
+    ? `📅 截止 ${t.deadline}${left < 0 ? `（已超期 ${-left} 天）` : left === 0 ? '（今天截止）' : `（剩 ${left} 天）`}`
+    : '不限日期';
   const modal = document.createElement('div');
   modal.className = 'modal-mask';
   modal.innerHTML = `
     <div class="modal" style="max-width:420px;width:calc(100% - 40px)">
       <h3>${t.title}</h3>
-      <div class="form-hint" style="margin-top:4px">子任务完成得自己的分数，全部完成多日任务即完成</div>
+      <div class="form-hint" style="margin-top:6px">${t.category ? `${t.category} · ` : ''}${dlText}${t.deadline ? ' ' + dlBadgeHTML(t, left) : ''} · 已完成 ${prog}% · 全清 +${t.bonus || CONFIG.WEEKLY_DONE_BONUS} 分</div>
       <div style="margin-top:8px">
         ${kids.map(k => {
           const done = isTaskDoneEver(k.id);
