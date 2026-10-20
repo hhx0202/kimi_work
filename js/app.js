@@ -1637,7 +1637,7 @@ function showProgressDetail(kind) {
 }
 // 删除任务（家长）
 async function delTask(id) {
-  if (!confirm('确定删除这个任务？')) return;
+  if (!await askConfirm('确定删除这个任务？', { okText: '删除' })) return;
   await DB.deleteTask(id);
   await refreshAll(); render();
   toast('已删除');
@@ -2338,15 +2338,8 @@ function bindKidTabs() {
     if (DEMO_ACTIVE) { S.role = 'parent'; localStorage.setItem(LK('role'), 'parent'); localStorage.setItem(LK('parent_authed'), '1'); render(); return; }
     // 本机已验证过家长密码（或从家长端切换过来）→ 免密直接进入
     if (localStorage.getItem(LK('parent_authed')) === '1') { S.role = 'parent'; localStorage.setItem(LK('role'), 'parent'); render(); return; }
-    // 快速进入：家长密码
-    const pw = prompt('请输入家长密码');
-    if (pw === CONFIG.PARENT_PASSWORD) {
-      S.role = 'parent';
-      localStorage.setItem(LK('role'), 'parent');
-      localStorage.setItem(LK('parent_authed'), '1');  // 记住身份，以后往返免密
-      render();
-    }
-    else if (pw !== null) toast('密码不对哦');
+    // 快速进入：家长密码（自绘弹窗，不用 prompt —— 预览面板/内嵌 WebView 会禁用原生弹窗）
+    openParentAuth();
   };
 }
 // 孩子端"登出"悬浮按钮：可拖动，避免遮挡底部入口
@@ -2590,17 +2583,17 @@ function bindActions() {
     else if (act === 'parent-edit-note') openNoteEditor();
     else if (act === 'parent-settings') openSettings();
     else if (act === 'err-view') openErrorLog();
-    else if (act === 'err-clear') { if (confirm('清空错误日志？')) { saveErrors([]); toast('已清空错误日志'); render(); } }
+    else if (act === 'err-clear') { if (await askConfirm('清空错误日志？', { okText: '清空' })) { saveErrors([]); toast('已清空错误日志'); render(); } }
     else if (act === 'pts-dismiss') { lsSet(LK('seen_pts'), Math.max(0, ...S.pointLogs.filter(l => l.amount > 0 && l.confirmed !== false).map(l => l.id))); render(); }
     else if (act === 'parent-giveball') giveBall();
     else if (act === 'parent-givepts') givePts();
     else if (act === 'parent-minuspts') minusPts();
-    else if (act === 'parent-reset-demo') resetDemo();
-    else if (act === 'parent-demo-enter') enterDemoMode();
-    else if (act === 'parent-demo-exit') exitDemoMode();
+    else if (act === 'parent-reset-demo') await resetDemo();
+    else if (act === 'parent-demo-enter') await enterDemoMode();
+    else if (act === 'parent-demo-exit') await exitDemoMode();
     // 家长端已移除「放生」入口（防误点），deletePokemon 保留给未来扩展
     else if (act === 'parent-confirm') confirmPending();
-    else if (act === 'parent-undo') undoPoint(Number(btn.dataset.plid));
+    else if (act === 'parent-undo') await undoPoint(Number(btn.dataset.plid));
     else if (act === 'share') shareCard();
   };
 }
@@ -2657,6 +2650,105 @@ function openFeed(pmId) {
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 function hideModal() { document.querySelectorAll('.modal-mask').forEach(m => m.remove()); }
+
+// ---------- 自绘确认框 / 密码框 ----------
+// 为什么不用原生 prompt()/confirm()：网页被嵌在预览面板、iframe、部分 App 的 WebView 里时
+// 原生弹窗会被宿主禁用（报 "prompt() is not supported"），手机上却一切正常。
+// 所以统一用页面内的 .modal-mask 自己画，任何环境表现一致。
+function askConfirm(msg, opt = {}) {
+  return new Promise(resolve => {
+    const modal = document.createElement('div');
+    modal.className = 'modal-mask';
+    const okText = opt.okText || '确定';
+    const danger = opt.danger !== false;
+    const lines = String(msg == null ? '' : msg).split('\n').map(l => escHTML(l)).join('<br>');
+    modal.innerHTML = `
+      <div class="modal" style="max-width:340px">
+        <h3>${escHTML(opt.title || '请确认')}</h3>
+        <div class="ask-msg">${lines}</div>
+        <div class="row" style="margin-top:16px">
+          <button class="btn-cancel" data-no>取消</button>
+          <button class="${danger ? 'btn-danger' : 'btn-primary'}" data-yes>${escHTML(okText)}</button>
+        </div>
+      </div>`;
+    let done = false;
+    const fin = v => {
+      if (done) return;
+      done = true;
+      document.removeEventListener('keydown', onKey);
+      modal.remove();
+      resolve(v);
+    };
+    const onKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); fin(false); }
+      else if (e.key === 'Enter') { e.preventDefault(); fin(true); }
+    };
+    modal.querySelector('[data-yes]').onclick = () => fin(true);
+    modal.querySelector('[data-no]').onclick = () => fin(false);
+    modal.addEventListener('click', e => { if (e.target === modal) fin(false); });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(modal);
+    setTimeout(() => { const b = modal.querySelector('[data-yes]'); if (b) b.focus(); }, 50);
+  });
+}
+
+// 家长密码（替代 prompt：内置预览面板里 prompt 被禁用）
+function openParentAuth() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-mask';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:330px">
+      <h3>🔒 家长验证</h3>
+      <div class="ask-msg" style="margin-bottom:10px">输入家长密码进入家长端</div>
+      <input id="pw-input" type="password" inputmode="numeric" autocomplete="off"
+             placeholder="家长密码" maxlength="20" style="text-align:center;letter-spacing:4px;font-size:16px">
+      <div class="pw-err" id="pw-err"></div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn-cancel" data-no>取消</button>
+        <button class="btn-primary" data-yes>进入</button>
+      </div>
+    </div>`;
+  const box = modal.querySelector('.modal');
+  const input = modal.querySelector('#pw-input');
+  const err = modal.querySelector('#pw-err');
+  let done = false;
+  const close = () => {
+    if (done) return;
+    done = true;
+    document.removeEventListener('keydown', onKey);
+    modal.remove();
+  };
+  const submit = () => {
+    const val = String(input.value || '').trim();
+    if (!val) { failTip('请输入密码'); return; }
+    if (val === String(CONFIG.PARENT_PASSWORD)) {
+      close();
+      S.role = 'parent';
+      localStorage.setItem(LK('role'), 'parent');
+      localStorage.setItem(LK('parent_authed'), '1');   // 记住身份，以后往返免密
+      render();
+      return;
+    }
+    failTip('密码不对，再试一次');
+  };
+  const failTip = t => {
+    err.textContent = t;
+    box.classList.remove('shake');
+    void box.offsetWidth;      // 强制重排，否则同一个动画类不会重放
+    box.classList.add('shake');
+    input.select();
+  };
+  const onKey = e => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+  };
+  modal.querySelector('[data-yes]').onclick = submit;
+  modal.querySelector('[data-no]').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(modal);
+  setTimeout(() => input.focus(), 60);
+}
 
 // ---------- 家长端 ----------
 function renderParent() {
@@ -3703,15 +3795,15 @@ function modePanel() {
     </div>
   `;
 }
-function enterDemoMode() {
-  if (!confirm('进入演示模式？\n会切换到一套独立的演示数据，孩子随便玩，不影响你的真实数据。')) return;
+async function enterDemoMode() {
+  if (!await askConfirm('进入演示模式？\n会切换到一套独立的演示数据，孩子随便玩，不影响你的真实数据。', { okText: '进入', danger: false })) return;
   localStorage.setItem('km_role_back', localStorage.getItem(LK('role')) || 'parent');
   localStorage.setItem('km_demo', '1');
   localStorage.removeItem(LK('role'));
   location.reload();
 }
-function exitDemoMode() {
-  if (!confirm('退出演示模式，回到真实数据？')) return;
+async function exitDemoMode() {
+  if (!await askConfirm('退出演示模式，回到真实数据？', { okText: '退出' })) return;
   localStorage.removeItem('km_demo');
   localStorage.setItem('km_role', localStorage.getItem('km_role_back') || 'parent');
   localStorage.removeItem('km_role_back');
@@ -3967,7 +4059,7 @@ function openSettings() {
 async function resetDemo() {
   const prefix = DEMO_ACTIVE ? 'kmd_' : 'km_';
   const what = DEMO_ACTIVE ? '演示数据' : '全部数据';
-  if (!confirm(`确定清空${what}吗？会重新生成示例任务。`)) return;
+  if (!await askConfirm(`确定清空${what}吗？会重新生成示例任务。`, { okText: '清空' })) return;
   Object.keys(localStorage).filter(k => k.startsWith(prefix)).forEach(k => localStorage.removeItem(k));
   localStorage.removeItem(LK('lead'));
   location.reload();
@@ -4048,7 +4140,7 @@ async function undoPoint(id) {
   const l = S.pointLogs.find(x => x.id === id);
   if (!l) return;
   const kind = l.confirmed === false ? '这条待确认积分' : `这笔已发放的 +${l.amount} 积分`;
-  if (!confirm(`撤销${kind}「${l.reason}」？对应任务会恢复为未完成。`)) return;
+  if (!await askConfirm(`撤销${kind}「${l.reason}」？对应任务会恢复为未完成。`, { okText: '撤销' })) return;
   await DB.deletePointLog(id);
   S.pointLogs = S.pointLogs.filter(x => x.id !== id);
   if (l.confirmed !== false && l.amount > 0) S.balance -= l.amount;

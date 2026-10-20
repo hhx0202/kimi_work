@@ -651,6 +651,18 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .modal .row button { flex: 1; }
 .modal .btn-primary, .modal .btn-cancel, .modal .btn-danger { font-size: 13px; padding: 9px 16px; }
 
+/* 自绘确认框 / 密码框（替代原生 confirm/prompt：预览面板与内嵌 WebView 禁用了原生弹窗） */
+.modal .ask-msg { font-size: 13px; line-height: 1.65; color: var(--ink); word-break: break-word; }
+.modal .pw-err { min-height: 16px; margin: 2px 0 0; font-size: 11.5px; color: #e53935; font-weight: 700; text-align: center; }
+.modal.shake { animation: modal-shake .32s ease; }
+@keyframes modal-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+
 /* 任务详情弹窗：信息表（截止日期等） */
 
 /* 必做/选做 进度条弹出的任务清单 */

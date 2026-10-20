@@ -11,6 +11,7 @@
 - 水系比别的属性多两个子元素（`.wv-ripple` / `.wv-bubble`），由 `cardFxHTML` 只对 `wave` 输出；伪元素只有两个，层数不够就加子元素，别硬塞背景层导致动画互相覆盖。
 
 ## 工程约定
+- **禁用原生 `prompt()/confirm()/alert()`**：预览面板（iframe/webview）没 `allow-modals` 会报 "prompt() is not supported"。统一用 `askConfirm()`（返回 Promise）和自绘弹窗（如 `openParentAuth()`）。
 - 进度条配色在 `js/app.js` 的 `PROG_STOPS`（淡雾蓝 → 淡青绿 → 绿，RGB 插值）；**不要再用红/橙做低进度起始色**（用户觉得像报警），100% 仍走 `.progress-fill.full` 绿色 + 白光。
 - 睡前/叮嘱这类「多行文本」，一律按行拆成 `<li>` 渲染，每行配一个道具图标（哈希稳定，不能用 `Math.random`），样式见 `.note-lines`。
 - CSS 动画位移必须取 `background-size` 的整数倍，循环才无缝；`translateY` 用百分比会按伪元素自身高度算（踩过坑）。
