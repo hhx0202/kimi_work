@@ -48,9 +48,10 @@ const POKE_ICON = (() => {
 
 // 类别 → 图标规则（按关键词匹配，命中即用）
 const CAT_ICON_RULES = [
-  { match: '校内', icon: () => POKE_ICON.tm('#42a5f5') },
-  { match: '校外', icon: () => POKE_ICON.ball('#e53935') },
-  { match: '作业', icon: () => POKE_ICON.tm('#66bb6a') },
+  { match: '校内', icon: () => POKE_ICON.ball('#e53935') },
+  { match: '学校', icon: () => POKE_ICON.ball('#e53935') },
+  { match: '作业', icon: () => POKE_ICON.ball('#66bb6a') },
+  { match: '校外', icon: () => POKE_ICON.ball('#2f6db3') },
   { match: '阅读', icon: () => POKE_ICON.dex() },
   { match: '运动', icon: () => POKE_ICON.badge('#ffb300') },
   { match: '家务', icon: () => POKE_ICON.candy() },

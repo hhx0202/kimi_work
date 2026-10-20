@@ -26,6 +26,7 @@ const S = {
   // 家长端
   pmId: null,           // 正在操作的宝可梦
   calOffset: 0,         // 日历偏移(月)
+  statDim: 'all',       // 完成统计/打卡日历维度（孩子端）
   parentDate: null,     // 家长端当前查看/布置的日期，默认今天
   // 孩子端查看的日期（历史查看用，默认今天）
   viewDate: null,       // 'YYYY-MM-DD'，启动时置为今天
@@ -356,6 +357,46 @@ function calcStreak() {
     d.setDate(d.getDate() - 1);
   }
   return streak;
+}
+// 某任务的连续打卡天数（从今天往前连续完成）
+function taskStreak(taskId) {
+  let n = 0;
+  const d = new Date(DB.today() + 'T00:00:00');
+  for (let i = 0; i < 730; i++) {
+    const ds = fmtDate(d);
+    const l = S.logs[ds] && S.logs[ds][taskId];
+    if (l && (l.done || l.completed)) { n++; d.setDate(d.getDate() - 1); }
+    else break;
+  }
+  return n;
+}
+// 维度文案：体现「必做/选做任务全清」；单任务维度显示任务名
+function statDimLabel(dim) {
+  if (dim === 'req') return '必做任务全清';
+  if (dim === 'opt') return '选做任务全清';
+  if (dim && dim !== 'all') { const t = S.tasks.find(x => x.id === Number(dim)); return t ? t.title : '全部每日任务'; }
+  return '全部每日任务';
+}
+// 完成统计：累计 / 近一周 / 近一月（只统计「每日打卡」任务，单次/多日/子任务不算打卡）
+function doneStats(dim = 'all') {
+  const today = DB.today();
+  const wStart = shiftDate(today, -6), mStart = shiftDate(today, -29);
+  // 维度：all=全部每日 / req=必做全清 / opt=选做全清 / 任务id=单个重复任务
+  let tasks = S.tasks.filter(t => t.schedule === 'daily');
+  if (dim === 'req') tasks = tasks.filter(t => t.required !== false);
+  else if (dim === 'opt') tasks = tasks.filter(t => t.required === false);
+  else if (dim && dim !== 'all') tasks = tasks.filter(t => t.id === Number(dim));
+  const ids = new Set(tasks.map(t => t.id));
+  let total = 0, week = 0, month = 0;
+  for (const d in S.logs) {
+    let n = 0;
+    for (const tid in S.logs[d]) { const l = S.logs[d][tid]; if (ids.has(Number(tid)) && l && (l.completed || l.done)) n++; }
+    if (!n) continue;
+    total += n;
+    if (d >= wStart) week += n;
+    if (d >= mStart) month += n;
+  }
+  return { total, week, month };
 }
 
 // ---------- 打卡 ----------
@@ -793,8 +834,8 @@ function renderProgress() {
   };
   // 必做 / 选做 独立两条进度条
   let html = `<div class="progress-card">
-    ${bar(req, '🔴 必做任务', `全清 +${CONFIG.REQUIRED_DONE_BONUS} 分`, `🎉 全清 +${CONFIG.REQUIRED_DONE_BONUS} 分`)}
-    ${opt.length ? bar(opt, '🟢 选做任务', `全清 +${CONFIG.OPTIONAL_DONE_BONUS} 分`, `🎉 全清 +${CONFIG.OPTIONAL_DONE_BONUS} 分`) : ''}
+    ${bar(req, '🔴 必做任务全清', `全清 +${CONFIG.REQUIRED_DONE_BONUS} 分`, `🎉 全清 +${CONFIG.REQUIRED_DONE_BONUS} 分`)}
+    ${opt.length ? bar(opt, '🟢 选做任务全清', `全清 +${CONFIG.OPTIONAL_DONE_BONUS} 分`, `🎉 全清 +${CONFIG.OPTIONAL_DONE_BONUS} 分`) : ''}
   </div>`;
   // 多日任务进度条挨着增加
   if (wts.length) html += `<div class="progress-card">${wts.map(weeklyProgressBar).join('')}</div>`;
@@ -823,6 +864,14 @@ function renderTasks() {
   renderProgress();
 }
 
+// 任务属性统一叫法：单次(once) / 重复(daily) / 多日(weekly) / 子任务(child)
+function taskTypeLabel(t) {
+  if (t.schedule === 'once') return '单次';
+  if (t.schedule === 'daily') return '重复';
+  if (t.schedule === 'child') return '子任务';
+  if (t.schedule === 'weekly') return '多日';
+  return '';
+}
 // 任务排序：家长调整的 sort 优先，其次按名称
 function taskSort(a, b) {
   const sa = a.sort || 0, sb = b.sort || 0;
@@ -866,6 +915,7 @@ function taskCardHTML(t) {
   const isToday = S.viewDate === DB.today();
   const done = logOn(t.id, S.viewDate);
   const isChild = !!t.parent_id;
+  const streak = t.schedule === 'daily' ? taskStreak(t.id) : 0;  // 每日任务连续打卡天数
   // 必做/选做明显标记（卡片上部）
   const reqTag = t.required === false
     ? '<span class="req-tag opt">🟢 选做</span>'
@@ -878,7 +928,7 @@ function taskCardHTML(t) {
     <div class="info">
       <b>${t.title}</b>${reqTag}
       ${hint}
-      <span>${t.category}${t.schedule === 'once' ? ' · 单次' : ''}${isChild ? ' · 子任务' : ''}${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}</span>
+      <span>${t.category} · ${taskTypeLabel(t)}${streak > 0 ? ` · 🔥连续 ${streak} 天` : ''}${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}</span>
     </div>
     <div class="pts">+${t.points}</div>
     <button class="btn-done" data-action="checkin" data-tid="${t.id}" ${done || !isToday ? 'disabled' : ''}>${done ? '✅ 已完成' : (!isToday ? '查看历史' : '✅ 完成')}</button>
@@ -897,7 +947,7 @@ function showTaskDetail(id) {
   modal.innerHTML = `
     <div class="modal" style="max-width:420px;width:calc(100% - 40px)">
       <h3>${t.title}${t.required === false ? ' <span class="req-tag opt">选做</span>' : ' <span class="req-tag">必做</span>'}</h3>
-      <div class="form-hint" style="margin-top:10px">${t.category} · +${t.points}分 · ${t.schedule === 'once' ? '只做一次' : t.schedule === 'daily' ? '每天都有' : t.schedule === 'weekly' ? '多日任务' : '子任务'}${t.start_date ? ` · 📅 ${t.start_date}` : ''}${t.deadline ? ` · 截止 ${t.deadline}` : ''}</div>
+      <div class="form-hint" style="margin-top:10px">${t.category} · +${t.points}分 · ${taskTypeLabel(t)}${t.start_date ? ` · 📅 ${t.start_date}` : ''}${t.deadline ? ` · 截止 ${t.deadline}` : ''}</div>
       ${parent ? `<div class="form-hint">📋 属于多日任务「${parent.title}」</div>` : ''}
       ${t.hint ? `<div class="form-hint" style="color:#ef6c00">💡 ${t.hint}</div>` : ''}
       ${isParent ? `
@@ -945,13 +995,48 @@ function weeklyProgressBar(t) {
   const left = deadlineDaysLeft(t.deadline);
   const full = prog >= 100;
   return `
-    <div class="progress-head" style="display:flex;justify-content:space-between;align-items:center">
+    <div class="progress-head" data-action="weekly-detail" data-tid="${t.id}" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" title="点开看子任务状态">
       <b>${t.title}${dlBadgeHTML(t, left)}</b>
       <span>${prog}%${full ? ' 🎉' : ''} · 全清 +${t.bonus || CONFIG.WEEKLY_DONE_BONUS} 分</span>
     </div>
     <div class="progress-track"><div class="progress-fill ${full ? 'full' : ''}" style="width:${prog}%"></div></div>
     ${t.deadline ? `<div class="dl-penalty">⏰ 超期每天扣 ${CONFIG.OVERDUE_DAILY_PENALTY} 分</div>` : ''}
   `;
+}
+// 子任务是否完成过（跨天累计）
+function isTaskDoneEver(taskId) {
+  for (const d in S.logs) { const l = S.logs[d][taskId]; if (l && (l.completed || l.done)) return true; }
+  return false;
+}
+// 多日任务子任务状态弹窗（孩子点进度条查看）
+function showWeeklyChildren(id) {
+  const t = S.tasks.find(x => x.id === id);
+  if (!t) return;
+  const kids = allChildTasks(id);
+  const modal = document.createElement('div');
+  modal.className = 'modal-mask';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:420px;width:calc(100% - 40px)">
+      <h3>${t.title}</h3>
+      <div class="form-hint" style="margin-top:4px">子任务完成得自己的分数，全部完成多日任务即完成</div>
+      <div style="margin-top:8px">
+        ${kids.map(k => {
+          const done = isTaskDoneEver(k.id);
+          const pend = done && taskPending(k.id);
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #f5f5f5">
+            <span>${done ? '✅' : '⬜'} ${k.title}${k.required === false ? ' <small style="color:#2e7d32">选做</small>' : ''}</span>
+            <span style="color:#f57f17;font-weight:800">+${k.points}${pend ? ' ⏳' : ''}</span>
+          </div>`;
+        }).join('') || '<div class="empty-tip">这个多日任务还没有子任务</div>'}
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn-primary" data-close style="flex:1">关闭</button>
+      </div>
+    </div>
+  `;
+  modal.querySelector('[data-close]').onclick = () => modal.remove();
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
 function renderPokemons() {
@@ -1090,6 +1175,7 @@ function renderMe() {
   const streak = calcStreak();
   const weekDone = weekDoneCount();
   const pendCount = S.pointLogs.filter(l => l.confirmed === false && l.amount > 0).length;
+  const ds = doneStats(S.statDim);
   page.innerHTML = `
     <div class="stat-grid">
       <div class="stat-card"><b>${S.balance}</b><span>当前积分</span></div>
@@ -1097,12 +1183,19 @@ function renderMe() {
       <div class="stat-card"><b>${S.pokemons.length}</b><span>我的宝可梦</span></div>
       <div class="stat-card"><b>${Object.values(ownDexCount()).length}</b><span>图鉴收集</span></div>
     </div>
+    <div class="section-title" style="margin-top:16px">完成统计 <small>${statDimLabel(S.statDim)} · 打卡记录数</small></div>
+    <div class="stat-grid">
+      <div class="stat-card"><b>${ds.total}</b><span>累计完成</span></div>
+      <div class="stat-card"><b>${ds.week}</b><span>近一周</span></div>
+      <div class="stat-card"><b>${ds.month}</b><span>近一月</span></div>
+    </div>
     ${pendCount ? `<div class="form-hint" style="text-align:center;margin-top:10px">⏳ 有 ${pendCount} 条积分在等家长确认，确认后才到账哦</div>` : ''}
     <div class="section-title">本周表现 <small>${weekDone}/7 天全清</small></div>
     <div class="catch-zone">
       <button class="btn-big" data-action="share" style="margin-bottom:8px">📸 生成成就图，发朋友圈</button>
       <button class="btn-big buy" data-action="catch" ${S.balls < 1 ? 'disabled' : ''}>🥚 去捕捉宝可梦</button>
     </div>
+    ${kidCalPanel()}
     ${bonusLogsHTML()}
     ${minusLogsHTML()}
     <div class="section-title" style="margin-top:20px">积分记录</div>
@@ -1110,6 +1203,87 @@ function renderMe() {
       ${S.pointLogs.slice(0, 30).map(logItemHTML).join('') || '<div class="empty-tip">还没有积分记录</div>'}
     </div>
   `;
+  renderKidCal();
+}
+// 孩子端「我的」页打卡日历（与统计同一维度）
+function kidCalPanel() {
+  const dailyTasks = S.tasks.filter(t => t.active && t.schedule === 'daily');
+  return `
+    <div class="panel" style="margin-top:16px">
+      <h3>📅 打卡日历 <small style="font-weight:400">按每日任务</small></h3>
+      <select id="kid-cal-dim" onchange="S.statDim=this.value;renderMe()" style="width:100%;margin-bottom:8px">
+        <option value="all" ${S.statDim === 'all' ? 'selected' : ''}>全部每日任务</option>
+        <option value="req" ${S.statDim === 'req' ? 'selected' : ''}>必做任务全清</option>
+        <option value="opt" ${S.statDim === 'opt' ? 'selected' : ''}>选做任务全清</option>
+        ${dailyTasks.map(t => `<option value="${t.id}" ${S.statDim === String(t.id) ? 'selected' : ''}>${t.title}</option>`).join('')}
+      </select>
+      <div id="kid-cal-root"></div>
+      ${dailyTasks.length ? `
+      <h3 style="margin-top:12px;font-size:13px">📋 打卡记录</h3>
+      <select id="kid-log-task" onchange="showTaskLogs('kid-log-list', this.value)" style="width:100%">
+        <option value="">选择打卡项</option>
+        <option value="__all">全部每日任务</option>
+        <option value="__req">必做任务全清</option>
+        <option value="__opt">选做任务全清</option>
+        ${dailyTasks.map(t => `<option value="${t.id}">${t.title}</option>`).join('')}
+      </select>
+      <div id="kid-log-list"></div>` : ''}
+    </div>
+  `;
+}
+// 每日任务打卡记录面板（孩子「我的」和家长端共用，下拉选任务看历史打卡）
+function checkinLogPanel(title, idPrefix) {
+  const dailyTasks = S.tasks.filter(t => t.active && t.schedule === 'daily');
+  if (!dailyTasks.length) return '';
+  const selId = idPrefix + '-log-task', listId = idPrefix + '-log-list';
+  return `
+    <div class="panel" style="margin-top:16px">
+      <h3>${title}</h3>
+      <select id="${selId}" onchange="showTaskLogs('${listId}', this.value)" style="width:100%">
+        <option value="">选择打卡项</option>
+        <option value="__all">全部每日任务</option>
+        <option value="__req">必做任务全清</option>
+        <option value="__opt">选做任务全清</option>
+        ${dailyTasks.map(t => `<option value="${t.id}">${t.title}</option>`).join('')}
+      </select>
+      <div id="${listId}"></div>
+    </div>
+  `;
+}
+// 某组每日任务全部完成（全清）的日子
+function allClearDates(tasks) {
+  if (!tasks.length) return [];
+  const dates = [];
+  for (const d in S.logs) {
+    let all = true;
+    for (const t of tasks) { const l = S.logs[d][t.id]; if (!(l && (l.completed || l.done))) { all = false; break; } }
+    if (all) dates.push(d);
+  }
+  return dates;
+}
+// 展示打卡记录（支持全部每日/必做全清/选做全清/单个任务）
+function showTaskLogs(listId, key) {
+  const el = document.getElementById(listId);
+  if (!el) return;
+  if (!key) { el.innerHTML = ''; return; }
+  const daily = S.tasks.filter(t => t.active && t.schedule === 'daily');
+  let dates = [];
+  if (key === '__all') {
+    // 全部每日任务的打卡日（去重）
+    const set = new Set();
+    daily.forEach(t => { for (const d in S.logs) { const l = S.logs[d][t.id]; if (l && (l.completed || l.done)) set.add(d); } });
+    dates = [...set];
+  } else if (key === '__req') {
+    dates = allClearDates(daily.filter(t => t.required !== false));
+  } else if (key === '__opt') {
+    dates = allClearDates(daily.filter(t => t.required === false));
+  } else {
+    for (const d in S.logs) { const l = S.logs[d][key]; if (l && (l.completed || l.done)) dates.push(d); }
+  }
+  dates.sort();
+  el.innerHTML = dates.length
+    ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${dates.map(d => `<span class="chip" style="font-size:12px">✓ ${d.slice(5)}</span>`).join('')}</div><div class="form-hint" style="margin-top:6px">共 ${dates.length} 次打卡</div>`
+    : '<div class="form-hint" style="margin-top:8px">还没有打卡记录</div>';
 }
 // 一条积分流水（孩子端）
 function logItemHTML(l) {
@@ -1293,6 +1467,7 @@ function bindActions() {
     const tid = btn.dataset.tid, pmid = btn.dataset.pmid;
     if (act === 'checkin') await checkin(Number(tid), btn, btn.dataset.prog ? Number(btn.dataset.prog) : null);
     else if (act === 'task-detail') showTaskDetail(Number(tid));
+    else if (act === 'weekly-detail') showWeeklyChildren(Number(tid));
     else if (act === 'date-prev') { S.viewDate = shiftDate(S.viewDate, -1); render(); refreshViewNote(); }
     else if (act === 'date-next') { if (S.viewDate < DB.today()) { S.viewDate = shiftDate(S.viewDate, 1); render(); refreshViewNote(); } }
     else if (act === 'date-today') { S.viewDate = DB.today(); render(); refreshViewNote(); }
@@ -1311,7 +1486,7 @@ function bindActions() {
     else if (act === 'parent-del-quick') delQuick(Number(btn.dataset.idx));
     else if (act === 'parent-parse') parseBatch();
     else if (act === 'parent-exit') { S.role = 'kid'; localStorage.setItem(LK('role'), 'kid'); render(); }
-    else if (act === 'parent-cal') { S.calOffset += Number(btn.dataset.step || 0); renderParentCal(); }
+    else if (act === 'parent-cal') { S.calOffset += Number(btn.dataset.step || 0); renderKidCal(); }
     else if (act === 'parent-date-prev') { S.parentDate = shiftDate(S.parentDate, -1); render(); refreshParentNote(); }
     else if (act === 'parent-date-next') { S.parentDate = shiftDate(S.parentDate, 1); render(); refreshParentNote(); }
     else if (act === 'parent-date-today') { S.parentDate = DB.today(); render(); refreshParentNote(); }
@@ -1383,13 +1558,13 @@ function renderParent() {
       ${parentStatsPanel()}
       ${parentPmPanel()}
       ${parentSettingsPanel()}
+      ${checkinLogPanel('📋 每日任务打卡记录', 'parent')}
       ${pointLogPanel()}
       ${modePanel()}
       <button class="btn-ghost" style="width:100%;margin-top:8px" data-action="parent-exit">← 返回孩子界面</button>
     </div>
   `;
   if (draft) { const ta = document.getElementById('pt-batch'); if (ta) ta.value = draft; }
-  renderParentCal();
   bindActions();
   enableDragSort('#pt-task-list-req');
   enableDragSort('#pt-task-list-opt');
@@ -1411,7 +1586,7 @@ function prowRowHTML(t) {
   return `
     <div class="prow prow-click" data-action="parent-edit" data-tid="${t.id}" title="点开编辑">
       <span>${catIcon(t.category)}</span>
-      <div class="grow"><b>${t.title}</b><small style="display:block;color:#90a4ae">${t.category} · ${t.required === false ? '选做' : '必做'} · +${t.points}分${t.schedule === 'once' ? ' · 单次' : ''}${t.schedule === 'child' ? ' · 子任务' : ''}${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}${t.hint ? ` · 💡 ${t.hint}` : ''}</small></div>
+      <div class="grow"><b>${t.title}</b><small style="display:block;color:#90a4ae">${t.category} · ${taskTypeLabel(t)} · ${t.required === false ? '选做' : '必做'} · +${t.points}分${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}${t.hint ? ` · 💡 ${t.hint}` : ''}</small></div>
       <span class="${logOn(t.id, S.parentDate) ? 'ok' : 'miss'}">${logOn(t.id, S.parentDate) ? '✓' : '·'}</span>
       <button class="btn-ghost mini" data-action="parent-move" data-tid="${t.id}" data-dir="up" title="上移">↑</button>
       <button class="btn-ghost mini" data-action="parent-move" data-tid="${t.id}" data-dir="down" title="下移">↓</button>
@@ -1486,21 +1661,25 @@ function parentTaskPanel() {
       ` : ''}
       <h3 style="margin-top:16px">新建任务</h3>
       <div class="input-row">
-        <input id="pt-title" placeholder="任务名称（末尾可加 {提示}）" style="flex:2">
-        <input id="pt-cat" list="cat-options" placeholder="类别(可自定义)" value="打卡">
+        <textarea id="pt-title" placeholder="任务名称（末尾可加 {提示}）" style="flex:2;min-height:44px"></textarea>
+      </div>
+      <div class="input-row">
+        <input id="pt-cat" list="cat-options" placeholder="类别(可自定义)" value="打卡" style="flex:1.5">
         <datalist id="cat-options">${loadCats().map(c => `<option value="${c}">`).join('')}</datalist>
-        <input id="pt-pts" type="number" placeholder="积分" value="10" style="width:80px">
-        <select id="pt-req" style="width:80px">
+        <input id="pt-pts" type="number" placeholder="积分" value="10" style="width:90px">
+      </div>
+      <div class="input-row">
+        <select id="pt-req" style="flex:1">
           <option value="1">必做</option>
           <option value="0">选做</option>
         </select>
+        <select id="pt-schedule" onchange="var d=document.getElementById('pt-deadline'),c=document.getElementById('pt-children-wrap');var w=this.value==='weekly';if(d)d.style.display=w?'':'none';if(c)c.style.display=w?'':'none';" style="flex:1.5">
+          <option value="once">单次（当天做完消失）</option>
+          <option value="daily">重复（每天都有）</option>
+          <option value="weekly">多日（带截止，拆子任务）</option>
+        </select>
       </div>
       <div class="input-row">
-        <select id="pt-schedule" onchange="var d=document.getElementById('pt-deadline'),c=document.getElementById('pt-children-wrap');var w=this.value==='weekly';if(d)d.style.display=w?'':'none';if(c)c.style.display=w?'':'none';">
-          <option value="once">只做一次</option>
-          <option value="daily">每天都有</option>
-          <option value="weekly">多日任务(拆子任务)</option>
-        </select>
         <input id="pt-deadline" type="date" style="display:none;flex:1">
         <button class="btn-primary" data-action="parent-save" style="flex:1">添加</button>
       </div>
@@ -1530,11 +1709,11 @@ function parentTaskPanel() {
       <h3 style="margin-top:16px">批量布置多天</h3>
       <button class="btn-primary" data-action="parent-multi" style="width:100%">📅 批量布置多天（日期分隔行）</button>
       <div class="form-hint">一次规划好几天：每行写一个日期（如 <b>10-20</b> / <b>周一</b> / <b>明天</b>），下面几行是那天要做的任务，直到下一个日期行。布置后任务只出现在对应的那天（错过当天则不再出现）。</div>
-      <h3 style="margin-top:16px">自动识别（布置每天都要做的任务）</h3>
-      <div class="form-hint" style="margin-bottom:6px">格式：<b>名称, 类别, 分数, 选做</b>　（除名称外均可省；名称末尾用 <b>{花括号}</b> 圈住小提示）</div>
-      <textarea id="pt-batch" placeholder="每行一个任务（除名称外都可省）：&#10;  名称 必填，末尾可加 {小提示} 如 语文作业{先复习生字}&#10;  类别 默认「打卡」&#10;  分数 默认 10&#10;  选做 写「选做」=非必做（默认必做）&#10;&#10;示例：&#10;  语文作业{先复习生字},校内作业,10&#10;  跳绳500个,运动,5,选做&#10;  练字一页 10"></textarea>
+      <h3 style="margin-top:16px">📥 批量添加单次任务</h3>
+      <div class="form-hint" style="margin-bottom:6px">格式：<b>名称, 类别, 分数, 选做</b>　（除名称外均可省；名称末尾用 <b>{花括号}</b> 圈住小提示）<br>这里添加的是<b>单次任务</b>（当前日期做一次、做完消失）；<b>重复任务（每天都有）</b>请用上方「新建任务 → 重复（每天都有）」单独建，避免批量复制重复建出很多条。</div>
+      <textarea id="pt-batch" placeholder="每行一个任务（除名称外都可省）：&#10;  名称 必填，末尾可加 {小提示} 如 语文作业{先复习生字}&#10;  类别 默认「打卡」（任务分组）&#10;  分数 默认 10&#10;  选做 写「选做」=非必做（默认必做）&#10;&#10;示例：&#10;  语文作业{先复习生字},校内作业,10&#10;  跳绳500个,运动,5,选做&#10;  练字一页 10"></textarea>
       <button class="btn-primary" data-action="parent-parse" style="margin-top:8px">解析并添加</button>
-      <div class="form-hint">这里布置的任务每天都出现（如每天的语文作业）；想布置某天专属任务用上面的「批量布置多天」。</div>
+      <div class="form-hint">批量添加的都是当天的一次性任务，不会重复出现在以后的每天里。</div>
     </div>
   `;
 }
@@ -1560,7 +1739,7 @@ async function saveParentTask() {
       await DB.addTask({ title: x.title, hint: x.hint, category, points: x.points, schedule: 'child', parent_id: parent.id, percent: null, required: x.required });
     }
   } else {
-    // once = 只做一次 → 绑定家长当前查看/布置的日期（当天专属）
+    // once = 单次 → 绑定家长当前查看/布置的日期（当天专属）
     const bindDate = schedule === 'once' ? S.parentDate : null;
     await DB.addTask({ title, hint, category, points, schedule, deadline, required, start_date: bindDate, end_date: bindDate });
   }
@@ -1682,7 +1861,7 @@ function openTaskEditor(id) {
     <div class="modal" style="max-width:440px;width:calc(100% - 40px)">
       <h3>✏️ 编辑任务</h3>
       <label>任务名称</label>
-      <input id="te-title" value="${t.title}" placeholder="任务名称">
+      <textarea id="te-title" rows="2" placeholder="任务名称">${t.title}</textarea>
       <label>类别</label>
       <input id="te-cat" list="te-cat-list" value="${t.category}" placeholder="类别(可自定义)">
       <datalist id="te-cat-list">${loadCats().map(c => `<option value="${c}">`).join('')}</datalist>
@@ -1694,7 +1873,7 @@ function openTaskEditor(id) {
         </select>
       </div>
       <label>小提示</label>
-      <input id="te-hint" value="${t.hint || ''}" placeholder="给孩子的小提示（如：先复习生字）">
+      <textarea id="te-hint" rows="2" placeholder="给孩子的小提示（如：先复习生字）">${t.hint || ''}</textarea>
       <label>所属多日任务</label>
       <select id="te-parent">
         <option value="">独立任务（不关联）</option>
@@ -1703,8 +1882,8 @@ function openTaskEditor(id) {
       ${isChild ? '' : `
       <label>任务类型</label>
       <select id="te-schedule">
-        <option value="daily" ${t.schedule === 'daily' ? 'selected' : ''}>每天都有</option>
-        <option value="once" ${t.schedule === 'once' ? 'selected' : ''}>只做一次</option>
+        <option value="daily" ${t.schedule === 'daily' ? 'selected' : ''}>重复（每天都有）</option>
+        <option value="once" ${t.schedule === 'once' ? 'selected' : ''}>单次（当天做完消失）</option>
       </select>`}
       <div class="form-hint">选「多日任务」后，本任务成为它的子任务，孩子按完成度独立计分。</div>
       <div style="margin-top:12px;display:flex;gap:8px">
@@ -1900,14 +2079,15 @@ async function parseBatch() {
   let n = 0;
   for (const it of items) {
     saveCat(it.category);
-    await DB.addTask({ title: it.title, hint: it.hint, category: it.category, points: it.points, schedule: 'daily', required: it.required });
+    // 批量添加固定为单次任务（当前日期做一次、做完消失），避免批量复制重复建重复任务
+    await DB.addTask({ title: it.title, hint: it.hint, category: it.category, points: it.points, schedule: 'once', required: it.required, start_date: S.parentDate, end_date: S.parentDate });
     n++;
   }
   $('pt-batch').value = '';
   await refreshAll();
   recordAssign();
   render();
-  toast(`成功添加 ${n} 个每天任务`);
+  toast(`成功添加 ${n} 个单次任务`);
 }
 // ---------- 批量布置多天：日期分隔行 ----------
 function pad2(n) { return String(n).padStart(2, '0'); }
@@ -2096,16 +2276,22 @@ function pointLogPanel() {
 function parentStatsPanel() {
   return `
     <div class="panel">
-      <h3>打卡日历</h3>
-      <div id="cal-root"></div>
-      <h3 style="margin-top:14px">本周完成率</h3>
+      <h3>本周完成率</h3>
       <div style="font-size:14px">全清天数：<b>${weekDoneCount()}/7</b>　当前积分：<b>${S.balance}</b>　精灵球：<b>${S.balls}</b></div>
+      <div class="form-hint" style="margin-top:6px">打卡日历已移到孩子「我的」页面，孩子也能直观看到。</div>
     </div>
   `;
 }
-function renderParentCal() {
-  const root = $('cal-root');
-  if (!root) return;
+// 按维度过滤每日任务：all 全部每日 / req 必做 / opt 选做
+function filterDailyByDim(dim) {
+  let daily = S.tasks.filter(t => t.active && t.schedule === 'daily');
+  if (dim === 'req') daily = daily.filter(t => t.required !== false);
+  else if (dim === 'opt') daily = daily.filter(t => t.required === false);
+  else if (dim && dim !== 'all') daily = daily.filter(t => t.id === Number(dim));  // 单个重复任务
+  return daily;
+}
+// 打卡日历网格（含翻月导航），家长端和孩子端共用
+function calGridHTML(daily) {
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth() + S.calOffset;
   const first = new Date(y, m, 1);
@@ -2125,16 +2311,22 @@ function renderParentCal() {
   for (let d = 1; d <= daysInMonth; d++) {
     const ds = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const dayLogs = S.logs[ds];
+    let doneN = 0;
+    daily.forEach(t => { const l = dayLogs && dayLogs[t.id]; if (l && (l.done || l.completed)) doneN++; });
     let dot = '<span class="dot none"></span>';
-    if (dayLogs && Object.keys(dayLogs).length) {
-      dot = Object.values(dayLogs).every(Boolean)
-        ? '<span class="dot full"></span>'
-        : (Object.values(dayLogs).some(Boolean) ? '<span class="dot part"></span>' : '<span class="dot none"></span>');
+    if (daily.length) {
+      dot = doneN === daily.length ? '<span class="dot full"></span>' : (doneN > 0 ? '<span class="dot part"></span>' : '<span class="dot none"></span>');
     }
     html += `<span class="cal-day ${ds === todayStr ? 'today' : ''}">${d}${dot}</span>`;
   }
   html += '</div>';
-  root.innerHTML = html;
+  return html;
+}
+// 孩子端「我的」页打卡日历
+function renderKidCal() {
+  const root = $('kid-cal-root');
+  if (!root) return;
+  root.innerHTML = calGridHTML(filterDailyByDim(S.statDim));
 }
 function parentPmPanel() {
   return `
@@ -2330,6 +2522,7 @@ function shareCardHTML() {
   const streak = calcStreak();
   const ts = todayTasks().filter(t => t.required !== false);
   const done = ts.filter(t => logToday(t.id)).length;
+  const ds = doneStats();
   const lead = S.pokemons.find(p => p.id === S.leadId);
   const leadNo = lead ? lead.pokedex_no : 25;
   const type = pmType(leadNo);
@@ -2346,6 +2539,11 @@ function shareCardHTML() {
         <div><b>${streak}</b><span>连续全勤</span></div>
         <div><b>${dexGotCount()}/151</b><span>图鉴收集</span></div>
         <div><b>${S.balance}</b><span>积分</span></div>
+      </div>
+      <div class="share-line" style="margin-top:14px;display:flex;justify-content:space-around;font-size:13px;font-weight:700;color:rgba(255,255,255,.92)">
+        <span>累计完成 <b style="font-size:16px">${ds.total}</b></span>
+        <span>近一周 <b style="font-size:16px">${ds.week}</b></span>
+        <span>近一月 <b style="font-size:16px">${ds.month}</b></span>
       </div>
       <div class="share-date">${DB.today()} · 快乐打卡每一天</div>
     </div>

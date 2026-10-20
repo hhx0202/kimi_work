@@ -79,8 +79,8 @@ const DB = (() => {
       dSet(K.tasks, dGet(K.tasks).map(r => r.id === id ? { ...r, ...patch } : r));
     },
     async deleteTask(id) {
+      // 只删任务，保留历史打卡记录（与 supabase 一致，删除任务不影响过往打卡数据）
       dSet(K.tasks, dGet(K.tasks).filter(r => r.id !== id));
-      dSet(K.logs, dGet(K.logs).filter(r => r.task_id !== id));
     },
     async getLogsBetween(start, end) {
       return dGet(K.logs).filter(r => r.log_date >= start && r.log_date <= end);
