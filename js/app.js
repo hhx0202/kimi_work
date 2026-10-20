@@ -951,11 +951,11 @@ function cardGlitterHTML() {
 // 特效家族（18 个属性归到 8 种表现，避免样式爆炸）
 const FX_BY_TYPE = {
   fire: 'ember',                                              // 火星上飘
-  water: 'wave',                                              // 底部水波光影（不遮挡立绘）
+  water: 'wave',                                              // 底部青蓝海浪带 + 水光扫过（不遮挡立绘）
   electric: 'spark',                                          // 电网闪烁
   grass: 'leaf', bug: 'leaf',                                 // 叶片飘落
   ice: 'snow',                                                // 雪花飘落
-  poison: 'toxic',                                            // 毒雾气泡
+  poison: 'toxic',                                            // 紫绿毒雾成团上飘
   psychic: 'aura', fairy: 'aura', dragon: 'aura', ghost: 'aura', // 灵光脉动
   rock: 'dust', ground: 'dust', steel: 'dust', fighting: 'dust',  // 尘土碎屑
   flying: 'wind', normal: 'wind',                             // 气流掠过

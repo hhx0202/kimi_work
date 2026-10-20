@@ -796,35 +796,36 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   background: radial-gradient(circle at 50% 104%, rgba(255, 120, 20, .32), transparent 62%);
   animation: fx-breathe 3.4s ease-in-out infinite;
 }
-/* 水：底部水波光影 + 一道斜向水光（只压底部和边缘，不再有满屏气泡挡立绘） */
+/* 水：脚下一层水面 —— 水位线浪花 + 蓝色水体 + 水下光带 + 上升小泡沫，只压底部 30% 不挡立绘
+   为什么用 SVG 画浪线：纯渐变做不出连续的浪头，之前那版白色低透明度波纹在浅蓝卡面上等于看不见 */
 .fx-wave::before {
-  inset: auto -15% -15% -15%;
-  height: 34%;
+  inset: auto -16% -6px -16%;
+  height: 30%;
   background-image:
-    radial-gradient(ellipse 30px 12px at 50% 100%, rgba(255, 255, 255, .42), transparent 70%),
-    radial-gradient(ellipse 22px 9px at 50% 100%, rgba(150, 215, 255, .4), transparent 72%);
-  background-size: 64px 24px, 48px 20px;
-  background-repeat: repeat-x;
-  background-position: 0 100%, 24px 100%;
-  animation: fx-wave-slide 6.4s linear infinite;
-  opacity: .7;
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, .55) 42%, #000 100%);
-  mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, .55) 42%, #000 100%);
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='30' viewBox='0 0 120 30'%3E%3Cpath d='M0 12 Q15 2 30 12 T60 12 T90 12 T120 12' fill='none' stroke='%23ffffff' stroke-opacity='.55' stroke-width='7' stroke-linecap='round'/%3E%3Cpath d='M0 12 Q15 2 30 12 T60 12 T90 12 T120 12' fill='none' stroke='%23ffffff' stroke-opacity='.92' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E"),
+    radial-gradient(circle, rgba(255, 255, 255, .8) 0 1.6px, transparent 2.4px),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0) 0 15px, rgba(255, 255, 255, .28) 15px 18px, rgba(255, 255, 255, 0) 18px 33px),
+    linear-gradient(180deg, rgba(122, 198, 255, .2) 0%, rgba(58, 142, 238, .5) 32%, rgba(26, 96, 196, .68) 100%);
+  background-size: 120px 30px, 40px 46px, 100% 66px, 100% 100%;
+  background-repeat: repeat-x, repeat, repeat, repeat-x;
+  background-position: 0 0, 14px 34px, 0 48%, 0 0;
+  animation: fx-wave-roll 5.6s linear infinite;
 }
-@keyframes fx-wave-slide {
-  from { background-position: 0 100%, 24px 100%; }
-  to   { background-position: 256px 100%, 240px 100%; }
+@keyframes fx-wave-roll {
+  from { background-position: 0 0, 14px 34px, 0 48%, 0 0; transform: translateY(0); }
+  50%  { transform: translateY(-3px); }
+  to   { background-position: -240px 0, 14px -58px, -66px 48%, -240px 0; transform: translateY(0); }
 }
-/* 水光扫过：很淡的一层斜光，像阳光透过水面，不遮人物 */
+/* 水光扫过：明亮的斜向流光，像阳光落在水面上 */
 .fx-wave::after {
-  background: linear-gradient(112deg, transparent 42%, rgba(255, 255, 255, .38) 49%, rgba(130, 205, 255, .26) 53%, transparent 61%);
+  background: linear-gradient(112deg, transparent 40%, rgba(255, 255, 255, .58) 47%, rgba(140, 215, 255, .45) 52%, transparent 62%);
   background-size: 250% 250%;
-  animation: fx-water-sheen 7s ease-in-out infinite;
+  animation: fx-water-sheen 6.2s ease-in-out infinite;
   opacity: 0;
 }
 @keyframes fx-water-sheen {
   0%, 100% { background-position: 120% 0; opacity: 0; }
-  30%      { opacity: .55; }
+  26%      { opacity: .65; }
   62%      { background-position: -40% 0; opacity: 0; }
 }
 /* 电：电光点闪烁 + 一道斜向电流扫过 */
@@ -888,23 +889,28 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   background: radial-gradient(circle at 50% 8%, rgba(200, 240, 255, .3), transparent 58%);
   animation: fx-breathe 4.6s ease-in-out infinite;
 }
-/* 毒：紫色毒泡上浮 */
+/* 毒：紫绿毒雾柔和弥漫 + 上升毒孢 + 底部毒气呼吸（不再是满屏一圈圈的毒泡）
+   雾用百分比椭圆 + 低透明度、缓变停靠点，边缘不会露出一个个"圆饼"的轮廓 */
 .fx-toxic::before {
   background-image:
-    radial-gradient(circle, transparent 54%, rgba(216, 140, 224, .85) 60%, transparent 72%),
-    radial-gradient(circle, rgba(190, 100, 210, .8) 0, rgba(190, 100, 210, .8) 1.8px, transparent 2.6px);
-  background-size: 44px 60px, 58px 78px;
-  background-position: 0 0, 24px 34px;
-  animation: fx-toxic-rise 5.6s linear infinite;
-  opacity: .85;
+    radial-gradient(circle, rgba(214, 132, 228, .82) 0 1.5px, transparent 2.4px),
+    radial-gradient(60% 46% at 30% 30%, rgba(202, 120, 216, .34), rgba(198, 118, 212, .12) 52%, transparent 76%),
+    radial-gradient(54% 40% at 72% 62%, rgba(126, 200, 108, .26), rgba(126, 200, 108, .09) 54%, transparent 76%),
+    radial-gradient(48% 38% at 46% 78%, rgba(112, 42, 132, .3), transparent 76%);
+  background-size: 46px 62px, 210px 170px, 180px 150px, 160px 140px;
+  background-repeat: repeat;
+  background-position: 18px 40px, 0 0, 90px 60px, 40px 100px;
+  animation: fx-toxic-drift 15s linear infinite;
 }
-@keyframes fx-toxic-rise {
-  from { background-position: 0 0, 24px 34px; }
-  to   { background-position: 0 -180px, 24px -156px; }
+@keyframes fx-toxic-drift {
+  from { background-position: 18px 40px, 0 0, 90px 60px, 40px 100px; }
+  to   { background-position: 18px -84px, 0 -170px, 90px -90px, 40px -40px; }
 }
 .fx-toxic::after {
-  background: radial-gradient(circle at 50% 100%, rgba(160, 64, 160, .26), transparent 62%);
-  animation: fx-breathe 4.4s ease-in-out infinite;
+  background:
+    radial-gradient(circle at 50% 106%, rgba(150, 60, 165, .46), transparent 62%),
+    radial-gradient(circle at 50% 108%, rgba(110, 180, 70, .2), transparent 72%);
+  animation: fx-breathe 4.6s ease-in-out infinite;
 }
 /* 超能 / 妖精 / 龙 / 幽灵：中心灵光呼吸 + 星点闪动 */
 .fx-aura::before {
