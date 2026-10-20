@@ -21,6 +21,7 @@ const S = {
   pointLogs: [],
   balance: 0,
   balls: 0,
+  shinyCards: 0,        // ✨ 闪耀卡库存
   viewNote: null,       // 孩子端当前查看日期的叮嘱
   parentNote: null,     // 家长端当前查看日期的叮嘱
   // 家长端
@@ -45,8 +46,8 @@ const SETTING_FIELDS = [
   { key: 'EVO_EXP_1', label: '进化第1段所需经验' },
   { key: 'EVO_EXP_2', label: '进化第2段所需经验' },
   { key: 'SHINY_EXP', label: '进入闪耀形态所需经验' },
-  { key: 'STREAK_DAYS_FOR_BALL', label: '连续几天必做全清送球' },
-  { key: 'STREAK_REWARD_BALLS', label: '达标送几个球' },
+  { key: 'STREAK_DAYS_FOR_BALL', label: '连续几天必做全清' },
+  { key: 'STREAK_REWARD_SHINY', label: '达标送几张闪耀卡' },
 ];
 
 // 日期工具
@@ -282,12 +283,13 @@ const fmtDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, 
 // ---------- 数据加载 ----------
 async function refreshAll() {
   const vDate = S.viewDate || DB.today(), pDate = S.parentDate || DB.today();
-  const [tasks, logs, pokemons, pointLogs, balls, vNote, pNote, settings] = await Promise.all([
+  const [tasks, logs, pokemons, pointLogs, balls, shinyCards, vNote, pNote, settings] = await Promise.all([
     DB.getTasks(),
     DB.getLogsBetween('2000-01-01', '2099-12-31'),
     DB.getPokemons(),
     DB.getPointLogs(500),
     DB.getItemCount('ball'),
+    DB.getItemCount('shiny'),
     DB.getNote(vDate),
     DB.getNote(pDate),
     DB.getSettings(),
@@ -321,6 +323,7 @@ async function refreshAll() {
   // 余额只算家长已确认发放的积分（confirmed=false 的"待确认"不计入）
   S.balance = pointLogs.reduce((s, l) => s + (l.confirmed === false ? 0 : l.amount), 0);
   S.balls = balls;
+  S.shinyCards = shinyCards;   // ✨ 闪耀卡库存（只在连续必做全清领奖时产出，用一张让一只宝可梦多一张闪耀卡）
   if (S.leadId && !pokemons.some(p => p.id === S.leadId)) { S.leadId = null; localStorage.removeItem(LK('lead')); }
   // 有宝可梦但没选出战（演示数据/首次进入）→ 自动选第一只当伙伴，省得手动设置
   if (!S.leadId && pokemons.length) { S.leadId = pokemons[0].id; localStorage.setItem(LK('lead'), S.leadId); }
@@ -459,6 +462,7 @@ function streakCycleDays() {
   return n;
 }
 function streakGoal() { return Math.max(1, Number(CONFIG.STREAK_DAYS_FOR_BALL) || 7); }
+function shinyReward() { return Math.max(1, Number(CONFIG.STREAK_REWARD_SHINY) || 1); }
 // 某任务的连续打卡天数（从今天往前连续完成）
 function taskStreak(taskId) {
   let n = 0;
@@ -1344,7 +1348,7 @@ function streakCardHTML() {
           ? `<button class="streak-btn ready" data-action="streak-claim">🎁 领取</button>`
           : `<button class="streak-btn" disabled>还差 ${left} 天</button>`}
       </div>
-      <div class="streak-tip">每天把<b>必做任务全部做完</b>算 1 天，连满 ${goal} 天领精灵球 ×${CONFIG.STREAK_REWARD_BALLS}，还会额外多一张闪耀卡 ✨（中间断一天就重新数）</div>
+      <div class="streak-tip">每天把<b>必做任务全部做完</b>算 1 天，连满 ${goal} 天送 ✨ <b>闪耀卡</b> ×${shinyReward()}，到宝可梦页选一只用掉（中间断一天就重新数）</div>
     </div>`;
 }
 
@@ -1358,7 +1362,7 @@ function showStreakReady() {
       <div class="streak-fx">
         <div class="streak-fx-badge">🏆</div>
         <div class="streak-fx-title">连续 ${streakGoal()} 天必做全清！</div>
-        <div class="streak-fx-sub">精灵球 ×${CONFIG.STREAK_REWARD_BALLS} + 一张闪耀卡在下面等你领</div>
+        <div class="streak-fx-sub">✨ 闪耀卡 ×${shinyReward()} 在下面等你领</div>
         <div class="catch-tap">点一下继续</div>
       </div>`;
     confetti({ particleCount: 220, spread: 140, origin: { y: .5 } });
@@ -1383,26 +1387,16 @@ async function claimStreak() {
   const days = streakCycleDays();
   if (days < goal) { toast(`还差 ${goal - days} 天必做全清`); return; }
   const today = DB.today();
-  const n = Math.max(1, Number(CONFIG.STREAK_REWARD_BALLS) || 1);
+  const n = shinyReward();
   const reason = `必做全清${goal}天_${today}`;
-  let gotBall = false;
-  if (!await DB.hasItemReason(reason)) {      // 同一天只发一次，防止重复点「领取」刷球
-    await DB.addItemLog('ball', n, reason, today);
-    S.balls += n;
-    gotBall = true;
+  if (!await DB.hasItemReason(reason)) {      // 同一天只发一次，防止重复点「领取」刷卡
+    await DB.addItemLog('shiny', n, reason, today);
+    S.shinyCards += n;
   }
   lsSet(K_STREAK_CLAIM, today);
-  // ✨ 奖励：随机一只（还没有闪耀卡的）额外多一张闪耀形态卡
-  const cand = S.pokemons.filter(p => !p.shiny && !hasShinyCopy(p.pokedex_no));
-  const pick = cand.length ? cand[Math.floor(Math.random() * cand.length)] : null;
-  const shiny = pick ? await addShinyCopy(pick) : null;
   confetti({ particleCount: 180, spread: 130, origin: { y: .5 } });
   renderTop(); render();
-  const parts = [];
-  if (gotBall) parts.push(`领到精灵球 ×${n}`);
-  if (shiny) parts.push(`${PK_BY_NO[shiny.pokedex_no].name} 多了一张闪耀卡✨`);
-  if (parts.length) toast(`🏆 ${parts.join('，')}`);
-  if (shiny) await showShiny(shiny, `连续 ${goal} 天必做全清的奖励，${PK_BY_NO[shiny.pokedex_no].name} 变成了闪耀形态！`);
+  toast(`🏆 领到闪耀卡 ×${n}，去宝可梦页点「✨ 闪耀卡」选一只宝可梦用掉吧`);
 }
 
 function renderTasks() {
@@ -1485,7 +1479,7 @@ function rulesHintHTML() {
         <li>✅ 完成任务 → +积分（家长确认后才到账）</li>
         <li>🎯 今日 <b>必做</b> 全部完成 → +${CONFIG.REQUIRED_DONE_BONUS} 分</li>
         <li>🎁 <b>选做</b> 也全部完成 → 再 +${CONFIG.OPTIONAL_DONE_BONUS} 分</li>
-        <li>🏆 连续 ${CONFIG.STREAK_DAYS_FOR_BALL} 天<b>必做任务全清</b> → 领精灵球，还会额外多一张闪耀卡✨（断一天重数）</li>
+        <li>🏆 连续 ${CONFIG.STREAK_DAYS_FOR_BALL} 天<b>必做任务全清</b> → 送 ✨ 闪耀卡，到宝可梦页选一只用掉（断一天重数）</li>
         <li>🥚 1 个精灵球一定抓到 1 只<b>新</b>宝可梦（绝不重复）</li>
         <li>🍬 喂糖果攒经验：1 分 = ${CONFIG.POINTS_TO_EXP} exp；经验满了一管就能进化，越进化需要的经验越多</li>
         <li>⭐ 出战的宝可梦是你的伙伴，每次完成任务它 +${CONFIG.LEAD_EXP_PER_TASK} 经验</li>
@@ -1707,6 +1701,38 @@ function showWeeklyChildren(id) {
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
+// ✨ 闪耀卡：只在「连续 N 天必做全清」领奖时产出，用一张让一只宝可梦多一张闪耀形态卡
+let shinyPickOn = false;   // 是否处于「挑一只用闪耀卡」的选择态
+function shinyBarHTML() {
+  if (!S.shinyCards) return '';
+  if (shinyPickOn) {
+    return `
+    <div class="shiny-bar picking">
+      <div class="shiny-bar-main"><b>✨ 闪耀卡 ×${S.shinyCards}</b><span>点下面一只宝可梦给它用掉（已经闪的不能再选）</span></div>
+      <button class="shiny-btn ghost" data-action="shiny-cancel">取消</button>
+    </div>`;
+  }
+  return `
+    <div class="shiny-bar">
+      <div class="shiny-bar-main"><b>✨ 闪耀卡 ×${S.shinyCards}</b><span>用一张，给一只宝可梦多一张 ✨ 卡</span></div>
+      <button class="shiny-btn" data-action="shiny-pick">使用</button>
+    </div>`;
+}
+
+// 用一张闪耀卡：给选中的这只额外生成一张 ✨ 卡（原来的普通卡保留）
+async function applyShinyCard(pmId) {
+  const pm = S.pokemons.find(p => p.id === Number(pmId));
+  if (!pm) return;
+  if (!S.shinyCards) { toast('没有闪耀卡啦'); shinyPickOn = false; renderPokemons(); return; }
+  if (pm.shiny || hasShinyCopy(pm.pokedex_no)) { toast(`「${PK_BY_NO[pm.pokedex_no].name}」已经有闪耀卡了，换一只吧`); return; }
+  await DB.addItemLog('shiny', -1, `使用闪耀卡_${pm.id}_${DB.today()}`, DB.today());
+  S.shinyCards = Math.max(0, S.shinyCards - 1);
+  const copy = await addShinyCopy(pm);
+  shinyPickOn = false;
+  renderTop(); renderPokemons();
+  await showShiny(copy, `${PK_BY_NO[copy.pokedex_no].name} 变成了闪耀形态，卡册里多了一张 ✨ 卡！`);
+}
+
 function renderPokemons() {
   const page = $('page');
   // 按获取先后排：先抓到的在前（同时间按 id 兜底，演示数据都是同一批种下的）
@@ -1716,6 +1742,7 @@ function renderPokemons() {
     return (a.id || 0) - (b.id || 0);
   });
   page.innerHTML = `
+    ${shinyBarHTML()}
     <div class="catch-zone">${catchZoneHTML()}</div>
     <div class="catch-hint" style="text-align:center;margin-bottom:12px">⭐ 卡上带 ⭐ 的「出战」宝可梦是你的伙伴，每次完成任务它都会 +${CONFIG.LEAD_EXP_PER_TASK} 经验。</div>
     ${list.length ? `
@@ -1749,13 +1776,17 @@ function caughtFull(iso) {
 function pmCardHTML(pm) {
   const info = PK_BY_NO[pm.pokedex_no];
   const type = pmType(pm.pokedex_no);
+  // 选择态：已经闪的（自己就是 ✨ 或同编号已有 ✨ 卡）不能再选
+  const locked = shinyPickOn && (pm.shiny || hasShinyCopy(pm.pokedex_no));
+  const act = shinyPickOn ? (locked ? 'shiny-locked' : 'shiny-apply') : 'card';
   return `
-  <div class="pm-card-mini ${pm.shiny ? 'shiny' : ''}" data-action="card" data-pmid="${pm.id}" title="获取于 ${caughtFull(pm.caught_at)}">
+  <div class="pm-card-mini ${pm.shiny ? 'shiny' : ''} ${shinyPickOn ? 'picking' : ''} ${locked ? 'locked' : ''}" data-action="${act}" data-pmid="${pm.id}" title="获取于 ${caughtFull(pm.caught_at)}">
     <div class="mini-frame" style="--tc:${TYPE_COLOR[type] || '#a8a878'}">
       <img src="${artworkPath(pm.pokedex_no)}" alt="${info.name}" loading="lazy">
       ${pm.shiny ? '<span class="mini-shiny">✨</span>' : ''}
       ${pm.id === S.leadId ? '<span class="mini-lead">⭐</span>' : ''}
       <span class="mini-lv-badge">${evoStageLabel(pm)}</span>
+      ${shinyPickOn && !locked ? '<span class="mini-pick">用它 ✨</span>' : ''}
     </div>
     <div class="mini-line">
       <span class="mini-type" style="background:${TYPE_COLOR[type] || '#a8a878'}">${TYPE_NAME[type] || type}</span>
@@ -1956,7 +1987,7 @@ function catchZoneHTML() {
       <button class="btn-big" data-action="catch" ${S.balls < 1 ? 'disabled' : ''}>${POKE_ICON.ball('#e53935')} 捕捉宝可梦（1 个球）</button>
       <button class="btn-big buy" data-action="buyball" ${S.balance < CONFIG.BALL_PRICE ? 'disabled' : ''}>${POKE_ICON.master()} 买精灵球（${CONFIG.BALL_PRICE} 分）</button>
     </div>
-    <div class="catch-hint">每次必抓到「没抓过的基础形态」（不重复）· 进化后的形态要靠喂养进化获得 · 连续 ${CONFIG.STREAK_DAYS_FOR_BALL} 天必做全清送球，还会额外多一张闪耀卡✨</div>
+    <div class="catch-hint">每次必抓到「没抓过的基础形态」（不重复）· 进化后的形态要靠喂养进化获得 · 连续 ${CONFIG.STREAK_DAYS_FOR_BALL} 天必做全清送 ✨ 闪耀卡，选一只宝可梦用掉就能多一张闪耀形态卡</div>
   `;
 }
 
@@ -2214,6 +2245,7 @@ function weekDoneCount() {
 // ---------- 渲染调度 ----------
 function render() {
   if (S.role === 'parent') { renderParent(); return; }
+  if (S.tab !== 'pokemon') shinyPickOn = false;   // 离开宝可梦页就退出「选一只用闪耀卡」
   $('app').innerHTML = kidShellHTML();
   bindKidTabs();
   if (S.tab === 'tasks') renderTasks();
@@ -2500,6 +2532,10 @@ function bindActions() {
     const tid = btn.dataset.tid, pmid = btn.dataset.pmid;
     if (act === 'checkin') await checkin(Number(tid), btn, btn.dataset.prog ? Number(btn.dataset.prog) : null);
     else if (act === 'streak-claim') await claimStreak();
+    else if (act === 'shiny-pick') { shinyPickOn = true; renderPokemons(); }
+    else if (act === 'shiny-cancel') { shinyPickOn = false; renderPokemons(); }
+    else if (act === 'shiny-apply') await applyShinyCard(pmid);
+    else if (act === 'shiny-locked') toast('这只已经有闪耀卡啦，换一只吧');
     else if (act === 'cancel-submit') await cancelSubmission(Number(tid));
     else if (act === 'notice-ack') ackNotice(btn.dataset.nid);
     else if (act === 'notice-ack-all') ackNotice('*');
@@ -2769,12 +2805,27 @@ function bindQuickLongPress() {
   };
 
   box.addEventListener('touchstart', e => {
+    if (quickSorting) return;   // 排序模式交给下面那个非 passive 的处理器
     touchMode = true;
     clearTimeout(touchOff);
     if (e.target.closest('.qc-x')) return;
     const t = e.touches[0];
     start(e.target.closest('.quick-chip'), t.clientX, t.clientY);
   }, { passive: true });
+  // 排序模式专用：passive 的 touchstart 拦不住系统「长按选字」，手机上就是那个放大镜/选区手柄，
+  // 它一旦接管手势，后面的 touchmove 就全被吞掉 —— 表现就是「长按出来个放大镜，动不了」。
+  // 所以这里必须非 passive + preventDefault。
+  box.addEventListener('touchstart', e => {
+    if (!quickSorting) return;
+    const chip = e.target.closest('.quick-chip');
+    if (!chip) return;
+    e.preventDefault();
+    touchMode = true;
+    clearTimeout(touchOff);
+    clearSel();
+    const t = e.touches[0];
+    start(chip, t.clientX, t.clientY);
+  }, { passive: false });
   box.addEventListener('touchmove', e => {
     const t = e.touches[0];
     if (sdrag) {

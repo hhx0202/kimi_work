@@ -26,5 +26,4 @@ __pycache__/
 
 # AI 助手本地配置（如 Claude Code 的权限记录）
 .claude/
-.workbuddy/*
 _edge_profile/*

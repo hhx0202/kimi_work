@@ -376,7 +376,11 @@ body {
 .quick-sort { flex: 0 0 auto; padding: 6px 12px; font-size: 13px; line-height: 1.35; }
 .quick-sort.active { border-color: #66bb6a; background: #e8f5e9; color: #2e7d32; }
 /* 排序模式：标签变虚线、隐藏 ✕，避免拖的时候手滑删掉 */
-#pt-quick-list.sorting .quick-chip { border-style: dashed; cursor: grab; }
+#pt-quick-list.sorting .quick-chip {
+  border-style: dashed; cursor: grab;
+  /* 手机上必须关掉浏览器的滚动/缩放接管，否则长按拖动会被「页面滚动」抢先 */
+  touch-action: none; -webkit-user-drag: none;
+}
 #pt-quick-list.sorting .quick-chip .qc-x { display: none; }
 /* 拖动中的标签：让出指针事件，否则 elementFromPoint 永远只命中它自己 */
 .quick-chip.dragging {
@@ -795,6 +799,36 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .mini-name { font-weight: 800; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .mini-time { font-size: 10px; color: #90a4ae; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @keyframes twinkle { 50% { opacity: .35; transform: scale(.85); } }
+
+/* ✨ 闪耀卡：宝可梦页最上方的一条奖励提示（有库存才出现），点「使用」进入选卡态 */
+.shiny-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 13px; margin-bottom: 12px; border-radius: 16px;
+  background: linear-gradient(135deg, #fff8e1, #ffe6a8);
+  border: 2px solid #ffd54f; box-shadow: 0 6px 16px rgba(255, 193, 7, .18);
+}
+.shiny-bar-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.shiny-bar-main b { font-size: 15px; color: #6d4c00; white-space: nowrap; }
+.shiny-bar-main span { font-size: 12px; color: #8d6e2f; line-height: 1.35; }
+.shiny-btn {
+  flex: 0 0 auto; border: 0; cursor: pointer; border-radius: 999px; padding: 9px 18px;
+  font-size: 14px; font-weight: 800; color: #5d4200; font-family: inherit;
+  background: linear-gradient(135deg, #ffd54f, #ffb300);
+  box-shadow: 0 4px 12px rgba(255, 179, 0, .35);
+}
+.shiny-btn:active { transform: scale(.95); }
+.shiny-btn.ghost { background: #fff; color: #8d6e2f; border: 1px solid #ffd54f; box-shadow: none; }
+.shiny-bar.picking { background: linear-gradient(135deg, #fffdf3, #ffefc2); box-shadow: 0 0 0 3px rgba(255, 193, 7, .22); }
+/* 选卡态：可选的卡描金边，已闪的卡置灰不可点 */
+.pm-card-mini.picking { outline: 2px dashed #ffb300; outline-offset: 2px; }
+.pm-card-mini.picking.locked { opacity: .35; filter: grayscale(.7); outline-color: #cfd8dc; cursor: not-allowed; }
+.mini-pick {
+  position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%);
+  background: rgba(255, 179, 0, .95); color: #fff; font-size: 10px; font-weight: 800;
+  padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+}
+/* 选卡态下藏掉阶段角标，否则会和「用它 ✨」叠在一起 */
+.pm-card-mini.picking .mini-lv-badge { display: none; }
 
 /* ---------- 连续必做全清（孩子端任务页最下方） ---------- */
 .streak-card { margin-top: 4px; }
