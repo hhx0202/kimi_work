@@ -1341,7 +1341,13 @@ function kidShellHTML() {
       <button class="${S.tab === 'me' ? 'on' : ''}" data-tab="me"><span class="ico">${POKE_ICON.dex()}</span>我的</button>
       <button class="secret" id="btn-parent"><span class="ico">${POKE_ICON.master()}</span>家长</button>
     </nav>
+    ${kidShellLogout()}
   `;
+}
+// 孩子端：家长已登录状态时，右下角悬浮「登出」便于退出家长身份
+function kidShellLogout() {
+  if (DEMO_ACTIVE || localStorage.getItem(LK('parent_authed')) !== '1') return '';
+  return `<div class="fab-col"><button class="fab-btn logout" data-action="kid-logout">登出</button></div>`;
 }
 // 孩子端顶部：家长新发放积分到账提示条（按已读记录过滤）
 function ptsNoticeHTML() {
@@ -1365,9 +1371,16 @@ function bindKidTabs() {
   $('btn-parent').onclick = () => {
     // 演示模式下已具备家长身份，直接进入不再要密码
     if (DEMO_ACTIVE) { S.role = 'parent'; localStorage.setItem(LK('role'), 'parent'); render(); return; }
+    // 本机已验证过家长密码（或从家长端切换过来）→ 免密直接进入
+    if (localStorage.getItem(LK('parent_authed')) === '1') { S.role = 'parent'; localStorage.setItem(LK('role'), 'parent'); render(); return; }
     // 快速进入：家长密码
     const pw = prompt('请输入家长密码');
-    if (pw === CONFIG.PARENT_PASSWORD) { S.role = 'parent'; localStorage.setItem(LK('role'), 'parent'); render(); }
+    if (pw === CONFIG.PARENT_PASSWORD) {
+      S.role = 'parent';
+      localStorage.setItem(LK('role'), 'parent');
+      localStorage.setItem(LK('parent_authed'), '1');  // 记住身份，以后往返免密
+      render();
+    }
     else if (pw !== null) toast('密码不对哦');
   };
 }
@@ -1476,7 +1489,9 @@ function bindActions() {
     else if (act === 'parent-quick') appendBatch(loadQuick()[Number(btn.dataset.idx)]);
     else if (act === 'parent-del-quick') delQuick(Number(btn.dataset.idx));
     else if (act === 'parent-parse') parseBatch();
-    else if (act === 'parent-exit') { S.role = 'kid'; localStorage.setItem(LK('role'), 'kid'); render(); }
+    else if (act === 'parent-exit') { S.role = 'kid'; localStorage.setItem(LK('role'), 'kid'); localStorage.setItem(LK('parent_authed'), '1'); render(); }
+    else if (act === 'parent-lock') { localStorage.removeItem(LK('parent_authed')); S.role = 'kid'; localStorage.setItem(LK('role'), 'kid'); toast('已登出，进家长端需重新输入密码'); render(); }
+    else if (act === 'kid-logout') { localStorage.removeItem(LK('parent_authed')); toast('已登出家长身份'); render(); }
     else if (act === 'parent-cal') { S.calOffset += Number(btn.dataset.step || 0); renderKidCal(); }
     else if (act === 'parent-date-prev') { S.parentDate = shiftDate(S.parentDate, -1); render(); refreshParentNote(); }
     else if (act === 'parent-date-next') { S.parentDate = shiftDate(S.parentDate, 1); render(); refreshParentNote(); }
@@ -1552,7 +1567,10 @@ function renderParent() {
       ${checkinLogPanel('📋 每日任务打卡记录', 'parent')}
       ${pointLogPanel()}
       ${modePanel()}
-      <button class="btn-ghost" style="width:100%;margin-top:8px" data-action="parent-exit">← 返回孩子界面</button>
+    </div>
+    <div class="fab-col">
+      <button class="fab-btn" data-action="parent-exit">返回</button>
+      <button class="fab-btn logout" data-action="parent-lock">登出</button>
     </div>
   `;
   if (draft) { const ta = document.getElementById('pt-batch'); if (ta) ta.value = draft; }

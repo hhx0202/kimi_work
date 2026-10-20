@@ -141,6 +141,19 @@ body {
 .tabbar button .ico { font-size: 24px; line-height: 1; }
 .tabbar button.on { color: var(--red); background: #fff3f3; font-weight: 700; }
 .tabbar button.secret { opacity: .25; }
+/* 悬浮贴边操作按钮（右下角，返回/登出） */
+.fab-col {
+  position: fixed; bottom: 24px; right: 12px; z-index: 60;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.fab-btn {
+  border: 0; cursor: pointer; font-size: 12px; font-weight: 600;
+  padding: 9px 14px; border-radius: 999px;
+  background: rgba(255, 255, 255, .96); color: var(--ink);
+  box-shadow: 0 4px 14px rgba(31, 64, 98, .22); border: 1px solid #eee;
+}
+.fab-btn:active { transform: scale(.96); }
+.fab-btn.logout { color: #e53935; }
 
 /* ---------- 宝可梦页 ---------- */
 .section-title { margin: 18px 4px 10px; font-size: 16px; font-weight: 800; display: flex; justify-content: space-between; align-items: center; }
