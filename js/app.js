@@ -204,15 +204,6 @@ const TPL = [ // 常用任务模板
   { title: '背单词 10 个', category: '打卡', points: 5 },
 ];
 
-// ---------- 类别图标（按关键词匹配 + 哈希兜底） ----------
-function catEmoji(cat) {
-  if (!cat) return '📝';
-  for (const r of CONFIG.CATEGORY_EMOJI_RULES) if (cat.includes(r.match)) return r.emoji;
-  let h = 0;
-  for (const ch of cat) h = (h * 31 + (ch.codePointAt(0) || 0)) % 997;
-  return CONFIG.CATEGORY_EMOJI_POOL[h % CONFIG.CATEGORY_EMOJI_POOL.length];
-}
-
 // ---------- 属性主题（卡牌边框色 + 场景背景 + 技能） ----------
 const TYPE_THEME = {
   normal:   { name: '一般', color: '#a8a878', bg1: '#eceadf', bg2: '#a8a878', skill: '撞击', damage: 20, desc: '用身体撞向对手，简单又可靠。' },

@@ -19,30 +19,8 @@ const CONFIG = {
 
   // ---------- 任务类别（自定义，家长端下拉+可输入新值，孩子端按此顺序分区展示） ----------
   // 顺序即孩子端展示顺序：校内在前，孩子会先做完校内再做校外
+  // 类别图标：由 js/poke-icons.js 的 catIcon 提供（手绘宝可梦风 SVG，按类别关键词匹配）
   DEFAULT_CATEGORIES: ['校内作业', '校外作业', '作业', '打卡', '阅读', '运动', '家务', '英语', '数学', '音乐', '练字', '编程'],
-
-  // 类别图标：按关键词匹配（命中即用该图标）
-  CATEGORY_EMOJI_RULES: [
-    { match: '校内', emoji: '🏫' },
-    { match: '校外', emoji: '🏠' },
-    { match: '作业', emoji: '📖' },
-    { match: '阅读', emoji: '📚' },
-    { match: '运动', emoji: '🏃' },
-    { match: '跳', emoji: '🏃' },
-    { match: '家务', emoji: '🧹' },
-    { match: '整理', emoji: '🧹' },
-    { match: '背', emoji: '🗣️' },
-    { match: '写', emoji: '✏️' },
-    { match: '画', emoji: '🎨' },
-    { match: '音乐', emoji: '🎵' },
-    { match: '练字', emoji: '🖊️' },
-    { match: '实验', emoji: '🔬' },
-    { match: '编程', emoji: '💻' },
-    { match: '英语', emoji: '🇬🇧' },
-    { match: '数学', emoji: '🧮' },
-  ],
-  // 图标兜底池：新类别按名称哈希稳定分配一个
-  CATEGORY_EMOJI_POOL: ['🎯', '🌟', '🎈', '⚽', '🎨', '🎼', '🧩', '🚲', '🪁', '🎲', '📝', '🎤', '⏰', '🌱', '🫧'],
 
   // ---------- 进度型长期任务 ----------
   PROGRESS_STEPS: [30, 60, 100],   // 单次打卡可选完成百分比按钮

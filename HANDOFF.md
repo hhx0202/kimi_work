@@ -38,7 +38,16 @@
 | 图鉴 | 151 格剪影/点亮/闪光✨ | ✅ |
 | 分享 | 成就图生成，长按保存发朋友圈 | ✅ |
 | 素材 | 302 动图 + 151 高清插画 + 151 属性数据 | ✅ |
-| 数据 | 双模式（demo localStorage / supabase 真库） | ✅ |
+| 数据 | 双模式（demo localStorage / supabase 真库）；localhost 自动 demo、线上自动真库 | ✅ |
+| 多日任务 | 子任务独立计分（进度=已得/总分）、完成奖励 bonus 可配、超期每日扣分、完成即隐藏 | ✅ |
+| 布置 | 批量框只加单次任务（防误操作）；重复任务走新建菜单；任务可编辑关联进多日任务 | ✅ |
+| 分区排序 | 必做/选做两区平铺、家长 ↑↓+长按拖动排序、卡片显式标注属性（单次/重复/多日/子任务） | ✅ |
+| 家长编辑 | 通用编辑弹窗（名称/类别/分数/必做/类型/提示/关联多日/删除）、名称提示多行输入 | ✅ |
+| 打卡 | 打卡日历在孩子「我的」页（维度：全部每日/必做全清/选做全清/单个重复任务）、完成统计、打卡记录下拉 | ✅ |
+| 规则设置 | 家长「⚙️ 规则设置」动态调 11 项分值/经验/全勤，存 settings 表全家同步 | ✅ |
+| 叮嘱 | 家长每日叮嘱（notes 表，随日期切换，孩子端展示） | ✅ |
+| 图标 | 类别图标统一 poke-icons.js 手绘宝可梦风 SVG（校内/学校/作业=精灵球） | ✅ |
+| 顶部短句 | 123 条宝可梦鼓励+小知识，按小时稳定换句 | ✅ |
 
 ## 三、技术架构速览
 
@@ -48,19 +57,23 @@
   - `js/config.js` — 全部游戏规则数值（改规则只动这里）
   - `js/pokemon-data.js` — 151 只中文名/进化链/稀有度
   - `js/pokemon-types.js` — 151 只属性（卡牌配色用）
-  - `js/db.js` — 数据层，demo/supabase 双实现，接口一致
+  - `js/poke-icons.js` — 手绘宝可梦风 SVG 图标库 + 类别图标规则（`CAT_ICON_RULES`）
+  - `js/db.js` — 数据层，demo/supabase 双实现，接口一致（含 notes/settings）
   - `js/app.js` — 主程序（渲染 + 游戏逻辑 + 动画）
   - `css/style.css` — 全部样式与动画
-- **数据模型**（Supabase，见 `sql/upgrade_v6.sql`）：
-  - `tasks`：title/category/points/schedule(daily/once/weekly/child)/deadline/parent_id/percent/required/active
-  - `task_logs`：task_id/log_date/completed/progress（task_id+log_date 唯一）
+  - `sql/upgrade_all.sql` — 唯一建库脚本（幂等，Supabase 只跑它）
+- **数据模型**（Supabase，建表/升级全部合并在一个文件 `sql/upgrade_all.sql`，幂等可重复执行）：
+  - `tasks`：title/category/points/schedule(daily=重复/once=单次/weekly=多日/child=子任务)/deadline/parent_id/percent/required/active/**start_date/end_date/hint/sort/bonus**
+  - `task_logs`：task_id/log_date/completed/progress（task_id+log_date 唯一，删除任务保留历史）
   - `pokemon`：name/pokedex_no/level/exp/shiny
-  - `point_logs`：log_date/amount/reason/**confirmed(是否已发放)/task_id(撤销回退)/created_at(发生时间)**（余额=SUM(confirmed)）
+  - `point_logs`：log_date/amount/reason/confirmed(是否已发放)/task_id(撤销回退)/created_at(发生时间)（余额=SUM(confirmed)）
   - `item_logs`：item('ball')/amount/reason（球数=SUM）
+  - `notes`：log_date(唯一)/note（家长每日叮嘱，随日期切换展示）
+  - `settings`：key/value（家长「⚙️ 规则设置」覆盖 config 数值，全家同步）
 
-## 四、规则配置（config.js 全在这）
+## 四、规则配置（config.js 全在这；家长可在页面「⚙️ 规则设置」动态调整其中 11 项，存 settings 表）
 
-家长密码 / 必选全清奖(5) / 可选全清奖(3) / 连击天数(7) / 买球价(100) / 闪光概率(5%) / 重复返还(20) / 每级经验(100) / 进化价(300) / 进化等级门槛(3,5,7) / 默认类别列表 / 类别图标规则
+家长密码(2048) / 必做全清奖(5) / 选做全清奖(5) / 多日完成奖(10) / 多日超期每日扣(5) / 出战经验(1) / 连击送球天数(7) / 送球数(1) / 买球价(100) / 闪光概率(5%) / 重复返还(20) / 每级经验(100) / 进化经验门槛(100,300,600) / 等级上限(100) / 默认类别列表
 
 ## 五、可选下一步（用户提过/合理但未做，供参考）
 
@@ -73,12 +86,14 @@
 ## 六、协作约定（用户偏好，务必遵守）
 
 1. **中文回复**
-2. **改规则只动 config.js**，不要散落魔法数字
+2. **改规则只动 config.js**，不要散落魔法数字；数值也可在家长「⚙️ 规则设置」里动态改
 3. 动画/特效优先（"越炫越好"是明确要求）
 4. 免费、纯前端优先，尽量不加后端
 5. 手机输入友好（布置任务在手机上）
-6. 改完刷新浏览器即测（demo 模式零依赖），重要改动用无头 Chrome 验证
+6. 改完刷新浏览器即测（demo 模式零依赖），重要改动用无头 Chrome 验证（`~/chrome-ft/chrome-linux64/chrome --headless=new --dump-dom`）
 7. 素材已全部打包，**不要重新下载**
+8. **数据库 SQL 只更新 `sql/upgrade_all.sql` 一个文件**（幂等），用户只在 Supabase 运行它；不要新建 upgrade_vX 增量文件
+9. 家长密码 2048；config 自动判断：localhost=演示数据、线上域名=真库
 
 ## 七、开发验证技巧
 
@@ -87,4 +102,4 @@
 - 演示/推荐页：`intro.html`；重置试玩在家长中心 →「🎮 重置试玩数据」
 - demo 模式数据存浏览器 localStorage（键 `km_*`），可打开 DevTools → Application 直接改数据调试
 - 无头验证：`chrome --headless=new --virtual-time-budget=15000 --dump-dom http://127.0.0.1:8000/`（需先清 localStorage 相关测试数据）
-- 切真实数据库：config.js 改 `DB_MODE:'supabase'` + 填 URL/anon key，先跑 `sql/upgrade_v6.sql`
+- 切真实数据库：config.js 改 `DB_MODE:'supabase'` + 填 URL/anon key，先跑 `sql/upgrade_all.sql`（唯一建库脚本，幂等）
