@@ -40,7 +40,7 @@ kimi_work/
 │   ├── shiny/{1-151}.gif   # 闪光(异色)动图
 │   └── artwork/{1-151}.png # 官方高清插画（卡牌大图）
 └── sql/
-    └── upgrade_v6.sql      # 最新表结构升级脚本（含 v2~v6 全部）
+    └── upgrade_all.sql      # 唯一建库脚本（建表+全部升级，幂等，Supabase 只跑它）
 ```
 
 ## 双数据模式（config.js）
@@ -54,26 +54,26 @@ demo 模式首次打开自动生成 4 个示例任务 + 1 个新手精灵球。
 
 ## 任务系统
 
-**三种类型 + 必选/可选**：
+**四种类型（任务属性） + 必做/选做**：
 
-| 类型 | 说明 |
-|---|---|
-| daily 每日任务 | 每天出现，家长一键布置 |
-| once 一次性任务 | 完成一次自动下架 |
-| weekly 本周任务 | 长期任务，家长拆成**子任务**并配百分比，孩子勾选子任务累计进度 |
+| 类型 | 属性 | 说明 |
+|---|---|---|
+| daily | 重复 | 每天都要做（每日打卡），在「新建任务 → 重复」单独建 |
+| once | 单次 | 当天做一次、做完消失（「批量添加单次任务」加这类） |
+| weekly | 多日 | 带截止日期的长期任务，拆成子任务独立计分 |
+| child | 子任务 | 多日任务的子项，各自带分数，完成得自己的分 |
 
-**必选/可选**：任务可标为可选。孩子端界面分区展示「必选任务」和「🎁 可选任务」，**每个分区内再按类别分组**（校内作业排最前，孩子会先做完校内再做校外）。
-
-**类别记忆**：家长布置任务时填的新类别会自动记住，出现在下拉里和孩子端分组里；家长端「🏷️ 管理历史类别」可删除不需要的（只是不再出现在下拉，已有任务不受影响）。类别顺序 = `config.js` 里 `DEFAULT_CATEGORIES` 的顺序。
-
-**孩子端规则小抄**：任务页顶部有「📖 规则小抄」，说明怎么拿分（必选全清 +5、可选全清 +3、连续全勤送球、待确认等）。
+- **必做/选做**：任务分「必做 / 选做」，孩子端分两区平铺展示，卡片显式标注属性
+- **多日任务**：子任务各带分数，进度按已得/总分算；全部完成额外加分（可配）、超期每天扣分（可配）
+- **类别记忆**：家长填的新类别自动记住（下拉里 + 孩子端排序）；「🏷️ 管理历史类别」可删。类别顺序 = `DEFAULT_CATEGORIES`
+- **孩子端规则小抄**：说明怎么拿分（必做全清 +5、选做全清 +5、连续全勤送球、待确认等）
 
 **奖励分层**：
 - 完成单个任务 → +任务积分
-- 每日**必选**全部完成 → +`REQUIRED_DONE_BONUS`（默认 5）
-- 每日**可选**全部完成 → 再 +`OPTIONAL_DONE_BONUS`（默认 3）
+- 每日**必做**全部完成 → +`REQUIRED_DONE_BONUS`（默认 5）
+- 每日**选做**全部完成 → 再 +`OPTIONAL_DONE_BONUS`（默认 5）
 - 连续全勤 → 送精灵球
-- 本周任务完成 → 拿父任务全部分数（按子任务百分比分批发放）
+- 多日任务完成 → 额外奖励（可配）
 
 ### 待确认积分（防乱点）
 
@@ -85,23 +85,21 @@ demo 模式首次打开自动生成 4 个示例任务 + 1 个新手精灵球。
 
 余额 = 已确认发放的积分之和，孩子没法自己乱点花掉未确认的分。
 
-**子任务格式（家长布置 weekly 任务时）**：
+**子任务格式（布置多日任务时）**：每行 `名称, 分数`（分数可省默认 10 分；末尾写「选做」=非必做）
 ```
-每行一个：子任务名,百分比（逗号/分号等均可）
-第1篇课文,30
-第2篇课文,30
-习作,40
+第1篇课文,10
+第2篇课文,10
+习作,15,选做
 ```
-百分比规则（自动归一化，不用家长算）：
-- 不填百分比的子任务 → 自动均分剩余部分
-- 全部填了但总数不是 100% → 自动按比例缩放到 100%
-- 只有一项 → 自动 100%
+总分自动 = 子任务分之和，进度按已得/总分算。
 
-**长期任务编辑**：家长端本周任务行有 ✏️ 按钮，可改标题/积分/截止日期/子任务列表（改子任务会重置其进度）。
+**多日任务编辑**：家长端点多日任务行 ✏️ 编辑，可改标题/提示/截止/子任务/完成奖励。
 
-**批量粘贴**（钉钉复制）每行 `标题,类别,积分,可选`——逗号/分号/顿号/竖线都能当分隔符，`名称 数字`（空格）也认；类别/积分/可选都可省。手机输入方便。
+**批量添加单次任务**：批量框每行 `名称,类别,分数,选做`（分隔符逗号/分号/顿号/竖线/空格都行），默认加「单次任务」（当前日期做一次、做完消失）；想加「重复」的每日任务请用「新建任务 → 重复」单独建，避免批量复制误建出一堆重复任务。
 
-**布置未来多天任务**：家长中心顶部有日期导航（◀ 日期 ▶），可切换查看/布置某一天的任务。新增「📅 批量布置多天」入口，用**日期分隔行**一次规划好几天——每行写一个日期（如 `10-20` / `周一` / `明天`），下面几行是那天要做的任务，直到下一个日期行。布置出的「当天专属任务」只在那一天出现（孩子端任务卡会标 📅 日期徽标），错过当天则不再出现；「自动识别」布置的仍是每天都有的任务。底层是 `tasks` 表的 `start_date` / `end_date` 字段（`sql/upgrade_v8.sql`）。
+**布置多日任务**：「📅 批量布置多天」用日期分隔行一次规划——每行写一个日期（如 `10-20` / `周一` / `明天`），下面几行是那天要做的单次任务。
+
+**任务关联**：已建好的任务可在编辑弹窗「所属多日任务」里选一个多日任务，成为它的子任务（独立计分、进度归入），也可取消关联恢复独立任务。
 
 **远程接口（AI agent 改任务）**：项目自带 Supabase REST API，本地 agent 可按 [`AGENT-API.md`](AGENT-API.md) 的规范直接增删改任务——家长发一句话，agent 解析成任务后调用接口，无需写后端。
 
@@ -131,36 +129,44 @@ demo 模式首次打开自动生成 4 个示例任务 + 1 个新手精灵球。
 
 ## 规则在哪改（config.js 一个文件）
 
+大部分数值也可在家长端「⚙️ 规则设置」里**动态调整**（存数据库全家同步，不用改代码）。
+
 | 规则 | 配置项 | 当前值 |
 |---|---|---|
-| 家长密码 | `PARENT_PASSWORD` | 2024 |
-| 必选全清奖 | `REQUIRED_DONE_BONUS` | +5 分 |
-| 可选全清奖 | `OPTIONAL_DONE_BONUS` | +3 分 |
+| 家长密码 | `PARENT_PASSWORD` | 2048 |
+| 必做全清奖 | `REQUIRED_DONE_BONUS` | +5 分 |
+| 选做全清奖 | `OPTIONAL_DONE_BONUS` | +5 分 |
+| 多日任务完成奖 | `WEEKLY_DONE_BONUS` | +10 分 |
+| 多日超期每日扣分 | `OVERDUE_DAILY_PENALTY` | -5 分 |
 | 连续全勤送球 | `STREAK_DAYS_FOR_BALL` | 7 天（全勤还随机点亮一只闪光✨） |
 | 买球价格 | `BALL_PRICE` | 100 分 |
-| 升级消耗 | `EXP_PER_LEVEL` | 100 exp / 级 |
+| 出战每次经验 | `LEAD_EXP_PER_TASK` | +1 exp / 任务 |
+| 升级经验 | `EXP_PER_LEVEL` | 100 exp / 级 |
 | 进化经验门槛 | `EVOLVE_EXP` | [100, 300, 600]（经验满一管进化） |
-| 出战每次经验 | `grantExp`（app.js） | +5 exp / 任务 |
 | 默认类别 | `DEFAULT_CATEGORIES` | 校内/校外/作业/打卡/阅读/运动…（顺序即孩子端分区顺序） |
 
 ## 数据库表（Supabase）
 
 | 表 | 用途 | 关键字段 |
 |---|---|---|
-| `tasks` | 任务 | title, category, points, schedule(daily/once/weekly/child), deadline, parent_id, percent, required, active |
-| `task_logs` | 打卡 | task_id, log_date, completed, progress(百分比), note（task_id+log_date 唯一） |
+| `tasks` | 任务 | title, category, points, schedule(daily/once/weekly/child), deadline, parent_id, percent, required, active, start_date/end_date(单次绑定日期), hint(小提示), sort(顺序), bonus(多日完成奖励) |
+| `task_logs` | 打卡 | task_id, log_date, completed, progress, note（task_id+log_date 唯一；删除任务保留历史） |
 | `pokemon` | 宝可梦 | name, pokedex_no, level, exp, shiny |
 | `point_logs` | 积分流水 | log_date, amount(±), reason, confirmed(已发放), task_id, created_at(发生时间)（余额 = SUM(confirmed)） |
 | `item_logs` | 物品流水 | item('ball'), amount(±), reason（球数 = SUM） |
+| `notes` | 每日叮嘱 | log_date(唯一), note（家长每天写给孩子的话） |
+| `settings` | 规则设置 | key, value（家长「⚙️ 规则设置」覆盖 config 数值） |
 
-`sql/upgrade_v7.sql` 含最新升级：point_logs 加 `created_at`（流水时间）。`sql/upgrade_v6.sql` 加了 `confirmed`（待确认积分）、`task_id`（撤销时回退）。历史 v2~v5 在 `sql/upgrade_v5.sql`。
+**建表/升级**：全部在 `sql/upgrade_all.sql` 一个文件里（幂等可重复执行），Supabase 只跑它即可。
 
-## 部署到远程（Vercel + Supabase）
+## 部署上线（GitHub Pages + Supabase）
 
-1. Supabase SQL Editor 执行 `sql/upgrade_v7.sql`（含 v2~v7 全部升级）
-2. `config.js`：`DB_MODE: 'supabase'`，填入 `SUPABASE_URL` 和 anon public key
-3. Vercel：New Project → 导入本项目目录（静态部署，无需构建）→ 部署
-4. 手机/平板收藏部署后的网址
+1. Supabase SQL Editor 执行 `sql/upgrade_all.sql`（建表 + 全部升级，幂等可重复）
+2. `config.js` 填 `SUPABASE_URL` + anon public key（`DB_MODE` 已自动判断：localhost/本地打开用演示数据，线上域名用真库）
+3. GitHub Pages：仓库 Settings → Pages → 从 `master` 分支 `/ (root)` 部署；以后推送代码自动更新
+4. 手机/平板收藏 `https://hhx0202.github.io/kimi_work/`
+
+> 想绑定自己的域名：GitHub Pages Settings → Custom domain 设置即可。
 
 ## 已验证（2026-10-19）
 
@@ -180,4 +186,4 @@ demo 模式首次打开自动生成 4 个示例任务 + 1 个新手精灵球。
 - 快速布置在 `js/app.js`：`recordAssign / copyLastAssign / saveTemplate / loadTemplate / appendBatch / parseBatchLines`，模板和"最近用过"存 localStorage（`km_last_assign` / `km_templates` / `km_recent_tasks`）
 - 本地验证：改完直接刷新浏览器即可（demo 模式无后端依赖）
 - 无构建步骤、无 node_modules，纯静态，可整体复制/上传 GitHub
-- 素材体积：sprites 11MB + artwork 22MB = 约 33MB，Vercel/GitHub 均无压力
+- 素材体积：sprites 11MB + artwork 22MB = 约 33MB，GitHub Pages 托管无压力
