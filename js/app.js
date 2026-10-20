@@ -2214,21 +2214,23 @@ function makeDraggableFab(sel) {
 }
 
 // 家长端任务列表：长按/按住拖动排序（手机 touch + 桌面 mouse）
+// 行外层包了 .swipe-item（左滑删除用），所以拖动单位是 .swipe-item，没包的直接拖 .prow
 function enableDragSort(sel) {
   const list = document.querySelector(sel);
   if (!list) return;
-  const rows = () => [...list.children].filter(c => c.classList.contains('prow'));
+  const itemOf = node => (node && (node.closest('.swipe-item') || node.closest('.prow'))) || null;
+  const rows = () => [...list.children].filter(c => c.classList.contains('swipe-item') || c.classList.contains('prow'));
   let drag = null;
   function moveBy(dy) {
     const r = rows();
     const h = (r[0] ? r[0].offsetHeight : 40) + 4;
-    let cur = r.indexOf(drag.row);
+    let cur = r.indexOf(drag.el);
     let target = Math.min(r.length - 1, Math.max(0, cur + Math.round(dy / h)));
     if (target !== cur && r[target]) {
       drag.moved = true;
-      list.insertBefore(drag.row, target > cur ? r[target].nextSibling : r[target]);
+      list.insertBefore(drag.el, target > cur ? r[target].nextSibling : r[target]);
       drag.startY += (target - cur) * h;  // 行已移动，起始基准同步，继续拖能连续换位
-      drag.row.classList.add('dragging');
+      drag.el.classList.add('dragging');
     }
   }
   async function saveSort() {
@@ -2238,11 +2240,11 @@ function enableDragSort(sel) {
   }
   // 手机：长按 650ms 且按下后基本没移动，才进入拖动（避免滑动页面时误触发排序）
   list.addEventListener('touchstart', e => {
-    const row = e.target.closest('.prow');
-    if (!row) return;
+    const el = itemOf(e.target);
+    if (!el) return;
     const t = e.touches[0];
-    drag = { row, startY: t.clientY, startX: t.clientX, armed: false, moved: false, timer: null };
-    drag.timer = setTimeout(() => { if (drag) { drag.armed = true; row.classList.add('dragging'); } }, 650);
+    drag = { el, startY: t.clientY, startX: t.clientX, armed: false, moved: false, timer: null };
+    drag.timer = setTimeout(() => { if (drag) { drag.armed = true; el.classList.add('dragging'); } }, 650);
   }, { passive: true });
   list.addEventListener('touchmove', e => {
     if (!drag) return;
@@ -2261,27 +2263,71 @@ function enableDragSort(sel) {
     if (!drag) return;
     clearTimeout(drag.timer);
     if (drag.armed && drag.moved) saveSort();
-    if (drag.row) drag.row.classList.remove('dragging');
+    if (drag.el) drag.el.classList.remove('dragging');
     drag = null;
   });
   // 桌面：鼠标直接按住拖动
   list.addEventListener('mousedown', e => {
-    const row = e.target.closest('.prow');
-    if (!row) return;
+    if (e.target.closest('.swipe-del')) return;
+    const el = itemOf(e.target);
+    if (!el) return;
     e.preventDefault();
-    drag = { row, startY: e.clientY, armed: true, moved: false, timer: null };
-    row.classList.add('dragging');
+    drag = { el, startY: e.clientY, armed: true, moved: false, timer: null };
+    el.classList.add('dragging');
     const onMove = ev => { if (!drag) return; moveBy(ev.clientY - drag.startY); };
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       if (drag && drag.moved) saveSort();
-      if (drag && drag.row) drag.row.classList.remove('dragging');
+      if (drag && drag.el) drag.el.classList.remove('dragging');
       drag = null;
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });
+}
+
+// 家长端任务行左滑：手指左推 ≥40px 松手，行停在左侧、右侧露出「删除」；点行或点别处收起
+function bindSwipeDelete(sel) {
+  const list = document.querySelector(sel);
+  if (!list) return;
+  const OPEN = 78;
+  let cur = null, startX = 0, startY = 0, dx = 0, dir = '';
+  const closeAll = except => {
+    list.querySelectorAll('.swipe-item.open').forEach(el => { if (el !== except) el.classList.remove('open'); });
+  };
+  list.addEventListener('touchstart', e => {
+    const item = e.target.closest('.swipe-item');
+    if (!item || e.target.closest('.swipe-del')) return;
+    closeAll(item);
+    const t = e.touches[0];
+    cur = item; startX = t.clientX; startY = t.clientY; dx = 0; dir = '';
+  }, { passive: true });
+  list.addEventListener('touchmove', e => {
+    if (!cur) return;
+    const t = e.touches[0];
+    const mx = t.clientX - startX, my = t.clientY - startY;
+    if (!dir) {
+      if (Math.abs(mx) > 10 && Math.abs(mx) > Math.abs(my) * 1.2) dir = 'x';
+      else if (Math.abs(my) > 10) { dir = 'y'; cur = null; return; }   // 竖向 = 滚页面/拖动排序，不接管
+    }
+    if (dir !== 'x') return;
+    const base = cur.classList.contains('open') ? -OPEN : 0;
+    dx = Math.max(-OPEN - 12, Math.min(0, mx + base));
+    const row = cur.querySelector('.prow');
+    if (row) row.style.transform = `translateX(${dx}px)`;
+    e.preventDefault();
+  }, { passive: false });
+  const end = () => {
+    if (!cur) { dir = ''; dx = 0; return; }
+    const item = cur; cur = null;
+    const row = item.querySelector('.prow');
+    if (row) row.style.transform = '';
+    if (dir === 'x') item.classList.toggle('open', dx <= -40);
+    dir = ''; dx = 0;
+  };
+  list.addEventListener('touchend', end);
+  list.addEventListener('touchcancel', end);
 }
 
 // 家长端上移/下移调整任务展示顺序（重排 sort）
@@ -2302,6 +2348,16 @@ async function moveTask(id, dir) {
 
 function bindActions() {
   document.body.onclick = async e => {
+    // 左滑打开的任务行：点行本身（不是删除按钮）= 先收起，不弹编辑
+    const openRow = e.target.closest('.swipe-item.open');
+    if (openRow && !e.target.closest('.swipe-del')) { openRow.classList.remove('open'); return; }
+    // 常用任务排序模式：点到标签区域以外的地方就退出（点「确认」走下面的 action）
+    if (quickSorting && !e.target.closest('#pt-quick-list, .quick-sort, .quick-add')) {
+      saveQuickOrderFromDom();
+      setQuickSort(false);
+      render();
+      return;
+    }
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     const act = btn.dataset.action;
@@ -2324,13 +2380,22 @@ function bindActions() {
     else if (act === 'catch') catchOne();
     else if (act === 'buyball') buyBall();
     else if (act === 'parent-save') saveParentTask(btn);
-    else if (act === 'parent-del') { await DB.deleteTask(Number(tid)); await refreshAll(); render(); }
+    else if (act === 'parent-del') {
+      const dt = S.tasks.find(x => x.id === Number(tid));
+      await DB.deleteTask(Number(tid));
+      await refreshAll(); render();
+      toast(dt ? `已删除「${dt.title}」` : '已删除');
+    }
     else if (act === 'parent-del-cat') { deleteCat(btn.dataset.cat); render(); }
     else if (act === 'parent-add-cat') { const c = ($('pt-newcat').value || '').trim(); if (c) { saveCat(c); $('pt-newcat').value = ''; render(); } }
     else if (act === 'parent-edit-weekly') openWeeklyEditor(Number(tid));
     else if (act === 'parent-quick') openQuickAddTask(Number(btn.dataset.idx));
+    else if (act === 'parent-quick-sort') {
+      if (quickSorting) { saveQuickOrderFromDom(); setQuickSort(false); render(); }
+      else { setQuickSort(true); toast('长按标签拖动就能改顺序，点「确认」结束'); }
+    }
     else if (act === 'parent-quick-edit') openQuickEdit(Number(btn.dataset.idx));
-    else if (act === 'parent-quick-add') openQuickEdit(-1);
+    else if (act === 'parent-quick-add') { if (quickSorting) setQuickSort(false); openQuickEdit(-1); }
     else if (act === 'parent-del-quick') delQuick(Number(btn.dataset.idx));
     else if (act === 'parent-parse') parseBatch();
     else if (act === 'parent-exit') { S.role = 'kid'; localStorage.setItem(LK('role'), 'kid'); localStorage.setItem(LK('parent_authed'), '1'); render(); }
@@ -2429,7 +2494,6 @@ function renderParent() {
     <div class="page">
       ${pendingPointsPanel()}
       ${parentTaskPanel()}
-      ${parentStatsPanel()}
       ${parentPmPanel()}
       ${parentSettingsPanel()}
       ${checkinLogPanel('📋 每日任务打卡记录', 'parent')}
@@ -2446,20 +2510,53 @@ function renderParent() {
   bindActions();
   enableDragSort('#pt-task-list-req');
   enableDragSort('#pt-task-list-opt');
+  bindSwipeDelete('#pt-task-list-req');
+  bindSwipeDelete('#pt-task-list-opt');
   bindQuickLongPress();
 }
 
 // 长按标签的时间戳：手机 touchend 后合成 click 有时绕过捕获拦截，openQuickAddTask 里再兜一层
 let quickLongPressAt = 0;
+// 常用任务「排序模式」：开启后长按标签 = 拖动换位，单击不再添加；点确认或点别处退出
+let quickSorting = false;
 
-// 常用任务标签：长按 = 编辑标签（单击由 body 的委托处理，长按后要吞掉紧随的那次 click）
-function bindQuickLongPress() {
+// 按当前 DOM 顺序把常用任务顺序写回 localStorage（data-idx 是上一次渲染时的下标）
+function saveQuickOrderFromDom() {
   const box = document.getElementById('pt-quick-list');
   if (!box) return;
+  const list = quickTasks();
+  const els = [...box.querySelectorAll('.quick-chip')];
+  const order = els.map(el => Number(el.dataset.idx));
+  const next = order.map(i => list[i]).filter(Boolean);
+  if (next.length !== list.length) return;   // 有标签增删时不动，避免顺序错乱
+  // 存完要把 data-idx 重排成新下标，否则再判一次序会把同一套交换用两遍，顺序又转回去
+  els.forEach((el, i) => { el.dataset.idx = i; });
+  if (next.some((it, i) => it.title !== list[i].title || it.points !== list[i].points)) saveQuickList(next);
+}
+// 切换排序模式：只改 DOM 状态，不整页重渲染（重渲染会把滚动位置顶掉）
+function setQuickSort(on) {
+  quickSorting = !!on;
+  const btn = document.querySelector('.quick-sort');
+  const box = document.getElementById('pt-quick-list');
+  const hint = document.getElementById('pt-quick-hint');
+  if (btn) { btn.textContent = quickSorting ? '确认' : '排序'; btn.classList.toggle('active', quickSorting); }
+  if (box) box.classList.toggle('sorting', quickSorting);
+  if (hint) hint.textContent = quickSorting ? '长按标签拖动排序' : '单击添加 · 长按编辑标签';
+}
+
+// 常用任务标签手势：
+//   普通模式：单击 = 添加任务（body 委托处理）、长按 = 编辑标签
+//   排序模式：长按（桌面可直接按住）= 拖动换位，松手即写回顺序
+function bindQuickLongPress() {
+  const box = document.getElementById('pt-quick-list');
+  if (!box || box.dataset.bound === '1') return;
+  box.dataset.bound = '1';
   const HOLD = 420;   // 比系统长按（约 500ms）早触发，避免被「选择文字」抢走
   let timer = null, startX = 0, startY = 0, fired = false, cur = null;
   // 触摸时浏览器会补发 mousedown / mouseleave，若也当成手势开始/取消，长按会被自己清掉
   let touchMode = false, touchOff = null;
+  // 排序拖动：stimer 是「按住多久才进入拖动」的计时
+  let sdrag = null, stimer = null;
 
   const clearSel = () => {
     try { const s = window.getSelection && window.getSelection(); if (s && s.rangeCount) s.removeAllRanges(); } catch (e) {}
@@ -2469,8 +2566,40 @@ function bindQuickLongPress() {
     if (cur) cur.classList.remove('pressed');
     cur = null;
   };
+  // 拖动中把被拖的标签插到手指下方的标签前后
+  const sortMove = (x, y) => {
+    if (!sdrag || !sdrag.armed) return;
+    const el = sdrag.el;
+    const under = document.elementFromPoint(x, y);
+    const target = under && under.closest ? under.closest('.quick-chip') : null;
+    if (!target || target === el) return;
+    const r = target.getBoundingClientRect();
+    box.insertBefore(el, x > r.left + r.width / 2 ? target.nextSibling : target);
+    sdrag.moved = true;
+  };
+  const sortEnd = () => {
+    clearTimeout(stimer); stimer = null;
+    if (!sdrag) return;
+    const { el, moved } = sdrag;
+    el.classList.remove('dragging');
+    sdrag = null;
+    if (moved) { saveQuickOrderFromDom(); swallowNextClick(); }
+  };
   const start = (el, x, y) => {
     if (!el) return;
+    if (quickSorting) {
+      // 排序模式：先按住 200ms 再拖，避免点一下就误换位
+      clearTimeout(stimer);
+      sdrag = { el, x, y, armed: false, moved: false };
+      stimer = setTimeout(() => {
+        if (!sdrag) return;
+        sdrag.armed = true;
+        sdrag.el.classList.add('dragging');
+        clearSel();
+        if (navigator.vibrate) { try { navigator.vibrate(10); } catch (e) {} }
+      }, 200);
+      return;
+    }
     if (timer) clearTimeout(timer);
     cur = el;
     el.classList.add('pressed');
@@ -2486,13 +2615,16 @@ function bindQuickLongPress() {
     }, HOLD);
   };
   const moved = (x, y) => Math.abs(x - startX) > 14 || Math.abs(y - startY) > 12;
-  // 只吞掉紧随长按的那一次 click（松手后浏览器补发的 click 会点在遮罩上把弹窗关掉）；
-  // 超过 500ms 的点击放行，避免影响用户马上点弹窗里的按钮
+  // 只吞掉「长按/拖动之后浏览器补发的那次 click」（它落在标签或刚弹出的遮罩上，会误关弹窗/误开添加框）；
+  // 落在「确认」「＋」等按钮上的点击要放行，否则拖完马上点确认会没反应
   const swallowNextClick = () => {
     const t0 = Date.now();
     const fn = ev => {
       document.removeEventListener('click', fn, true);
       if (Date.now() - t0 > 500) return;
+      const el = ev.target;
+      const inside = el && el.closest && (el.closest('.modal-mask') || el.closest('#pt-quick-list'));
+      if (!inside) return;
       ev.stopPropagation(); ev.preventDefault();
     };
     document.addEventListener('click', fn, true);
@@ -2507,11 +2639,21 @@ function bindQuickLongPress() {
     start(e.target.closest('.quick-chip'), t.clientX, t.clientY);
   }, { passive: true });
   box.addEventListener('touchmove', e => {
-    if (!timer) return;
     const t = e.touches[0];
+    if (sdrag) {
+      if (!sdrag.armed) {
+        if (Math.abs(t.clientX - sdrag.x) > 10 || Math.abs(t.clientY - sdrag.y) > 10) { clearTimeout(stimer); sdrag = null; }
+        return;
+      }
+      e.preventDefault();       // 拖动时不要跟着滚页面
+      sortMove(t.clientX, t.clientY);
+      return;
+    }
+    if (!timer) return;
     if (moved(t.clientX, t.clientY)) cancel();
-  }, { passive: true });
+  }, { passive: false });
   const endTouch = () => {
+    sortEnd();
     cancel();
     clearTimeout(touchOff);
     touchOff = setTimeout(() => { touchMode = false; }, 700);
@@ -2522,9 +2664,17 @@ function bindQuickLongPress() {
     if (touchMode || e.button !== 0 || e.target.closest('.qc-x')) return;
     start(e.target.closest('.quick-chip'), e.clientX, e.clientY);
   });
-  box.addEventListener('mousemove', e => { if (!touchMode && timer && moved(e.clientX, e.clientY)) cancel(); });
-  box.addEventListener('mouseup', () => { if (!touchMode) cancel(); });
-  box.addEventListener('mouseleave', () => { if (!touchMode) cancel(); });
+  box.addEventListener('mousemove', e => {
+    if (touchMode) return;
+    if (sdrag) {
+      if (sdrag.armed) sortMove(e.clientX, e.clientY);
+      else if (Math.abs(e.clientX - sdrag.x) > 10 || Math.abs(e.clientY - sdrag.y) > 10) { clearTimeout(stimer); sdrag = null; }
+      return;
+    }
+    if (timer && moved(e.clientX, e.clientY)) cancel();
+  });
+  box.addEventListener('mouseup', () => { if (!touchMode) { sortEnd(); cancel(); } });
+  box.addEventListener('mouseleave', () => { if (!touchMode) { sortEnd(); cancel(); } });
   // 关键：手机长按会弹「选择文字/复制」菜单，必须先禁用，否则系统选中会打断长按计时
   box.addEventListener('contextmenu', e => {
     if (e.target.closest('.quick-chip')) e.preventDefault();
@@ -2551,15 +2701,18 @@ function parentDateNav() {
     </div>
   `;
 }
-// 家长端任务行模板（小字标出必做/选做）
+// 家长端任务行模板（小字标出必做/选做；外层 swipe-item 负责左滑露出删除按钮）
 function prowRowHTML(t) {
   return `
-    <div class="prow prow-click" data-action="parent-edit" data-tid="${t.id}" title="点开编辑">
-      <span>${catIcon(t.category, t.title)}</span>
-      <div class="grow"><b>${t.title}</b><small style="display:block;color:#90a4ae">${t.category} · ${taskTypeLabel(t)} · ${t.required === false ? '选做' : '必做'} · +${t.points}分${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}${t.hint ? ` · 💡 ${t.hint}` : ''}</small></div>
-      <span class="${logOn(t.id, S.parentDate) ? 'ok' : 'miss'}">${logOn(t.id, S.parentDate) ? '✓' : '·'}</span>
-      <button class="btn-ghost mini" data-action="parent-move" data-tid="${t.id}" data-dir="up" title="上移">↑</button>
-      <button class="btn-ghost mini" data-action="parent-move" data-tid="${t.id}" data-dir="down" title="下移">↓</button>
+    <div class="swipe-item" data-tid="${t.id}">
+      <button class="swipe-del" data-action="parent-del" data-tid="${t.id}" title="删除这个任务">删除</button>
+      <div class="prow prow-click" data-action="parent-edit" data-tid="${t.id}" title="点开编辑">
+        <span>${catIcon(t.category, t.title)}</span>
+        <div class="grow"><b>${t.title}</b><small style="display:block;color:#90a4ae">${t.category} · ${taskTypeLabel(t)} · ${t.required === false ? '选做' : '必做'} · +${t.points}分${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}${t.hint ? ` · 💡 ${t.hint}` : ''}</small></div>
+        <span class="${logOn(t.id, S.parentDate) ? 'ok' : 'miss'}">${logOn(t.id, S.parentDate) ? '✓' : '·'}</span>
+        <button class="btn-ghost mini" data-action="parent-move" data-tid="${t.id}" data-dir="up" title="上移">↑</button>
+        <button class="btn-ghost mini" data-action="parent-move" data-tid="${t.id}" data-dir="down" title="下移">↓</button>
+      </div>
     </div>`;
 }
 function parentTaskPanel() {
@@ -2577,7 +2730,7 @@ function parentTaskPanel() {
         <span style="font-size:13px;color:var(--ink-soft);white-space:nowrap">💬 叮嘱</span>
         <button class="btn-primary" data-action="parent-edit-note" style="flex:2">${S.parentNote ? `📝 编辑叮嘱（${S.parentNote.slice(0, 12)}${S.parentNote.length > 12 ? '…' : ''}）` : '✍️ 写今天的叮嘱'}</button>
       </div>
-      <h3 style="margin-top:8px">📅 ${S.parentDate} 的任务${pIsToday ? '（今天）' : ''} <small style="font-weight:400">长按拖动可排序</small></h3>
+      <h3 style="margin-top:8px">📅 ${S.parentDate} 的任务${pIsToday ? '（今天）' : ''} <small style="font-weight:400">长按拖动排序 · 左滑删除</small></h3>
       <div class="prow sec-head">🔴 必做</div>
       <div id="pt-task-list-req">
       ${reqTs.map(prowRowHTML).join('') || '<div class="empty-tip" style="padding:4px 0">没有必做任务</div>'}
@@ -2613,11 +2766,12 @@ function parentTaskPanel() {
           }).join('')}`;
         }).join('')}
       ` : ''}
-      <div style="margin-top:16px;display:flex;align-items:center;gap:8px">
-        <h3 style="margin:0;flex:1">⭐ 常用任务 <small style="font-weight:400">单击添加 · 长按编辑标签</small></h3>
+      <div class="quick-head" style="margin-top:16px;display:flex;align-items:center;gap:8px">
+        <h3 style="margin:0;flex:1">⭐ 常用任务 <small style="font-weight:400" id="pt-quick-hint">${quickSorting ? '长按标签拖动排序' : '单击添加 · 长按编辑标签'}</small></h3>
+        <button class="chip quick-sort${quickSorting ? ' active' : ''}" data-action="parent-quick-sort" title="拖动排序常用任务">${quickSorting ? '确认' : '排序'}</button>
         <button class="chip quick-add" data-action="parent-quick-add" title="新增一个常用任务标签">＋</button>
       </div>
-      <div class="tpl-row" id="pt-quick-list" style="margin-top:8px">
+      <div class="tpl-row${quickSorting ? ' sorting' : ''}" id="pt-quick-list" style="margin-top:8px">
         ${qts.length
           ? qts.map((it, i) => `
             <div class="chip quick-chip" data-action="parent-quick" data-idx="${i}" title="单击=添加任务，长按=编辑标签">
@@ -2628,7 +2782,7 @@ function parentTaskPanel() {
             </div>`).join('')
           : '<div class="empty-tip" style="padding:4px 0">还没有常用任务，点右上角 ＋ 加一个</div>'}
       </div>
-      <h3 style="margin-top:16px">新建任务</h3>
+      <h3 style="margin-top:16px">🆕 新建任务</h3>
       <div class="input-row">
         <textarea id="pt-title" placeholder="任务名称（末尾可加 {提示}）" style="flex:2;min-height:44px"></textarea>
       </div>
@@ -2675,12 +2829,10 @@ function parentTaskPanel() {
           </span>
         </div>
       </details>
-      <h3 style="margin-top:16px">批量布置多天</h3>
-      <button class="btn-primary" data-action="parent-multi" style="width:100%">📅 批量布置多天（日期分隔行）</button>
-      <div class="form-hint">一次规划好几天：每行写一个日期（如 <b>10-20</b> / <b>周一</b> / <b>明天</b>），下面几行是那天要做的任务，直到下一个日期行。布置后任务只出现在对应的那天（错过当天则不再出现）。</div>
+      <button class="btn-primary" data-action="parent-multi" style="width:100%;margin-top:16px">📅 批量布置多天任务</button>
       <h3 style="margin-top:16px">📥 批量添加单次任务</h3>
       <div class="form-hint" style="margin-bottom:6px">格式：<b>每行一个任务</b>；类别 / 分数 / 选做用 <b>[中括号] 或 (小括号)</b> 指定（不写用默认）<br>· 名称末尾 <b>{花括号}</b> 会识别成小提示，如 <b>语文作业{先复习生字}</b><br>· 行尾 <b>空格+数字</b> 会识别成分数（上限100），如 <b>练字一页 10</b><br>这里添加的是<b>单次任务</b>（当前日期做一次、做完消失）；<b>重复任务（每天都有）</b>请用上方「新建任务 → 重复（每天都有）」单独建，避免批量复制重复建出很多条。</div>
-      <textarea id="pt-batch" placeholder="每行一个任务，整行都是任务名：&#10;  语文作业{先复习生字}[校内作业][10]&#10;  跳绳500个(运动)(5)(选做)&#10;  语一号本抄12原文+注释 明默 语预习13 概括写下故事的起因经过结果&#10;&#10;· 类别/分数/选做用 [中括号] 或 (小括号)（中英文都行）指定&#10;· [类别] 默认「作业」　[分数] 默认 10　[选做] = 非必做&#10;· 名称末尾 {花括号} 仍可加小提示，如 语文作业{先复习生字}&#10;· 行尾 空格+数字 会当成分数（上限100），如 练字一页 10"></textarea>
+      <textarea id="pt-batch" placeholder="每行一个任务，整行就是任务名&#10;语文作业{先复习生字}[校内作业][10]&#10;跳绳500个(运动)(5)(选做)&#10;练字一页 10&#10;&#10;[类别] 默认「作业」　[分数] 默认 10　加「选做」= 非必做&#10;名称末尾 {花括号} = 小提示　行尾「空格+数字」= 分数"></textarea>
       <button class="btn-primary" data-action="parent-parse" style="margin-top:8px">解析并添加</button>
       <div class="form-hint">批量添加的都是当天的一次性任务，不会重复出现在以后的每天里。</div>
     </div>
@@ -3092,6 +3244,7 @@ function openQuickEdit(idx) {
 
 // 单击标签：弹出添加任务表单，确认后按当前日期落任务
 function openQuickAddTask(idx) {
+  if (quickSorting) return;                          // 排序模式下点标签不添加任务
   if (Date.now() - quickLongPressAt < 800) return;   // 长按刚弹过编辑框，忽略紧随的合成 click
   const it = quickTasks()[idx];
   if (!it) return;
@@ -3289,8 +3442,8 @@ function openMultiDayAssign() {
   modal.className = 'modal-mask';
   modal.innerHTML = `
     <div class="modal" style="max-width:460px;width:calc(100% - 40px)">
-      <h3>📅 批量布置多天</h3>
-      <p class="form-hint">每行写一个日期（如 <b>10-20</b> / <b>周一</b> / <b>明天</b>），下面几行是那天要做的任务，直到下一个日期行。任务只出现在对应的那天。</p>
+      <h3>📅 批量布置多天任务</h3>
+      <p class="form-hint">一次规划好几天：每行写一个日期（如 <b>10-20</b> / <b>周一</b> / <b>明天</b>），下面几行是那天要做的任务，直到下一个日期行。<br>布置后任务只出现在对应的那天，<b>错过当天就不再出现</b>。</p>
       <textarea id="md-input" style="min-height:180px" placeholder="10-20&#10;语文作业{先复习生字}[校内作业][10]&#10;跳绳500个[运动][5][选做]&#10;10-21&#10;英语作业[校内作业][10]&#10;阅读20分钟[阅读][5]"></textarea>
       <div class="form-hint">任务格式同「批量添加」：每行一个任务，[类别] [分数] [选做] 用中括号或小括号指定（不写用默认；名称末尾 {花括号}=小提示；行尾空格+数字当分数）</div>
       <div style="margin-top:12px;display:flex;gap:8px">
@@ -3425,15 +3578,6 @@ function pointLogPanel() {
   `;
 }
 
-function parentStatsPanel() {
-  return `
-    <div class="panel">
-      <h3>本周完成率</h3>
-      <div style="font-size:14px">全清天数：<b>${weekDoneCount()}/7</b>　当前积分：<b>${S.balance}</b>　精灵球：<b>${S.balls}</b></div>
-      <div class="form-hint" style="margin-top:6px">打卡日历已移到孩子「我的」页面，孩子也能直观看到。</div>
-    </div>
-  `;
-}
 // 按维度过滤每日任务：all 全部每日 / req 必做 / opt 选做
 function filterDailyByDim(dim) {
   let daily = S.tasks.filter(t => t.active && t.schedule === 'daily');
@@ -3483,7 +3627,7 @@ function renderKidCal() {
 function parentPmPanel() {
   return `
     <div class="panel">
-      <h3>奖励 / 扣分</h3>
+      <h3>🎁 奖励 / 扣分</h3>
       <div class="input-row">
         <input id="pt-reason" placeholder="理由（如：帮妈妈洗碗 / 作业拖拉）" style="flex:2">
       </div>
