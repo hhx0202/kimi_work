@@ -94,6 +94,7 @@
 7. 素材已全部打包，**不要重新下载**
 8. **数据库 SQL 只更新 `sql/upgrade_all.sql` 一个文件**（幂等），用户只在 Supabase 运行它；不要新建 upgrade_vX 增量文件
 9. 家长密码 2048；config 自动判断：localhost=演示数据、线上域名=真库
+10. **前端字段 ↔ 数据库列必须对齐**：改 `js/db.js` 的 insert/update/select 字段时，同步核对 `sql/upgrade_all.sql` 对应表有没有那列；改表结构同理要查前端。**踩过的坑（2026-10-20）**：`sup.addTask` 曾往 insert 里塞了 `note: null`，而 tasks 表没这列 → 线上正式模式添加任务全挂（PGRST204「找不到 note 列」）；demo(localStorage) 不校验 schema 所以本地正常，造成「demo 能加、正式不能加」的假象。修复 = SQL `add column if not exists note text` + db.js 入参去掉 note。**教训：demo 模式正常 ≠ 正式模式正常，涉及写库的改动必须用线上同款 payload 验证。**
 
 ## 七、开发验证技巧
 
@@ -103,3 +104,4 @@
 - demo 模式数据存浏览器 localStorage（键 `km_*`），可打开 DevTools → Application 直接改数据调试
 - 无头验证：`chrome --headless=new --virtual-time-budget=15000 --dump-dom http://127.0.0.1:8000/`（需先清 localStorage 相关测试数据）
 - 切真实数据库：config.js 改 `DB_MODE:'supabase'` + 填 URL/anon key，先跑 `sql/upgrade_all.sql`（唯一建库脚本，幂等）
+- **写库类改动必须验证完整链路**：仅测解析/渲染不够，要确认 app 实际发给 Supabase 的 insert 字段与表列一致。方法：`parseBatch()` 后抓请求体，或用 curl 带 app 同款 payload POST 测一次（PGRST204 就是只测解析没测写库漏掉的）。
