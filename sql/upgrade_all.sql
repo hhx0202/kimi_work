@@ -1,5 +1,5 @@
 -- ============================================================
--- Kimi 任务岛 - 完整建库脚本（合并 v2~v8，可重复执行）
+-- Kimi 任务岛 - 完整建库脚本（合并 v2~v10，可重复执行）
 -- 在 Supabase SQL Editor 里粘贴执行一次即可
 -- 表已存在则跳过建表（后面 alter 补缺失字段），重复执行无害
 -- ============================================================
@@ -18,6 +18,9 @@ create table if not exists tasks (
   active boolean not null default true,
   start_date date,
   end_date date,
+  hint text,                -- 任务小提示（家长用 {提示} 圈住）
+  sort int not null default 0,  -- 孩子端展示顺序
+  bonus int,                -- 多日任务全清额外分（null=用默认 10 分）
   created_at timestamptz not null default now()
 );
 
@@ -61,11 +64,19 @@ create table if not exists item_logs (
   created_at timestamptz not null default now()
 );
 
+-- 家长每日叮嘱表（每天一条，日期唯一）
+create table if not exists notes (
+  id bigint generated always as identity primary key,
+  log_date date not null unique,
+  note text not null,
+  created_at timestamptz not null default now()
+);
+
 -- 2. 行级安全：家庭个人使用，anon key 全开放（读写都允许）
 do $$
 declare t text;
 begin
-  foreach t in array array['tasks','task_logs','pokemon','point_logs','item_logs'] loop
+  foreach t in array array['tasks','task_logs','pokemon','point_logs','item_logs','notes'] loop
     execute format('alter table %I enable row level security;', t);
     execute format('drop policy if exists "public access" on %I;', t);
     execute format('create policy "public access" on %I for all using (true) with check (true);', t);
@@ -94,3 +105,6 @@ alter table point_logs add column if not exists task_id bigint;
 alter table point_logs add column if not exists created_at timestamptz default now();
 alter table tasks add column if not exists start_date date;
 alter table tasks add column if not exists end_date date;
+alter table tasks add column if not exists hint text;
+alter table tasks add column if not exists sort int not null default 0;
+alter table tasks add column if not exists bonus int;

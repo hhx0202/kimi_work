@@ -21,6 +21,8 @@ const S = {
   pointLogs: [],
   balance: 0,
   balls: 0,
+  viewNote: null,       // 孩子端当前查看日期的叮嘱
+  parentNote: null,     // 家长端当前查看日期的叮嘱
   // 家长端
   pmId: null,           // 正在操作的宝可梦
   calOffset: 0,         // 日历偏移(月)
@@ -38,25 +40,140 @@ function shiftDate(dateStr, delta) {
 // 某任务在指定日期是否已完成
 function logOn(taskId, date) { return !!(S.logs[date]?.[taskId]?.done); }
 
-// 顶部趣味短句：按日期稳定随机一句
+// 顶部趣味短句：宝可梦鼓励话 + 宝可梦小知识（适合小学生），共 100 条，按小时稳定换句，零网络依赖
 const MOTTO = [
-  '今天也要元气满满哦！',
-  '去捉一只新的宝可梦吧！',
-  '认真完成任务，精灵球会越来越多～',
-  '闪光宝可梦在等你哦！',
-  '坚持打卡，你就是最棒的小训练家！',
-  '作业做完，宝可梦就来啦！',
-  '喂饱你的伙伴，一起变强！',
-  '今天的你，比昨天更厉害！',
-  '把任务都点亮，成就感满满！',
-  '每一个小任务，都是进化的起点！',
-  '啾——精灵球准备好啦！',
-  '全勤了记得看看谁变闪了哦✨',
+  // ===== 鼓励话 =====
+  '坚持打卡，你的伙伴会越来越强！⚡',
+  '每完成一个任务，宝可梦就离进化更近一步！',
+  '连续全勤 7 天，也许会有宝可梦闪闪发光！✨',
+  '精灵球攒够了，就去捕捉新的伙伴吧！',
+  '喂饱你的宝可梦，它会回报你更多经验！',
+  '今天的任务做完，明天就能捉新宝可梦！',
+  '每只宝可梦都在等你点亮它的图鉴格子！',
+  '出战宝可梦每次完成任务都会 +5 经验哦！',
+  '攒积分买精灵球，图鉴收集越多越开心！',
+  '把必做任务全清，还有额外加分哦！',
+  '选做任务全清也有加分，别小看它们！',
+  '多日任务按时完成，奖励更丰厚！',
+  '你的皮卡丘正在看着你完成今天的任务！',
+  '图鉴每点亮一格，都是了不起的成就！',
+  '每一分积分，都是你努力的小脚印！👣',
+  '把今天的任务点亮，成就感满满！💡',
+  '宝可梦们在等你一起变得更棒！🌟',
+  '坚持就是胜利，图鉴会记得你的努力！📖',
+  '你的伙伴每次完成任务都在变强！⚔️',
+  '完成全部必做任务，拿满全清奖励！🏆',
+  '选做任务也别落下，积分多多！💰',
+  '每天打卡，你的宝可梦都会为你骄傲！😊',
+  '攒够球就去捕捉，图鉴越满越开心！🥚',
+  '喂一颗糖果，你的伙伴离进化近一步！🍬',
+  '别小看小任务，小步快跑也能赢！🏃',
+  '全勤一周，会有惊喜等着你！🎉',
+  '今天的你，比昨天的你更厉害！💪',
+  '每只宝可梦都有它的闪光时刻！✨',
+  '快去看看图鉴，又有新点亮了！🔆',
+  '把任务都清完，今晚能安心睡好觉！😴',
+  // ===== 宝可梦小知识 =====
+  '皮卡丘脸颊的红色电袋能储存电力！⚡',
+  '雷丘的电击威力能击穿一大块钢铁！⚡',
+  '小火龙尾巴上的火焰，代表它此刻的心情！🔥',
+  '火恐龙的尾巴火焰比小火龙更旺！🔥',
+  '杰尼龟遇到危险会把头缩进壳里！🐢',
+  '水箭龟背上有两门高压水炮！💦',
+  '妙蛙种子背上的种子，据说会吸收阳光！🌱',
+  '妙蛙花的香气据说能治愈心情！🌸',
+  '绿毛虫嗅觉很灵敏，能找到喜欢的叶子！🍃',
+  '铁甲蛹外壳很硬，但里面其实很软！🦋',
+  '巴大蝶的翅膀可以散落剧毒粉末！🦋',
+  '大针蜂的毒针连大树都能刺穿！🐝',
+  '波波会用翅膀掀起沙尘来赶走敌人！🕊️',
+  '比比鸟的视力非常好，能看清很远的猎物！🦅',
+  '拉达的门牙很大，总想咬坏点东西！🐀',
+  '阿柏蛇会吐出毒液吓退敌人！🐍',
+  '六尾的名字来自"六根尾巴"的传说！🦊',
+  '九尾的九根尾巴据说各有魔力！🦊',
+  '胖丁唱歌时，听到的歌者会睡着！🎵',
+  '大嘴蝠靠声波探路，几乎不用眼睛！👂',
+  '霸王花的花粉会让过敏的人打喷嚏！🌺',
+  '地鼠钻地超快，一眨眼就不见了！🐭',
+  '猫老大很骄傲，最喜欢被夸漂亮！😼',
+  '可达鸭头痛时会释放强大的念力！🤔',
+  '哥达鸭游泳的速度非常快！🦆',
+  '火爆猴脾气很爆，一点就着！🐒',
+  '卡蒂狗嗅觉灵敏，很会追坏人！🐕',
+  '风速狗是传说中非常忠诚的宝可梦！🐕',
+  '蚊香泳士肌肉发达，是游泳冠军！🐸',
+  '凯西整天打盹，靠超能力感知四周！🧘',
+  '胡地的智商据说高达 5000！🧠',
+  '怪力有四只手臂，力大无穷！💪',
+  '大食花会张开大嘴一口吞掉猎物！🌿',
+  '毒刺水母的触手有毒，碰不得！🪼',
+  '小拳石喜欢滚来滚去，越滚越圆！🪨',
+  '隆隆岩从山上滚下来会越滚越大！⛰️',
+  '小火马的鬃毛会像火焰一样飘动！🔥',
+  '烈焰马奔跑时身后拖着火焰！🏇',
+  '呆呆兽的尾巴被咬住时居然不会松口！🐟',
+  '呆壳兽的壳据说有剧毒，但它自己不怕！🐌',
+  '三合一磁怪由三个磁体组成，磁性超强！🧲',
+  '大葱鸭手里总是握着一根大葱！🦆',
+  '嘟嘟利有三个头，各自有自己的想法！🐦',
+  '白海狮在冰水里游泳也不会冷！🦭',
+  '臭臭泥味道很难闻，但特别黏人！🧪',
+  '大舌贝的壳像珍珠一样又亮又硬！🦪',
+  '刺甲贝会紧紧合上贝壳保护自己！🦪',
+  '鬼斯是气体一样的幽灵宝可梦！👻',
+  '耿鬼会藏在别人的影子里！👻',
+  '大岩蛇全身都是岩石，坚硬无比！⛰️',
+  '催眠貘会吃掉别人的梦！😴',
+  '大钳蟹的两只大钳子力气惊人！🦀',
+  '顽皮雷弹一碰就会爆炸，要小心！💥',
+  '蛋蛋们聚在一起，很像一串葡萄！🥚',
+  '椰蛋树有很多头，每个头都有自己的想法！🥥',
+  '卡拉卡拉总抱着一根骨头当武器！🦴',
+  '嘎啦嘎啦手里的骨棒是它的武器！🦴',
+  '飞腿郎用腿踢击，脚力惊人！🥋',
+  '快拳郎是拳击冠军，出拳飞快！🥊',
+  '大舌头的舌头特别长，能伸很远！👅',
+  '双弹瓦斯是两个瓦斯球叠在一起！💨',
+  '钻角犀兽的角能轻松钻穿岩石！🦏',
+  '吉利蛋的蛋据说是治疗百病的良药！🥚',
+  '袋兽妈妈的口袋里有一只小袋兽！🦘',
+  '墨海马在水里会轻轻地跳舞！🐴',
+  '海刺龙身上的尖刺是有毒的！🦔',
+  '角金鱼的鳞片在阳光下闪闪发光！🐠',
+  '宝石海星中间的宝石据说很神秘！⭐',
+  '魔墙人偶能变出一堵看不见的墙！🤡',
+  '飞天螳螂的两把镰刀锋利无比！🦗',
+  '迷唇姐唱起歌来很动听！💋',
+  '电击兽全身都能释放高压电！⚡',
+  '鸭嘴火兽嘴巴附近的温度非常高！🔥',
+  '凯罗斯有大钳子和一对大角！🪲',
+  '肯泰罗是特别有冲劲的公牛！🐂',
+  '鲤鱼王虽然弱，进化成暴鲤龙超厉害！🐉',
+  '暴鲤龙是鲤鱼王进化来的，很凶！🐉',
+  '拉普拉斯会驮着人安稳渡过大海！🐋',
+  '百变怪能变成任何宝可梦的样子！🎭',
+  '伊布能进化成好几种属性的宝可梦！🐾',
+  '水伊布在水里游得特别快！💧',
+  '雷伊布的毛刺能噼里啪啦发电！⚡',
+  '火伊布浑身的毛像燃烧的火焰！🔥',
+  '多边兽是程序制造出来的人工宝可梦！💻',
+  '化石盔是从化石里复原的古代宝可梦！🪸',
+  '化石翼龙是生活在远古的飞行宝可梦！🦖',
+  '卡比兽每天要睡 18 个小时！😴',
+  '急冻鸟是冰系的神鸟，翅膀带寒气！❄️',
+  '闪电鸟扇动翅膀就能带来雷暴！⛈️',
+  '火焰鸟是火系的神鸟，燃着烈焰！🔥',
+  '快龙速度极快，传说能环绕地球一周！🐲',
+  '超梦是科学家制造出来的强大宝可梦！🧬',
+  '梦幻据说拥有所有宝可梦的基因！✨',
 ];
+// 顶部短句：按「当前小时」稳定选一句（同一小时内不变，每小时换新句，不会一直闪换）
 function mottoText() {
-  const d = DB.today();
+  const now = new Date();
+  const key = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}`;
   let h = 0;
-  for (const ch of d) h = (h * 31 + ch.charCodeAt(0)) % 997;
+  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) % 9973;
   return MOTTO[h % MOTTO.length];
 }
 
@@ -111,13 +228,18 @@ const fmtDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, 
 
 // ---------- 数据加载 ----------
 async function refreshAll() {
-  const [tasks, logs, pokemons, pointLogs, balls] = await Promise.all([
+  const vDate = S.viewDate || DB.today(), pDate = S.parentDate || DB.today();
+  const [tasks, logs, pokemons, pointLogs, balls, vNote, pNote] = await Promise.all([
     DB.getTasks(),
     DB.getLogsBetween('2000-01-01', '2099-12-31'),
     DB.getPokemons(),
     DB.getPointLogs(500),
     DB.getItemCount('ball'),
+    DB.getNote(vDate),
+    DB.getNote(pDate),
   ]);
+  S.viewNote = vNote || null;
+  S.parentNote = pNote || null;
   S.tasks = tasks;
   S.logs = {};
   logs.forEach(l => {
@@ -142,11 +264,11 @@ function inEffect(t, d) {
   return true;
 }
 
-// 某日期的常规任务 = active 且每日/单次 且在生效日期范围内
-function tasksOnDate(date) { return S.tasks.filter(t => t.active && (t.schedule === 'daily' || t.schedule === 'once') && inEffect(t, date)); }
+// 某日期的常规任务 = active 且每日/单次/子任务 且在生效日期范围内
+function tasksOnDate(date) { return S.tasks.filter(t => t.active && (t.schedule === 'daily' || t.schedule === 'once' || t.schedule === 'child') && inEffect(t, date)); }
 // 今日常规任务
 function todayTasks() { return tasksOnDate(DB.today()); }
-// 本周(长期)任务 = 父任务
+// 多日(长期)任务 = 父任务，各自带截止日期
 function weeklyTasks() { return S.tasks.filter(t => t.active && t.schedule === 'weekly'); }
 // 某父任务的子任务（仅 active）
 function childTasks(parentId) { return S.tasks.filter(t => t.active && t.parent_id === parentId); }
@@ -159,12 +281,16 @@ function taskPending(taskId) {
   const d = DB.today();
   return S.pointLogs.some(l => l.log_date === d && l.task_id === taskId && l.confirmed === false);
 }
-function taskProgress(taskId) { // 跨天累计完成百分比（父任务自动聚合子任务）
+function taskProgress(taskId) { // 多日任务按子任务分数算进度；普通任务按 progress 累计
   const kids = allChildTasks(taskId);
   if (kids.length) {
-    let sum = 0;
-    kids.forEach(k => { for (const d in S.logs) { const l = S.logs[d][k.id]; if (l && l.progress) sum += l.progress; } });
-    return Math.min(100, sum);
+    const total = kids.reduce((s, k) => s + (k.points || 0), 0);
+    if (!total) return 0;
+    let got = 0;
+    kids.forEach(k => {
+      for (const d in S.logs) { const l = S.logs[d][k.id]; if (l && (l.completed || l.done)) { got += (k.points || 0); break; } }
+    });
+    return Math.min(100, Math.round(got / total * 100));
   }
   let sum = 0;
   for (const d in S.logs) { const l = S.logs[d][taskId]; if (l && l.progress) sum += l.progress; }
@@ -174,6 +300,23 @@ function deadlineDaysLeft(deadline) {
   if (!deadline) return null;
   const a = new Date(DB.today()), b = new Date(deadline);
   return Math.ceil((b - a) / 86400000);
+}
+// 多日任务超期后每天自动扣分（从截止次日算起，补扣漏掉的天）
+async function applyOverduePenalty() {
+  const today = DB.today();
+  for (const t of weeklyTasks()) {
+    if (!t.deadline || t.deadline >= today) continue;
+    let d = shiftDate(t.deadline, 1);
+    while (d <= today) {
+      const reason = `多日超期:${t.title}`;
+      if (!S.pointLogs.some(l => l.log_date === d && l.reason === reason)) {
+        const pid = await DB.addPointLog(-CONFIG.OVERDUE_DAILY_PENALTY, reason, d);
+        S.pointLogs.push({ id: pid, log_date: d, amount: -CONFIG.OVERDUE_DAILY_PENALTY, reason, confirmed: true });
+      }
+      d = shiftDate(d, 1);
+    }
+  }
+  S.balance = S.pointLogs.reduce((s, l) => s + (l.confirmed === false ? 0 : l.amount), 0);
 }
 
 // ---------- 计算：全清 / 连击 ----------
@@ -205,8 +348,41 @@ async function checkin(taskId, btn, progress = null) {
   if (!task) return;
   const today = DB.today();
 
-  // ===== 进度型打卡（长期/子任务）=====
-  if (!progress && task.parent_id) progress = task.percent; // 子任务：用家长配好的百分比
+  // ===== 子任务打卡（独立计分，多日任务的一部分）=====
+  if (task.parent_id) {
+    await DB.setLog(taskId, today, true, null, null);
+    S.logs[today] = S.logs[today] || {};
+    S.logs[today][taskId] = { done: true, progress: 0 };
+    const pts = task.points || 0;
+    if (pts > 0) {
+      const pid = await DB.addPointLog(pts, `完成:${task.title}`, today, { confirmed: false, task_id: taskId });
+      S.pointLogs.push({ id: pid, log_date: today, amount: pts, reason: `完成:${task.title}`, confirmed: false, task_id: taskId });
+    }
+    if (S.leadId) { const lead = S.pokemons.find(p => p.id === S.leadId); if (lead) await grantExp(lead, 5); }
+    // 子任务完成即下架（只完成一次，防止每天重复刷分）
+    await DB.updateTask(taskId, { active: false });
+    task.active = false;
+    const parent = S.tasks.find(t => t.id === task.parent_id);
+    const total = parent ? taskProgress(parent.id) : taskProgress(taskId);
+    if (total >= 100 && parent) {
+      await DB.updateTask(parent.id, { active: false });
+      parent.active = false;
+      for (const c of allChildTasks(parent.id)) { await DB.updateTask(c.id, { active: false }); c.active = false; }
+      confetti({ particleCount: 120, spread: 100, origin: { y: .5 } });
+      const bonus = parent.bonus || CONFIG.WEEKLY_DONE_BONUS;
+      if (bonus > 0) {
+        const bpid = await DB.addPointLog(bonus, `多日完成奖:${parent.title}`, today, { confirmed: false });
+        S.pointLogs.push({ id: bpid, log_date: today, amount: bonus, reason: `多日完成奖:${parent.title}`, confirmed: false });
+      }
+      toast(`🎉 多日任务「${parent.title}」完成！${bonus > 0 ? '+' + bonus + '分' : ''}`);
+    } else {
+      toast(`✅ 「${task.title}」完成！「${parent ? parent.title : ''}」进度 ${total}%`);
+    }
+    renderTop(); render();
+    return;
+  }
+
+  // ===== 进度型打卡（带百分比按钮的普通进度任务）=====
   if (progress) {
     await DB.setLog(taskId, today, true, null, progress);
     S.logs[today] = S.logs[today] || {};
@@ -583,7 +759,9 @@ function renderProgress() {
   if (!el) return;
   const all = todayTasks();
   const req = all.filter(t => t.required !== false);
-  if (!all.length) { el.innerHTML = ''; return; }
+  const opt = all.filter(t => t.required === false);
+  const wts = weeklyTasks();
+  if (!all.length && !wts.length) { el.innerHTML = ''; return; }
   const bar = (list, title, doneText, bonusText) => {
     const done = list.filter(t => logOn(t.id, S.viewDate)).length;
     const full = list.length > 0 && done === list.length;
@@ -595,12 +773,14 @@ function renderProgress() {
       <div class="progress-track"><div class="progress-fill ${full ? 'full' : ''}" style="width:${list.length ? (done / list.length * 100) : 0}%"></div></div>
     `;
   };
-  el.innerHTML = `
-    <div class="progress-card">
-      ${bar(req, '必选任务', '', `必选全清 +${CONFIG.REQUIRED_DONE_BONUS} 分`)}
-      ${bar(all, '全部任务', `可选全清 +${CONFIG.OPTIONAL_DONE_BONUS} 分`, `可选也全清再 +${CONFIG.OPTIONAL_DONE_BONUS} 分`)}
-    </div>
-  `;
+  // 必做 / 选做 独立两条进度条
+  let html = `<div class="progress-card">
+    ${bar(req, '🔴 必做任务', `全清 +${CONFIG.REQUIRED_DONE_BONUS} 分`, `🎉 全清 +${CONFIG.REQUIRED_DONE_BONUS} 分`)}
+    ${opt.length ? bar(opt, '🟢 选做任务', `全清 +${CONFIG.OPTIONAL_DONE_BONUS} 分`, `🎉 全清 +${CONFIG.OPTIONAL_DONE_BONUS} 分`) : ''}
+  </div>`;
+  // 多日任务进度条挨着增加
+  if (wts.length) html += `<div class="progress-card">${wts.map(weeklyProgressBar).join('')}</div>`;
+  el.innerHTML = html;
 }
 
 function renderTasks() {
@@ -614,32 +794,35 @@ function renderTasks() {
     return;
   }
   let html = dateNavHTML();
-  if (wts.length) html += weeklySection(wts);
+  if (S.viewNote) html += noteCardHTML();
   html += `<div id="progress-wrap"></div>`;
   html += rulesHintHTML();
-  // 必选任务：按类别分区展示（校内在先，孩子先做完校内）
-  html += catSectionHTML(req, '必选任务');
-  // 可选任务：同样按类别分区
-  if (opt.length) html += catSectionHTML(opt, '🎁 可选任务');
+  // 必做任务：按类别分区展示（校内在先，孩子先做完校内）
+  html += catSectionHTML(req, '🔴 必做任务');
+  // 选做任务：同样按类别分区
+  if (opt.length) html += catSectionHTML(opt, '🟢 选做任务');
   page.innerHTML = html;
   renderProgress();
 }
 
-// 按类别把任务分区渲染，组顺序 = 类别记忆顺序（config 里的顺序）
+// 任务排序：家长调整的 sort 优先，其次按名称
+function taskSort(a, b) {
+  const sa = a.sort || 0, sb = b.sort || 0;
+  if (sa !== sb) return sa - sb;
+  return (a.title || '').localeCompare(b.title || '', 'zh');
+}
+// 必做/选做分区内直接平铺任务（不再按类别分组块），排序：类别顺序 → 家长排序(sort) → 名称
 function catSectionHTML(tasks, title) {
   if (!tasks.length) return '';
-  const groups = {};
-  tasks.forEach(t => { (groups[t.category] = groups[t.category] || []).push(t); });
-  const cats = Object.keys(groups).sort((a, b) => catOrder(a) - catOrder(b));
-  let html = `<div class="section-title" style="margin:16px 4px 6px">${title}</div>`;
-  for (const c of cats) {
-    const arr = groups[c];
-    html += `<div class="cat-group">
-      <div class="cat-head">${catIcon(c)} ${c} <small>${arr.length} 项</small></div>
-      ${arr.map(taskCardHTML).join('')}
-    </div>`;
-  }
-  return html;
+  const arr = tasks.slice().sort((a, b) => {
+    const ca = catOrder(a.category), cb = catOrder(b.category);
+    if (ca !== cb) return ca - cb;
+    const sa = a.sort || 0, sb = b.sort || 0;
+    if (sa !== sb) return sa - sb;
+    return (a.title || '').localeCompare(b.title || '', 'zh');
+  });
+  return `<div class="section-title" style="margin:16px 4px 6px">${title}</div>
+    <div class="task-list">${arr.map(taskCardHTML).join('')}</div>`;
 }
 
 // 孩子端规则说明（可折叠）
@@ -664,53 +847,45 @@ function rulesHintHTML() {
 function taskCardHTML(t) {
   const isToday = S.viewDate === DB.today();
   const done = logOn(t.id, S.viewDate);
+  const isChild = !!t.parent_id;
+  // 必做/选做明显标记（卡片上部）
+  const reqTag = t.required === false
+    ? '<span class="req-tag opt">🟢 选做</span>'
+    : '<span class="req-tag">🔴 必做</span>';
+  // 家长小提示
+  const hint = t.hint ? `<div class="task-hint">💡 ${t.hint}</div>` : '';
   return `
-  <div class="task-card ${done ? 'done' : ''} ${t.required === false ? 'optional' : ''}" data-tid="${t.id}">
+  <div class="task-card ${done ? 'done' : ''} ${t.required === false ? 'optional' : ''} ${isChild ? 'child-card' : ''}" data-tid="${t.id}">
     <div class="emoji">${catIcon(t.category)}</div>
     <div class="info">
-      <b>${t.title}</b>
-      <span>${t.category}${t.schedule === 'once' ? ' · 单次' : ''}${t.required === false ? ' · 可选' : ''}${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}</span>
+      <b>${t.title}</b>${reqTag}
+      ${hint}
+      <span>${t.category}${t.schedule === 'once' ? ' · 单次' : ''}${isChild ? ' · 子任务' : ''}${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}</span>
     </div>
     <div class="pts">+${t.points}</div>
     <button class="btn-done" data-action="checkin" data-tid="${t.id}" ${done || !isToday ? 'disabled' : ''}>${done ? '✅ 已完成' : (!isToday ? '查看历史' : '✅ 完成')}</button>
   </div>`;
 }
 
-// ---------- 本周任务（进度型长期任务） ----------
-function weeklySection(wts) {
+// ---------- 多日任务进度条（统一风格，挨着每日进度条增加） ----------
+function dlBadgeHTML(t, left) {
+  if (!t.deadline) return '';
+  if (left > 2) return `<span class="dl-badge">⏳ 剩 ${left} 天</span>`;
+  if (left === 0) return `<span class="dl-badge urgent">🔥 今天截止！</span>`;
+  if (left < 0) return `<span class="dl-badge urgent">🚫 已超期 ${-left} 天</span>`;
+  return `<span class="dl-badge urgent">⏳ 剩 ${left} 天</span>`;
+}
+function weeklyProgressBar(t) {
+  const prog = taskProgress(t.id);
+  const left = deadlineDaysLeft(t.deadline);
+  const full = prog >= 100;
   return `
-    <div class="progress-card weekly-card">
-      <div class="progress-head"><b>⏰ 本周任务</b><span>做完所有子任务就完成</span></div>
-      ${wts.map(t => {
-        const prog = taskProgress(t.id);
-        const left = deadlineDaysLeft(t.deadline);
-        const kids = childTasks(t.id);
-        const done = prog >= 100;
-        return `
-        <div class="task-card weekly-parent ${done ? 'done' : ''}" data-tid="${t.id}">
-          <div class="emoji">${catIcon(t.category)}</div>
-          <div class="info">
-            <b>${t.title}</b>
-            <span>${t.deadline ? `截止 ${t.deadline} · 剩 ${left >= 0 ? left : 0} 天` : '本周内完成'} · 进度 ${prog}%</span>
-            <div class="exp-track" style="margin-top:6px"><div class="exp-fill" style="width:${prog}%"></div></div>
-          </div>
-          <div class="pts">+${t.points}</div>
-        </div>
-        <div class="child-list">
-          ${kids.map(k => {
-            const isToday = S.viewDate === DB.today();
-            const childDone = taskProgress(k.id) >= (k.percent || 0);
-            const pend = childDone && taskPending(k.id);
-            return `
-            <button class="child-item ${childDone ? 'done' : ''}" data-action="checkin" data-tid="${k.id}" ${childDone || !isToday ? 'disabled' : ''}>
-              <span class="child-check">${childDone ? '✅' : '⬜'}</span>
-              <span class="child-name">${k.title}</span>
-              <span class="child-pct">${k.percent || 0}%${pend ? ' ⏳' : ''}</span>
-            </button>`;
-          }).join('') || '<div class="empty-tip" style="padding:8px">这个任务还没有子任务</div>'}
-        </div>`;
-      }).join('')}
+    <div class="progress-head" style="display:flex;justify-content:space-between;align-items:center">
+      <b>${t.title}${dlBadgeHTML(t, left)}</b>
+      <span>${prog}%${full ? ' 🎉' : ''} · 全清 +${t.bonus || CONFIG.WEEKLY_DONE_BONUS} 分</span>
     </div>
+    <div class="progress-track"><div class="progress-fill ${full ? 'full' : ''}" style="width:${prog}%"></div></div>
+    ${t.deadline ? `<div class="dl-penalty">⏰ 超期每天扣 ${CONFIG.OVERDUE_DAILY_PENALTY} 分</div>` : ''}
   `;
 }
 
@@ -921,12 +1096,14 @@ function render() {
 function kidShellHTML() {
   return `
     <div class="topbar">
+      ${DEMO_ACTIVE ? '<div class="demo-tag">🎬 演示模式</div>' : ''}
       <div class="title">🏝️ Kimi 的任务岛<small>${mottoText()}</small></div>
       <div class="badges">
         <span class="badge">⭐ <b id="pt">0</b></span>
         <span class="badge ball">🔴 <b id="bl">0</b></span>
       </div>
     </div>
+    ${ptsNoticeHTML()}
     <div class="page" id="page"></div>
     <nav class="tabbar">
       <button class="${S.tab === 'tasks' ? 'on' : ''}" data-tab="tasks"><span class="ico">${POKE_ICON.ball('#e53935')}</span>任务</button>
@@ -936,16 +1113,46 @@ function kidShellHTML() {
     </nav>
   `;
 }
+// 孩子端顶部：家长新发放积分到账提示条（按已读记录过滤）
+function ptsNoticeHTML() {
+  const seen = Number(lsGet(LK('seen_pts'), 0)) || 0;
+  const unread = S.pointLogs
+    .filter(l => l.id > seen && l.amount > 0 && l.confirmed !== false && l.reason !== '演示初始积分')
+    .reduce((s, l) => s + l.amount, 0);
+  if (!unread) return '';
+  return `<div class="pts-notice">🔔 家长发来 <b>+${unread}</b> 积分！<button class="chip red" data-action="pts-dismiss">知道了</button></div>`;
+}
+// 切换查看日期后加载当天叮嘱（孩子端/家长端）
+async function refreshViewNote() { S.viewNote = await DB.getNote(S.viewDate); render(); }
+async function refreshParentNote() { S.parentNote = await DB.getNote(S.parentDate); render(); }
+// 孩子端：当日叮嘱卡片（等宽圆角，和任务列表一致），随日期切换
+function noteCardHTML() {
+  return `<div class="note-card">💬 每日叮嘱：${S.viewNote}</div>`;
+}
 function bindKidTabs() {
   const tabs = document.querySelectorAll('.tabbar button[data-tab]');
   tabs.forEach(b => b.onclick = () => { S.tab = b.dataset.tab; render(); });
   $('btn-parent').onclick = () => {
+    // 演示模式下已具备家长身份，直接进入不再要密码
+    if (DEMO_ACTIVE) { S.role = 'parent'; localStorage.setItem(LK('role'), 'parent'); render(); return; }
     // 快速进入：家长密码
     const pw = prompt('请输入家长密码');
     if (pw === CONFIG.PARENT_PASSWORD) { S.role = 'parent'; localStorage.setItem(LK('role'), 'parent'); render(); }
     else if (pw !== null) toast('密码不对哦');
   };
 }
+// 家长端上移/下移调整任务展示顺序（重排 sort）
+async function moveTask(id, dir) {
+  const list = tasksOnDate(S.parentDate).sort(taskSort);
+  const i = list.findIndex(t => t.id === id);
+  const j = dir === 'up' ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= list.length) { toast('已经是边缘了'); return; }
+  const arr = [...list];
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+  for (let k = 0; k < arr.length; k++) await DB.updateTask(arr[k].id, { sort: k });
+  await refreshAll(); render();
+}
+
 function bindActions() {
   document.body.onclick = async e => {
     const btn = e.target.closest('[data-action]');
@@ -953,9 +1160,9 @@ function bindActions() {
     const act = btn.dataset.action;
     const tid = btn.dataset.tid, pmid = btn.dataset.pmid;
     if (act === 'checkin') await checkin(Number(tid), btn, btn.dataset.prog ? Number(btn.dataset.prog) : null);
-    else if (act === 'date-prev') { S.viewDate = shiftDate(S.viewDate, -1); render(); }
-    else if (act === 'date-next') { if (S.viewDate < DB.today()) { S.viewDate = shiftDate(S.viewDate, 1); render(); } }
-    else if (act === 'date-today') { S.viewDate = DB.today(); render(); }
+    else if (act === 'date-prev') { S.viewDate = shiftDate(S.viewDate, -1); render(); refreshViewNote(); }
+    else if (act === 'date-next') { if (S.viewDate < DB.today()) { S.viewDate = shiftDate(S.viewDate, 1); render(); refreshViewNote(); } }
+    else if (act === 'date-today') { S.viewDate = DB.today(); render(); refreshViewNote(); }
     else if (act === 'card') { const pm = S.pokemons.find(p => p.id === Number(pmid)); if (pm) showCardDetail(pm); }
     else if (act === 'feed') openFeed(Number(pmid));
     else if (act === 'evolve') { const pm = S.pokemons.find(p => p.id === Number(pmid)); if (pm) evolvePm(pm); }
@@ -972,10 +1179,14 @@ function bindActions() {
     else if (act === 'parent-parse') parseBatch();
     else if (act === 'parent-exit') { S.role = 'kid'; localStorage.setItem(LK('role'), 'kid'); render(); }
     else if (act === 'parent-cal') { S.calOffset += Number(btn.dataset.step || 0); renderParentCal(); }
-    else if (act === 'parent-date-prev') { S.parentDate = shiftDate(S.parentDate, -1); render(); }
-    else if (act === 'parent-date-next') { S.parentDate = shiftDate(S.parentDate, 1); render(); }
-    else if (act === 'parent-date-today') { S.parentDate = DB.today(); render(); }
+    else if (act === 'parent-date-prev') { S.parentDate = shiftDate(S.parentDate, -1); render(); refreshParentNote(); }
+    else if (act === 'parent-date-next') { S.parentDate = shiftDate(S.parentDate, 1); render(); refreshParentNote(); }
+    else if (act === 'parent-date-today') { S.parentDate = DB.today(); render(); refreshParentNote(); }
     else if (act === 'parent-multi') openMultiDayAssign();
+    else if (act === 'parent-move') moveTask(Number(tid), btn.dataset.dir);
+    else if (act === 'parent-edit') openTaskEditor(Number(tid));
+    else if (act === 'parent-save-note') saveNote();
+    else if (act === 'pts-dismiss') { lsSet(LK('seen_pts'), Math.max(0, ...S.pointLogs.filter(l => l.amount > 0 && l.confirmed !== false).map(l => l.id))); render(); }
     else if (act === 'parent-giveball') giveBall();
     else if (act === 'parent-givepts') givePts();
     else if (act === 'parent-minuspts') minusPts();
@@ -1059,24 +1270,32 @@ function parentDateNav() {
   `;
 }
 function parentTaskPanel() {
-  const ts = tasksOnDate(S.parentDate);
+  const ts = tasksOnDate(S.parentDate).sort(taskSort);
   const wts = weeklyTasks();
   const pIsToday = S.parentDate === DB.today();
   return `
     <div class="panel">
-      <h3>布置任务 <small style="font-weight:400">先选日期，再布置那天的任务</small></h3>
+      <h3 style="margin-top:12px">布置任务 <small style="font-weight:400">先选日期，再布置那天的任务</small></h3>
       ${parentDateNav()}
+      <div class="input-row" style="margin-top:8px">
+        <span style="font-size:13px;color:var(--ink-soft);white-space:nowrap">💬 叮嘱</span>
+        <input id="pt-note" placeholder="说句给孩子的话（孩子端日期导航下方展示）" value="${S.parentNote || ''}" style="flex:2">
+        <button class="btn-primary" data-action="parent-save-note" style="flex:1">保存</button>
+      </div>
       <h3 style="margin-top:8px">📅 ${S.parentDate} 的任务${pIsToday ? '（今天）' : ''}</h3>
       ${ts.map(t => `
         <div class="prow">
           <span>${catIcon(t.category)}</span>
-          <div class="grow">${t.title} <small style="color:#90a4ae">${t.category} · +${t.points}分${t.schedule === 'once' ? ' · 单次' : ''}${t.required === false ? ' · 可选' : ''}${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}</small></div>
+          <div class="grow">${t.title} <small style="color:#90a4ae">${t.category} · +${t.points}分${t.schedule === 'once' ? ' · 单次' : ''}${t.schedule === 'child' ? ' · 子任务' : ''}${t.required === false ? ' · 选做' : ''}${t.start_date ? ` · 📅 ${t.start_date.slice(5)}` : ''}${t.hint ? ` · 💡 ${t.hint}` : ''}</small></div>
           <span class="${logOn(t.id, S.parentDate) ? 'ok' : 'miss'}">${logOn(t.id, S.parentDate) ? '✓ 完成' : '未完成'}</span>
+          <button class="btn-ghost" data-action="parent-edit" data-tid="${t.id}" title="编辑任务">✏️</button>
+          <button class="btn-ghost" data-action="parent-move" data-tid="${t.id}" data-dir="up" title="上移">↑</button>
+          <button class="btn-ghost" data-action="parent-move" data-tid="${t.id}" data-dir="down" title="下移">↓</button>
           <button class="btn-danger" data-action="parent-del" data-tid="${t.id}">删除</button>
         </div>
       `).join('') || '<div class="empty-tip">这一天没有任务，用下面的按钮布置</div>'}
       ${wts.length ? `
-        <h3 style="margin-top:12px">⏰ 本周任务</h3>
+        <h3 style="margin-top:12px">📅 多日任务</h3>
         ${wts.map(t => {
           const prog = taskProgress(t.id);
           const left = deadlineDaysLeft(t.deadline);
@@ -1123,7 +1342,7 @@ function parentTaskPanel() {
       ` : ''}
       <h3 style="margin-top:16px">新建任务</h3>
       <div class="input-row">
-        <input id="pt-title" placeholder="任务名称" style="flex:2">
+        <input id="pt-title" placeholder="任务名称（末尾可加 {提示}）" style="flex:2">
         <input id="pt-cat" list="cat-options" placeholder="类别(可自定义)" value="打卡">
         <datalist id="cat-options">${loadCats().map(c => `<option value="${c}">`).join('')}</datalist>
         <input id="pt-pts" type="number" placeholder="积分" value="10" style="width:80px">
@@ -1136,14 +1355,18 @@ function parentTaskPanel() {
         <select id="pt-schedule" onchange="var d=document.getElementById('pt-deadline'),c=document.getElementById('pt-children-wrap');var w=this.value==='weekly';if(d)d.style.display=w?'':'none';if(c)c.style.display=w?'':'none';">
           <option value="once">只做一次</option>
           <option value="daily">每天都有</option>
-          <option value="weekly">本周任务(拆子任务)</option>
+          <option value="weekly">多日任务(拆子任务)</option>
         </select>
         <input id="pt-deadline" type="date" style="display:none;flex:1">
         <button class="btn-primary" data-action="parent-save" style="flex:1">添加</button>
       </div>
       <div id="pt-children-wrap" style="display:none;margin-top:8px">
-        <textarea id="pt-children" placeholder="拆子任务：每行 名称,百分比（逗号/分号/顿号都行）&#10;第1篇课文,30&#10;第2篇课文,30&#10;习作,40&#10;&#10;· 百分比可以不填：没填的自动均分剩余部分&#10;· 全部填了但总数不是100%：自动按比例缩放成100%&#10;· 填满100%也可以：比如 50,50 两项"></textarea>
-        <div class="form-hint">孩子逐个勾选子任务累计进度，勾满后父任务自动完成，积分按百分比分批发放</div>
+        <textarea id="pt-children" placeholder="拆子任务：每行 名称,分数（分数可省，默认10分）&#10;第1篇课文,10&#10;第2篇课文,10&#10;习作,15,可选&#10;&#10;· 每个子任务完成得自己的分数，进度按已得/总分算&#10;· 想标可选：名称,分数,可选"></textarea>
+        <div class="input-row" style="margin-top:8px">
+          <span style="font-size:13px;color:var(--ink-soft);white-space:nowrap">完成奖励</span>
+          <input id="pt-bonus" type="number" placeholder="全清额外分（留空=默认${CONFIG.WEEKLY_DONE_BONUS}）" style="flex:2">
+        </div>
+        <div class="form-hint">孩子逐个勾选子任务独立计分，勾满后多日任务自动完成并额外加分（难的任务可设更高）</div>
       </div>
       <details style="margin-top:10px">
         <summary style="font-size:13px;color:var(--ink-soft);cursor:pointer">🏷️ 管理历史类别（${loadCats().length} 个，删掉的不再出现在下拉里）</summary>
@@ -1164,15 +1387,15 @@ function parentTaskPanel() {
       <button class="btn-primary" data-action="parent-multi" style="width:100%">📅 批量布置多天（日期分隔行）</button>
       <div class="form-hint">一次规划好几天：每行写一个日期（如 <b>10-20</b> / <b>周一</b> / <b>明天</b>），下面几行是那天要做的任务，直到下一个日期行。布置后任务只出现在对应的那天（错过当天则不再出现）。</div>
       <h3 style="margin-top:16px">自动识别（布置每天都要做的任务）</h3>
-      <div class="form-hint" style="margin-bottom:6px">格式：<b>名称, 类别, 分数, 可选</b>　（除名称外均选填，分隔符使用逗号/分号/顿号/竖线/空格都行）</div>
-      <textarea id="pt-batch" placeholder="每行一个任务，4 段可省：&#10;  第1段：名称（必填）&#10;  第2段：类别，不填默认「打卡」&#10;  第3段：分数，不填默认 10 分&#10;  第4段：写「可选」就是不强制，不写默认必选&#10;&#10;语文作业,校内作业,10&#10;跳绳500个,运动,5,可选&#10;练字一页 10"></textarea>
+      <div class="form-hint" style="margin-bottom:6px">格式：<b>名称, 类别, 分数, 可选</b>　（除名称外均选填；名称末尾可用 <b>{花括号}</b> 圈住小提示）</div>
+      <textarea id="pt-batch" placeholder="每行一个任务，4 段可省：&#10;  第1段：名称（必填），末尾可加 {提示}&#10;  第2段：类别，不填默认「打卡」&#10;  第3段：分数，不填默认 10 分&#10;  第4段：写「可选」就是不强制，不写默认必选&#10;&#10;语文作业{先复习生字},校内作业,10&#10;跳绳500个,运动,5,可选&#10;练字一页 10"></textarea>
       <button class="btn-primary" data-action="parent-parse" style="margin-top:8px">解析并添加</button>
       <div class="form-hint">这里布置的任务每天都出现（如每天的语文作业）；想布置某天专属任务用上面的「批量布置多天」。</div>
     </div>
   `;
 }
 async function saveParentTask() {
-  const title = $('pt-title').value.trim();
+  const { title, hint } = splitHint($('pt-title').value.trim());
   if (!title) { toast('请填任务名称'); return; }
   const category = ($('pt-cat').value || '').trim() || '打卡';
   const points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt($('pt-pts').value) || 10));
@@ -1181,16 +1404,21 @@ async function saveParentTask() {
   const required = $('pt-req').value !== '0';
   saveCat(category);
   if (schedule === 'weekly') {
-    const parent = await DB.addTask({ title, category, points, schedule: 'weekly', deadline, required: true });
     const text = ($('pt-children') ? $('pt-children').value : '') || '';
     const items = parseSubtasks(text);
+    if (!items.length) { toast('子任务为空，先填拆分子任务'); return; }
+    const totalPts = items.reduce((s, x) => s + x.points, 0);
+    const bonusEl = $('pt-bonus');
+    const bonusVal = bonusEl && parseInt(bonusEl.value);
+    const bonus = bonusVal ? Math.min(CONFIG.MAX_POINTS_PER_TASK, Math.max(1, bonusVal)) : null;
+    const parent = await DB.addTask({ title, hint, category, points: totalPts, schedule: 'weekly', deadline, required: true, bonus });
     for (const x of items) {
-      await DB.addTask({ title: x.title, category, points: 0, schedule: 'child', parent_id: parent.id, percent: x.pct });
+      await DB.addTask({ title: x.title, hint: x.hint, category, points: x.points, schedule: 'child', parent_id: parent.id, percent: null, required: x.required });
     }
   } else {
     // once = 只做一次 → 绑定家长当前查看/布置的日期（当天专属）
     const bindDate = schedule === 'once' ? S.parentDate : null;
-    await DB.addTask({ title, category, points, schedule, deadline, required, start_date: bindDate, end_date: bindDate });
+    await DB.addTask({ title, hint, category, points, schedule, deadline, required, start_date: bindDate, end_date: bindDate });
   }
   $('pt-title').value = '';
   $('pt-deadline').value = '';
@@ -1208,33 +1436,27 @@ function parseFields(line) {
   return s.split(/[|,，;；、]+/).map(x => x.trim()).filter(Boolean);
 }
 
-// ---------- 子任务解析 + 百分比归一化 ----------
-// 未填百分比 → 自动均分剩余；全部填了但总和≠100 → 按比例缩放成100
+// 从名称里提取 {提示}：如「语文作业{先复习生字}」→ { title: 语文作业, hint: 先复习生字 }
+function splitHint(title) {
+  if (!title) return { title: '', hint: '' };
+  const m = title.match(/^(.*?)\{([^}]*)\}\s*$/);
+  if (m) return { title: m[1].trim(), hint: m[2].trim() };
+  return { title: title.trim(), hint: '' };
+}
+
+// ---------- 子任务解析（独立分数，格式：名称, 分数, 可选） ----------
 function parseSubtasks(text) {
-  const items = (text || '').split('\n').map(s => s.trim()).filter(Boolean)
-    .map(l => { const p = parseFields(l); return { title: p[0], pct: p[1] ? parseInt(p[1]) : null }; })
-    .filter(x => x.title);
-  if (!items.length) return [];
-  if (items.length === 1) { items[0].pct = 100; return items; }
-  const autoIdx = items.map((x, i) => (!x.pct || x.pct <= 0) ? i : -1).filter(i => i >= 0);
-  let vals = items.map(x => (x.pct && x.pct > 0 ? x.pct : 0));
-  if (autoIdx.length) {
-    // 有没填百分比的：没填的均分剩余部分，最后一项补齐零头
-    const fixedSum = vals.reduce((s, v) => s + v, 0);
-    const share = Math.max(1, Math.floor((100 - fixedSum) / autoIdx.length));
-    autoIdx.forEach(i => { vals[i] = share; });
-    vals[autoIdx[autoIdx.length - 1]] += 100 - vals.reduce((s, v) => s + v, 0);
-  } else {
-    const sum = vals.reduce((s, v) => s + v, 0);
-    if (sum !== 100) {
-      // 全填了但总和≠100：按比例缩放成 100
-      const scale = 100 / sum;
-      vals = vals.map(v => Math.floor(v * scale));
-      vals[vals.length - 1] += 100 - vals.reduce((s, v) => s + v, 0);
-    }
-  }
-  vals = vals.map(v => Math.max(0, v));
-  return items.map((x, i) => ({ title: x.title, pct: vals[i] }));
+  return (text || '').split('\n').map(s => s.trim()).filter(Boolean)
+    .map(l => {
+      const p = parseFields(l);
+      if (!p || !p[0]) return null;
+      const { title, hint } = splitHint(p[0]);
+      if (!title) return null;
+      const points = p[1] ? Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt(p[1]) || 10)) : 10;
+      const required = !(p[2] && ['可选', '0', '选'].includes(p[2]));
+      return { title, hint, points, required };
+    })
+    .filter(Boolean);
 }
 
 // ---------- 长期任务编辑（父任务元信息 + 子任务列表） ----------
@@ -1242,22 +1464,25 @@ function openWeeklyEditor(id) {
   const t = S.tasks.find(x => x.id === id);
   if (!t) return;
   const kids = allChildTasks(id);
-  const kidsText = kids.map(k => `${k.title},${k.percent}`).join('\n');
+  const kidsText = kids.map(k => `${k.title},${k.points}${k.required === false ? ',可选' : ''}`).join('\n');
   const modal = document.createElement('div');
   modal.className = 'modal-mask';
   modal.innerHTML = `
     <div class="modal" style="max-width:440px;width:calc(100% - 40px)">
-      <h3>✏️ 编辑本周任务</h3>
+      <h3>✏️ 编辑多日任务</h3>
       <div class="input-row">
         <input id="we-title" value="${t.title}" placeholder="任务名称" style="flex:2">
         <input id="we-cat" list="cat-options" value="${t.category}" placeholder="类别" style="flex:1">
       </div>
       <div class="input-row">
-        <input id="we-pts" type="number" value="${t.points}" style="width:80px" title="总分">
+        <input id="we-hint" value="${t.hint || ''}" placeholder="小提示（如：先复习生字）" style="flex:1">
         <input id="we-deadline" type="date" value="${t.deadline || ''}" style="flex:1">
       </div>
-      <div class="form-hint">子任务每行「名称,百分比」。不填百分比自动均分；全填了但总数不是100%会自动缩放到100%。改子任务会重置它的进度。</div>
-      <textarea id="we-kids" style="min-height:110px" placeholder="第1篇课文,30&#10;第2篇课文,30&#10;习作,40">${kidsText}</textarea>
+      <div class="input-row">
+        <input id="we-bonus" type="number" value="${t.bonus || ''}" placeholder="完成奖励（留空=默认${CONFIG.WEEKLY_DONE_BONUS}分）" style="flex:1">
+      </div>
+      <div class="form-hint">子任务每行「名称,分数」（分数可省默认10分，可加 {提示}，末尾写「可选」为选做）。总分自动 = 子任务分之和。改子任务会重置它的进度。</div>
+      <textarea id="we-kids" style="min-height:110px" placeholder="第1篇课文,10&#10;第2篇课文,10&#10;习作,15,可选">${kidsText}</textarea>
       <div style="margin-top:12px;display:flex;gap:8px">
         <button class="btn-cancel" data-cancel style="flex:1">取消</button>
         <button class="btn-primary" data-save style="flex:2">保存修改</button>
@@ -1268,18 +1493,87 @@ function openWeeklyEditor(id) {
   modal.querySelector('[data-save]').onclick = async () => {
     const title = modal.querySelector('#we-title').value.trim();
     if (!title) { toast('任务名称不能为空'); return; }
+    const hint = modal.querySelector('#we-hint').value.trim() || null;
     const category = (modal.querySelector('#we-cat').value || '').trim() || '打卡';
-    const points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt(modal.querySelector('#we-pts').value) || 10));
     const deadline = modal.querySelector('#we-deadline').value || null;
+    const bonusVal = parseInt(modal.querySelector('#we-bonus').value);
+    const bonus = bonusVal ? Math.min(CONFIG.MAX_POINTS_PER_TASK, Math.max(1, bonusVal)) : null;
     saveCat(category);
     const items = parseSubtasks(modal.querySelector('#we-kids').value);
-    await DB.updateTask(id, { title, category, points, deadline });
-    Object.assign(t, { title, category, points, deadline });
+    if (!items.length) { toast('子任务为空，先填拆分子任务'); return; }
+    const totalPts = items.reduce((s, x) => s + x.points, 0);
+    await DB.updateTask(id, { title, hint, category, points: totalPts, deadline, bonus });
+    Object.assign(t, { title, hint, category, points: totalPts, deadline, bonus });
     // 重建子任务：删旧子任务（连同打卡记录），按新配置创建
     for (const k of allChildTasks(id)) await DB.deleteTask(k.id);
     for (const it of items) {
-      await DB.addTask({ title: it.title, category, points: 0, schedule: 'child', parent_id: id, percent: it.pct });
+      await DB.addTask({ title: it.title, hint: it.hint, category, points: it.points, schedule: 'child', parent_id: id, percent: null, required: it.required });
     }
+    modal.remove();
+    await refreshAll(); render();
+    toast('已保存');
+  };
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+// ---------- 通用任务编辑（普通任务：改名/类别/分数/必做选做/类型/提示） ----------
+function openTaskEditor(id) {
+  const t = S.tasks.find(x => x.id === id);
+  if (!t) return;
+  if (t.schedule === 'weekly') { openWeeklyEditor(id); return; }  // 多日任务走子任务编辑
+  const isChild = t.schedule === 'child';
+  const modal = document.createElement('div');
+  modal.className = 'modal-mask';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:440px;width:calc(100% - 40px)">
+      <h3>✏️ 编辑任务</h3>
+      <label>任务名称</label>
+      <input id="te-title" value="${t.title}" placeholder="任务名称">
+      <label>类别</label>
+      <input id="te-cat" list="te-cat-list" value="${t.category}" placeholder="类别(可自定义)">
+      <datalist id="te-cat-list">${loadCats().map(c => `<option value="${c}">`).join('')}</datalist>
+      <div class="input-row" style="margin-top:10px">
+        <input id="te-pts" type="number" value="${t.points}" placeholder="积分">
+        <select id="te-req">
+          <option value="1" ${t.required !== false ? 'selected' : ''}>必做</option>
+          <option value="0" ${t.required === false ? 'selected' : ''}>选做</option>
+        </select>
+      </div>
+      <label>小提示</label>
+      <input id="te-hint" value="${t.hint || ''}" placeholder="给孩子的小提示（如：先复习生字）">
+      ${isChild ? '' : `
+      <label>任务类型</label>
+      <select id="te-schedule">
+        <option value="daily" ${t.schedule === 'daily' ? 'selected' : ''}>每天都有</option>
+        <option value="once" ${t.schedule === 'once' ? 'selected' : ''}>只做一次</option>
+      </select>`}
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn-cancel" data-cancel style="flex:1">取消</button>
+        <button class="btn-primary" data-save style="flex:2">保存修改</button>
+      </div>
+    </div>
+  `;
+  modal.querySelector('[data-cancel]').onclick = () => modal.remove();
+  modal.querySelector('[data-save]').onclick = async () => {
+    const title = modal.querySelector('#te-title').value.trim();
+    if (!title) { toast('任务名称不能为空'); return; }
+    const hint = modal.querySelector('#te-hint').value.trim() || null;
+    const category = (modal.querySelector('#te-cat').value || '').trim() || '打卡';
+    const points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt(modal.querySelector('#te-pts').value) || 10));
+    const required = modal.querySelector('#te-req').value !== '0';
+    const patch = { title, hint, category, points, required };
+    if (!isChild) {
+      const schedule = modal.querySelector('#te-schedule').value;
+      if (schedule !== t.schedule) {
+        if (schedule === 'once') { patch.start_date = S.parentDate; patch.end_date = S.parentDate; }
+        else if (schedule === 'daily') { patch.start_date = null; patch.end_date = null; }
+        patch.schedule = schedule;
+      }
+    }
+    saveCat(category);
+    await DB.updateTask(id, patch);
+    Object.assign(t, patch);
     modal.remove();
     await refreshAll(); render();
     toast('已保存');
@@ -1310,7 +1604,7 @@ function catOrder(cat) {
   return i >= 0 ? i : 1000;
 }
 
-function itemLine(it) { return `${it.title},${it.category},${it.points}${it.required === false ? ',可选' : ''}`; }
+function itemLine(it) { return `${it.title}${it.hint ? `{${it.hint}}` : ''},${it.category},${it.points}${it.required === false ? ',可选' : ''}`; }
 
 function fillBatch(items) {
   const ta = $('pt-batch');
@@ -1374,7 +1668,7 @@ function copyLastAssign() {
 function parseBatchLines(text) {
   return text.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
     const parts = parseFields(line);
-    const title = parts[0];
+    const { title, hint } = splitHint(parts[0]);
     let category = '打卡', points = 10, required = true;
     if (parts[1]) {
       if (/^\d+$/.test(parts[1])) points = parseInt(parts[1]);
@@ -1383,7 +1677,7 @@ function parseBatchLines(text) {
     if (parts[2] && /^\d+$/.test(parts[2])) points = parseInt(parts[2]);
     if (parts[3] && ['可选', '0', '选'].includes(parts[3])) required = false;
     points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, points));
-    return { title, category, points, required };
+    return { title, hint, category, points, required };
   });
 }
 
@@ -1428,7 +1722,7 @@ async function parseBatch() {
   let n = 0;
   for (const it of items) {
     saveCat(it.category);
-    await DB.addTask({ title: it.title, category: it.category, points: it.points, schedule: 'daily', required: it.required });
+    await DB.addTask({ title: it.title, hint: it.hint, category: it.category, points: it.points, schedule: 'daily', required: it.required });
     n++;
   }
   $('pt-batch').value = '';
@@ -1473,14 +1767,14 @@ function parseMultiDay(text) {
     if (dt) { cur = { date: dt, items: [] }; groups.push(cur); return; }
     if (!cur) return; // 开头不是日期就跳过
     const parts = parseFields(line);
-    const title = parts[0];
+    const { title, hint } = splitHint(parts[0]);
     if (!title) return;
     let category = '打卡', points = 10, required = true;
     if (parts[1]) { if (/^\d+$/.test(parts[1])) points = parseInt(parts[1]); else category = parts[1]; }
     if (parts[2] && /^\d+$/.test(parts[2])) points = parseInt(parts[2]);
     if (parts[3] && ['可选', '0', '选'].includes(parts[3])) required = false;
     points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, points));
-    cur.items.push({ title, category, points, required });
+    cur.items.push({ title, hint, category, points, required });
   });
   return groups.filter(g => g.items.length);
 }
@@ -1510,7 +1804,7 @@ function openMultiDayAssign() {
     for (const g of groups) {
       for (const it of g.items) {
         saveCat(it.category);
-        await DB.addTask({ title: it.title, category: it.category, points: it.points, schedule: 'once', required: it.required, start_date: g.date, end_date: g.date });
+        await DB.addTask({ title: it.title, hint: it.hint, category: it.category, points: it.points, schedule: 'once', required: it.required, start_date: g.date, end_date: g.date });
         n++;
       }
     }
@@ -1688,6 +1982,14 @@ function parentPmPanel() {
 }
 // 读取奖励/扣分理由（可空）
 function pmReason() { return ($('pt-reason') && $('pt-reason').value || '').trim(); }
+
+async function saveNote() {
+  const n = ($('pt-note') && $('pt-note').value || '').trim();
+  await DB.setNote(S.parentDate, n);
+  S.parentNote = n || null;
+  toast(n ? '已保存叮嘱' : '已清除叮嘱');
+  render();
+}
 async function resetDemo() {
   const prefix = DEMO_ACTIVE ? 'kmd_' : 'km_';
   const what = DEMO_ACTIVE ? '演示数据' : '全部数据';
@@ -1753,7 +2055,7 @@ async function undoPoint(id) {
     if (S.logs[l.log_date]) delete S.logs[l.log_date][l.task_id];
     // 撤销"单次任务"时重新激活，避免撤销后任务消失
     const t = S.tasks.find(x => x.id === l.task_id);
-    if (t && t.schedule === 'once' && !t.active) { await DB.updateTask(t.id, { active: true }); t.active = true; }
+    if (t && (t.schedule === 'once' || t.schedule === 'child') && !t.active) { await DB.updateTask(t.id, { active: true }); t.active = true; }
   }
   toast('已撤销');
   render();
@@ -1815,6 +2117,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     await refreshAll();
     S.viewDate = S.viewDate || DB.today();    // 默认查看今天
     S.parentDate = S.parentDate || DB.today(); // 家长端默认今天
+    await applyOverduePenalty();  // 多日任务超期自动扣分
+    await refreshAll();
     render();
     bindActions();
   } catch (err) {

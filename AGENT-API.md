@@ -34,10 +34,18 @@
 | `required` | bool | 否 | `true`必选 / `false`可选，默认 true |
 | `start_date` | date | 否 | 绑定的日期（`YYYY-MM-DD`）。配合 `once` 表示「只在这一天出现」 |
 | `end_date` | date | 否 | 绑定的结束日期。单日专属任务时 = `start_date` 同值 |
-| `deadline` | date | 否 | weekly 长期任务的截止日期 |
+| `deadline` | date | 否 | 多日任务的截止日期 |
 | `parent_id` | bigint | 否 | 子任务所属的父任务 id |
-| `percent` | int | 否 | 子任务占父任务的百分比（30=30%） |
+| `percent` | int | 否 | 旧版子任务百分比（新逻辑按分数计，可忽略） |
+| `hint` | text | 否 | 家长小提示，孩子端展示（如「先复习生字」） |
+| `sort` | int | 否 | 孩子端展示顺序权重（家长端 ↑↓ 调整，默认 0） |
 | `active` | bool | 否 | 是否启用，默认 true（`false`=软删除/已完成下架） |
+
+**多日任务规则**：
+- 子任务（`schedule:child`）各自带独立 `points`（分数），完成即得自己的分数；父任务总分 = 子任务分之和，进度按已得/总分算
+- 多日任务全部子任务完成 → 自动关闭，并额外 +`WEEKLY_DONE_BONUS`（默认 10 分，reason `多日完成奖:标题`）
+- 多日任务超期（超过 `deadline`）→ 每天自动扣 `OVERDUE_DAILY_PENALTY`（默认 5 分，reason `多日超期:标题`，从截止次日算起补扣）
+- 任务标题末尾可用 `{花括号}` 圈住提示 → 存入 `hint` 字段，如 `语文作业{先复习生字}`
 
 ---
 

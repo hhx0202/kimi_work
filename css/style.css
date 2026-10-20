@@ -620,3 +620,48 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   .page { padding-bottom: 40px; }
   .tabbar { max-width: 720px; left: 50%; transform: translateX(-50%); border-radius: 20px 20px 0 0; }
 }
+
+/* 长期任务倒计时徽章 */
+.dl-badge {
+  display: inline-block; font-size: 11px; font-weight: 700; color: #fff;
+  background: #8d6e63; border-radius: 999px; padding: 2px 8px; margin-left: 6px;
+  vertical-align: middle; white-space: nowrap;
+}
+.dl-badge.urgent {
+  background: #e53935;
+}
+
+/* 必做/选做标记（低调浅色） */
+.req-tag {
+  display: inline-block; font-size: 11px; font-weight: 700;
+  background: #ffe3e3; color: #c62828; border-radius: 999px; padding: 2px 8px;
+  margin-left: 6px; vertical-align: middle; white-space: nowrap;
+}
+.req-tag.opt { background: #e8f5e9; color: #2e7d32; }
+/* 家长小提示 */
+.task-hint { font-size: 12px; color: #8d6e63; margin-top: 2px; }
+/* 子任务卡稍紧凑 */
+.task-card.child-card { padding: 8px 12px; }
+/* 编辑弹窗字段标签（分行布局） */
+.modal label { display: block; font-size: 12px; color: var(--ink-soft); margin-top: 10px; }
+
+/* 多日任务超期扣分提示 */
+.dl-penalty { margin-top: 4px; font-size: 11px; color: #e53935; }
+
+/* 演示模式标记 */
+.demo-tag {
+  font-size: 11px; font-weight: 700; color: #fff; background: #7e57c2;
+  display: inline-block; border-radius: 8px; padding: 2px 8px; margin-bottom: 4px;
+}
+/* 积分到账提示条 */
+.pts-notice {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 8px 12px 0; padding: 8px 12px; background: #e3f2fd; color: #1565c0;
+  border-radius: 12px; font-size: 13px; font-weight: 600;
+}
+/* 当天叮嘱卡片（和任务列表一样的等宽圆角风格） */
+.note-card {
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 14px 16px; margin-bottom: 12px; font-size: 15px; font-weight: 600; color: #ef6c00;
+  display: flex; align-items: center; gap: 10px;
+}

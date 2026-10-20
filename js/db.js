@@ -31,25 +31,47 @@ const DB = (() => {
 
   const demo = {
     init() {
-      // 首次使用：生成示例任务 + 新手精灵球
+      // 首次使用：生成示例任务（各类都来一点，方便演示）+ 初始积分和精灵球
       if (lsGet(K.tasks, null) === null) {
+        const today0 = today();
+        const add = n => { const d = new Date(today0 + 'T00:00:00'); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
         const seed = [
-          { title: '语文作业', category: '作业', points: 10 },
-          { title: '数学作业', category: '作业', points: 10 },
-          { title: '跳绳 500 个', category: '打卡', points: 5 },
-          { title: '阅读 20 分钟', category: '打卡', points: 5 },
+          // daily 每天都有
+          { title: '语文作业', hint: '先复习生字再写', category: '校内作业', points: 10, schedule: 'daily' },
+          { title: '数学作业', category: '校内作业', points: 10, schedule: 'daily' },
+          { title: '跳绳 500 个', category: '运动', points: 5, schedule: 'daily' },
+          { title: '阅读 20 分钟', category: '阅读', points: 5, schedule: 'daily' },
+          // once 只做一次
+          { title: '整理书包', category: '家务', points: 5, schedule: 'once' },
+          { title: '练字两页', category: '练字', points: 5, schedule: 'once', required: false },
+          // weekly 多日任务（各自带截止日期，可拆子任务）
+          { title: '练字一本', category: '练字', points: 20, schedule: 'weekly', deadline: add(2), subtasks: [['楷书练习', 50], ['硬笔练习', 50]] },
+          { title: '读完《夏洛的网》', category: '阅读', points: 30, schedule: 'weekly', deadline: add(4) },
         ];
-        dSet(K.tasks, seed.map((s, i) => ({ id: i + 1, ...s, schedule: 'daily', active: true, created_at: nowISO() })));
+        const rows = [];
+        let id = 1;
+        for (const s of seed) {
+          const pid = id;
+          rows.push({ id: pid, title: s.title, hint: s.hint || null, category: s.category, points: s.points, schedule: s.schedule, deadline: s.deadline || null, parent_id: null, percent: null, required: s.required !== false, sort: 0, active: true, created_at: nowISO() });
+          id++;
+          if (s.subtasks) {
+            for (const [t, pct] of s.subtasks) {
+              rows.push({ id: id++, title: t, category: s.category, points: 0, schedule: 'child', deadline: null, parent_id: pid, percent: pct, required: true, active: true, created_at: nowISO() });
+            }
+          }
+        }
+        dSet(K.tasks, rows);
         dSet(K.logs, []);
         dSet(K.pms, []);
-        dSet(K.pts, []);
-        dSet(K.items, [{ id: 1, log_date: today(), item: 'ball', amount: 1, reason: '新手礼包' }]);
+        // 演示初始积分（已确认发放，孩子可直接花）
+        dSet(K.pts, [{ id: 1, log_date: today0, amount: 100, reason: '演示初始积分', confirmed: true, task_id: null, created_at: nowISO() }]);
+        dSet(K.items, [{ id: 1, log_date: today0, item: 'ball', amount: 5, reason: '演示礼包' }]);
       }
     },
     async getTasks() { return [...dGet(K.tasks)]; },
-    async addTask({ title, category, points, schedule = 'daily', deadline = null, parent_id = null, percent = null, required = true, start_date = null, end_date = null }) {
+    async addTask({ title, category, points, schedule = 'daily', deadline = null, parent_id = null, percent = null, required = true, start_date = null, end_date = null, hint = null, sort = 0, note = null, bonus = null }) {
       const rows = dGet(K.tasks);
-      const row = { id: dNextId(K.tasks), title, category, points, schedule, deadline, parent_id, percent, required, start_date, end_date, active: true, created_at: nowISO() };
+      const row = { id: dNextId(K.tasks), title, category, points, schedule, deadline, parent_id, percent, required, start_date, end_date, hint, sort, note, bonus, active: true, created_at: nowISO() };
       rows.push(row); dSet(K.tasks, rows);
       return { ...row };
     },
@@ -115,6 +137,9 @@ const DB = (() => {
     async hasItemReason(reason) {
       return dGet(K.items).some(r => r.reason === reason);
     },
+    // 今天的叮嘱（家长留言，孩子端顶部展示）
+    async getNote(date) { return lsGet(P + 'note_' + date, '') || null; },
+    async setNote(date, note) { lsSet(P + 'note_' + date, note || ''); },
   };
 
   // ==========================================================
@@ -131,8 +156,8 @@ const DB = (() => {
       if (error) sFail(error, '读取任务');
       return data || [];
     },
-    async addTask({ title, category, points, schedule = 'daily', deadline = null, parent_id = null, percent = null, required = true, start_date = null, end_date = null }) {
-      const { data, error } = await sClient().from('tasks').insert({ title, category, points, schedule, deadline, parent_id, percent, required, start_date, end_date, active: true }).select();
+    async addTask({ title, category, points, schedule = 'daily', deadline = null, parent_id = null, percent = null, required = true, start_date = null, end_date = null, hint = null, sort = 0, note = null, bonus = null }) {
+      const { data, error } = await sClient().from('tasks').insert({ title, category, points, schedule, deadline, parent_id, percent, required, start_date, end_date, hint, sort, note, bonus, active: true }).select();
       if (error) sFail(error, '新增任务');
       return data[0];
     },
@@ -210,6 +235,16 @@ const DB = (() => {
       if (error) sFail(error, '查重');
       return (data || []).length > 0;
     },
+    // 今天的叮嘱（家长留言）
+    async getNote(date) {
+      const { data, error } = await sClient().from('notes').select('note').eq('log_date', date).maybeSingle();
+      if (error) sFail(error, '读叮嘱');
+      return (data && data.note) || null;
+    },
+    async setNote(date, note) {
+      const { error } = await sClient().from('notes').upsert({ log_date: date, note }, { onConflict: 'log_date' });
+      if (error) sFail(error, '存叮嘱');
+    },
   };
 
   // ==========================================================
@@ -238,5 +273,7 @@ const DB = (() => {
     addItemLog: impl.addItemLog.bind(impl),
     getItemCount: impl.getItemCount.bind(impl),
     hasItemReason: impl.hasItemReason.bind(impl),
+    getNote: impl.getNote.bind(impl),
+    setNote: impl.setNote.bind(impl),
   };
 })();

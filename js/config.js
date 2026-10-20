@@ -5,9 +5,10 @@
 
 const CONFIG = {
   // ---------- 数据模式 ----------
-  // 'demo'    = 本地试玩模式：数据存浏览器 localStorage，不连数据库，无需填 key，先看效果
-  // 'supabase'= 真实模式：连接 Supabase 数据库（部署到远程前改这里并填写下方 key）
-  DB_MODE: 'supabase',
+  // 自动判断：本地 localhost / 127.0.0.1 打开 → demo（演示数据，方便本地验证，不碰真库）
+  // 其他地址（部署到线上 / 手机连 WiFi 访问局域网 IP）→ supabase 真库
+  // 想强制某一模式：直接改成 'demo' 或 'supabase'
+  DB_MODE: (() => { try { return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(location.href) ? 'demo' : 'supabase'; } catch { return 'supabase'; } })(),
 
   // ---------- Supabase 数据库（DB_MODE='supabase' 时必须填写！） ----------
   SUPABASE_URL: 'https://ipitcujpkfszghngfzwp.supabase.co',   // 你的 Project URL（不带 /rest/v1/）
@@ -47,9 +48,11 @@ const CONFIG = {
   PROGRESS_STEPS: [30, 60, 100],   // 单次打卡可选完成百分比按钮
 
   // ---------- 积分 ----------
-  REQUIRED_DONE_BONUS: 5,         // 每日必选任务全部完成的额外奖励积分
-  OPTIONAL_DONE_BONUS: 3,         // 每日可选任务全部完成的额外奖励积分
+  REQUIRED_DONE_BONUS: 5,         // 每日必做任务全部完成的额外奖励积分
+  OPTIONAL_DONE_BONUS: 5,         // 每日选做任务全部完成的额外奖励积分
   MAX_POINTS_PER_TASK: 100,       // 单个任务积分上限（防手滑）
+  WEEKLY_DONE_BONUS: 10,          // 多日任务全部完成额外奖励积分
+  OVERDUE_DAILY_PENALTY: 5,       // 多日任务超期后每天自动扣分
 
   // ---------- 连续全勤 ----------
   STREAK_DAYS_FOR_BALL: 7,        // 连续全勤多少天送精灵球
