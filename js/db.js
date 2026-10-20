@@ -264,7 +264,23 @@ const DB = (() => {
       return dGet(K.items).some(r => r.reason === reason);
     },
     // 今天的叮嘱（家长留言，孩子端顶部展示）
-    async getNote(date) { return lsGet(P + 'note_' + date, '') || null; },
+    // 当天没单独写过 → 自动沿用「这天之前最近一次」的叮嘱（家长换个字就能用，不用每天重打）
+    // 当天写过空字符串 = 明确清空（从这天起不显示），后面的日期也跟着空，不会又翻回更早的
+    async getNote(date) {
+      const own = lsGet(P + 'note_' + date, null);
+      if (own !== null) return String(own).trim() ? String(own) : null;
+      let best = null, bestDate = '';
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k || !k.startsWith(P + 'note_')) continue;
+          const d = k.slice((P + 'note_').length);
+          if (d >= date || d <= bestDate) continue;
+          bestDate = d; best = lsGet(k, null);
+        }
+      } catch { /* 读不到就用空 */ }
+      return best && String(best).trim() ? String(best) : null;
+    },
     async setNote(date, note) { lsSet(P + 'note_' + date, note || ''); },
     // 家长规则设置（覆盖 config 数值）
     async getSettings() { return lsGet(P + 'settings', {}) || {}; },
@@ -365,10 +381,16 @@ const DB = (() => {
       return (data || []).length > 0;
     },
     // 今天的叮嘱（家长留言）
+    // 当天没记录 → 取这天之前最近一条（自动沿用）；当天记了空串 = 明确清空
     async getNote(date) {
       const { data, error } = await sClient().from('notes').select('note').eq('log_date', date).maybeSingle();
       if (error) sFail(error, '读叮嘱');
-      return (data && data.note) || null;
+      if (data) return String(data.note || '').trim() ? data.note : null;
+      const { data: prev, error: e2 } = await sClient().from('notes')
+        .select('note').lt('log_date', date).order('log_date', { ascending: false }).limit(1);
+      if (e2) sFail(e2, '读叮嘱');
+      const row = prev && prev[0];
+      return row && String(row.note || '').trim() ? row.note : null;
     },
     async setNote(date, note) {
       const { error } = await sClient().from('notes').upsert({ log_date: date, note }, { onConflict: 'log_date' });

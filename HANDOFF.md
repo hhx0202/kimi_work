@@ -68,7 +68,7 @@
   - `pokemon`：name/pokedex_no/level(遗留不用)/exp/shiny
   - `point_logs`：log_date/amount/reason/confirmed(是否已发放)/task_id(撤销回退)/created_at(发生时间)（余额=SUM(confirmed)）
   - `item_logs`：item('ball')/amount/reason（球数=SUM）
-  - `notes`：log_date(唯一)/note（家长每日叮嘱，随日期切换展示）
+  - `notes`：log_date(唯一)/note（家长每日叮嘱，随日期切换展示；当天没记录时读最近的更早一条=自动沿用，存空串=从这天起清除）
   - `settings`：key/value（「⚙️ 规则设置」覆盖 config，全家同步）
 
 ## 四、规则数值（`js/config.js`；家长端「⚙️ 规则设置」可动态改其中 13 项，存 settings 表）

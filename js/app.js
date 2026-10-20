@@ -2915,12 +2915,14 @@ function parentTaskPanel() {
   const optTs = ts.filter(t => t.required === false).sort(taskSort);
   const wts = weeklyTasks();
   const qts = quickTasks();
+  // 叮嘱预览：多行压成一行（换行符直接塞进按钮会把按钮撑成两行）
+  const notePrev = S.parentNote ? String(S.parentNote).replace(/\s+/g, ' ').trim() : '';
   return `
     <div class="panel">
       <h3 style="margin-top:12px">布置任务 <small style="font-weight:400">先选日期，再布置那天的任务</small></h3>
       ${parentDateNav()}
       <div class="input-row" style="margin-top:8px">
-        <button class="btn-primary" data-action="parent-edit-note" style="flex:2">${S.parentNote ? `📝 编辑叮嘱（${S.parentNote.slice(0, 12)}${S.parentNote.length > 12 ? '…' : ''}）` : '✍️ 写今天的叮嘱'}</button>
+        <button class="btn-primary" data-action="parent-edit-note" style="flex:2">${notePrev ? `📝 编辑叮嘱（${notePrev.slice(0, 12)}${notePrev.length > 12 ? '…' : ''}）` : '✍️ 写今天的叮嘱'}</button>
       </div>
       <div class="prow sec-head" style="margin-top:10px">🔴 必做</div>
       <div id="pt-task-list-req">
@@ -3848,7 +3850,7 @@ function openNoteEditor() {
     <div class="modal" style="max-width:440px;width:calc(100% - 40px)">
       <h3>💬 ${S.parentDate} 的叮嘱</h3>
       <textarea id="note-text" placeholder="说句给孩子的话（孩子端当天显示）" style="min-height:110px">${S.parentNote || ''}</textarea>
-      <div class="form-hint">每天一条，家长手机写了孩子平板打开就能看到。留空保存 = 清除。</div>
+      <div class="form-hint">今天还没单独写过的话，这里会先带出最近一次的叮嘱，改完保存就只算今天的。留空保存 = 从今天起清除。</div>
       <div style="margin-top:12px;display:flex;gap:8px">
         <button class="btn-cancel" data-cancel style="flex:1">取消</button>
         <button class="btn-primary" data-save style="flex:2">保存</button>
