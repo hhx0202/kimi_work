@@ -22,7 +22,7 @@ const DB = (() => {
   // ==========================================================
   const K = { tasks: P + 'tasks', logs: P + 'logs', pms: P + 'pokemons', pts: P + 'points', items: P + 'items' };
   const K_SEED_VER = P + 'seedver';
-  const SEED_VER = 3;   // 演示数据版本：升版本时会给已有的演示数据补一次测试内容 / 修一次历史数据
+  const SEED_VER = 4;   // 演示数据版本：升版本时会给已有的演示数据补一次测试内容 / 修一次历史数据
 
   // 演示用宝可梦：覆盖「基础 / 一阶 / 最终 / 无进化链 / 闪耀形态 / 临进化」各阶段，方便测试
   const DEMO_PMS = [
@@ -35,8 +35,23 @@ const DB = (() => {
     [25,    0, true ],   // ✨皮卡丘   整条进化链闪耀形态
     [126,  70, false],   // 鸭嘴火兽  无进化链（70/100 可测进入闪耀形态）
   ];
-  function demoPmRows(startId = 1) {
-    return DEMO_PMS.map(([no, exp, shiny], i) => ({
+  // 额外的一批：让图鉴/队伍一打开就热闹（各属性、各阶段、稀有与传说都有）
+  const DEMO_PMS_EXTRA = [
+    [3,     0, false],   // 妙蛙花    最终形态
+    [6,   150, false],   // 喷火龙    最终形态，快到闪耀
+    [12,   40, false],   // 巴大蝶
+    [65,   90, false],   // 胡地
+    [94,    0, false],   // 耿鬼
+    [131,  60, false],   // 拉普拉斯
+    [133,   0, false],   // 伊布      分支进化（水/雷/火）
+    [143,   0, false],   // 卡比兽
+    [149, 120, false],   // 快龙
+    [150,   0, true ],   // ✨超梦     传说 + 闪耀
+    [95,    0, false],   // 大岩蛇    岩石/地面
+    [68,   50, false],   // 怪力      格斗
+  ];
+  function demoPmRows(startId = 1, list = DEMO_PMS) {
+    return list.map(([no, exp, shiny], i) => ({
       id: startId + i,
       name: PK_BY_NO[no].name,
       pokedex_no: no,
@@ -89,10 +104,10 @@ const DB = (() => {
         }
         dSet(K.tasks, rows);
         dSet(K.logs, []);
-        dSet(K.pms, demoPmRows(1));
+        dSet(K.pms, demoPmRows(1, DEMO_PMS.concat(DEMO_PMS_EXTRA)));
         // 演示初始积分（已确认发放，孩子可直接花）
-        dSet(K.pts, [{ id: 1, log_date: today0, amount: 600, reason: '演示初始积分', confirmed: true, task_id: null, created_at: nowISO() }]);
-        dSet(K.items, [{ id: 1, log_date: today0, item: 'ball', amount: 30, reason: '演示礼包' }]);
+        dSet(K.pts, [{ id: 1, log_date: today0, amount: 1200, reason: '演示初始积分', confirmed: true, task_id: null, created_at: nowISO() }]);
+        dSet(K.items, [{ id: 1, log_date: today0, item: 'ball', amount: 45, reason: '演示礼包' }]);
         lsSet(K_SEED_VER, SEED_VER);
         return;
       }
@@ -137,6 +152,24 @@ const DB = (() => {
           }
         });
         if (changed) dSet(K.pms, pms);
+      }
+      // v3 → v4：演示队伍再补一批宝可梦 + 积分/精灵球（只补一次；已有的同一只不会重复加）
+      if (prevVer < 4) {
+        const d0 = today();
+        const pms = dGet(K.pms);
+        const haveNo = new Set(pms.map(r => Number(r.pokedex_no)));
+        const haveName = new Set(pms.map(r => r.name));
+        const missing = DEMO_PMS_EXTRA.filter(([no]) => !haveNo.has(no) && !haveName.has(PK_BY_NO[no].name));
+        if (missing.length) {
+          const nextId = pms.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1;
+          dSet(K.pms, pms.concat(demoPmRows(nextId, missing)));
+        }
+        const pts = dGet(K.pts);
+        pts.push({ id: pts.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1, log_date: d0, amount: 1000, reason: '演示补充积分', confirmed: true, task_id: null, created_at: nowISO() });
+        dSet(K.pts, pts);
+        const its = dGet(K.items);
+        its.push({ id: its.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1, log_date: d0, item: 'ball', amount: 20, reason: '演示补充精灵球' });
+        dSet(K.items, its);
       }
       lsSet(K_SEED_VER, SEED_VER);
     },

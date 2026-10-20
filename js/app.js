@@ -1243,6 +1243,16 @@ function dateNavHTML() {
   `;
 }
 
+// 进度条随完成度变色：0% 红橙 → 50% 黄 → 100% 绿；完成后是绿色 + 光带扫过（不再用黄色）
+function progFillStyle(pct, full) {
+  if (full) return '';
+  const p = Math.max(0, Math.min(100, pct));
+  // 前半程红→黄（0-50），后半程黄→绿（50-100），比线性 HSL 更贴合「越接近完成越绿」的直觉
+  const hue = p <= 50 ? 4 + p * 0.92 : 50 + (p - 50) * 1.4;
+  const h = Math.round(hue);
+  return `;background:linear-gradient(90deg,hsl(${h} 82% 64%),hsl(${h} 74% 47%))`;
+}
+
 function renderProgress() {
   const el = $('progress-wrap');
   if (!el) return;
@@ -1255,13 +1265,14 @@ function renderProgress() {
   const bar = (list, title, doneText, bonusText, kind) => {
     const done = list.filter(t => logOn(t.id, S.viewDate)).length;
     const full = list.length > 0 && done === list.length;
+    const pct = list.length ? Math.round(done / list.length * 100) : 0;
     return `
       <div class="progress-item clickable" data-action="progress-detail" data-kind="${kind}" title="点开看这一组的任务清单">
         <div class="progress-head">
           <b>${title}</b>
           <span>${done}/${list.length} 已完成 ${full ? `🎉 ${bonusText}` : doneText}</span>
         </div>
-        <div class="progress-track"><div class="progress-fill ${full ? 'full' : ''}" style="width:${list.length ? (done / list.length * 100) : 0}%"></div></div>
+        <div class="progress-track"><div class="progress-fill ${full ? 'full' : ''}" style="width:${pct}%${progFillStyle(pct, full)}"></div></div>
         <div class="pd-tap">点开看清单 ›</div>
       </div>
     `;
@@ -1504,7 +1515,7 @@ function weeklyProgressBar(t) {
         <b>${t.title}${dlBadgeHTML(t, left)}</b>
         <span>${prog}%${full ? ' 🎉' : ''} · 全清 +${t.bonus || CONFIG.WEEKLY_DONE_BONUS} 分</span>
       </div>
-      <div class="progress-track"><div class="progress-fill ${full ? 'full' : ''}" style="width:${prog}%"></div></div>
+      <div class="progress-track"><div class="progress-fill ${full ? 'full' : ''}" style="width:${prog}%${progFillStyle(prog, full)}"></div></div>
       ${t.deadline ? `<div class="dl-penalty">⏰ 超期每天扣 ${CONFIG.OVERDUE_DAILY_PENALTY} 分</div>` : ''}
     </div>
   `;
@@ -3024,6 +3035,10 @@ function openQuickAddTask(idx) {
       <h3>➕ 添加任务</h3>
       <label>任务名称</label>
       <textarea id="qa-title" rows="2" style="width:100%">${escHTML(it.title)}</textarea>
+      <label>小提示（可留空，孩子会在任务卡上看到）</label>
+      <div class="input-row" style="margin-top:0">
+        <input id="qa-hint" value="${escHTML(it.hint || '')}" placeholder="如：先复习生字再写">
+      </div>
       <label>类别</label>
       <div class="input-row" style="margin-top:0">
         ${catSelectHTML('qa-cat', it.category || '作业', 'flex:1')}
@@ -3052,8 +3067,11 @@ function openQuickAddTask(idx) {
   modal.querySelector('[data-cancel]').onclick = close;
   modal.querySelector('[data-ok]').onclick = async () => {
     const raw = modal.querySelector('#qa-title').value.trim();
-    const { title, hint } = splitHint(raw);
+    const { title, hint: inlineHint } = splitHint(raw);
     if (!title) { toast('任务名称不能为空'); return; }
+    // 小提示：输入框里写了就用它；没写但名称里带 {提示} 也认
+    const typedHint = modal.querySelector('#qa-hint').value.trim();
+    const hint = typedHint || inlineHint || null;
     const category = readCat('qa-cat');
     const points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt(modal.querySelector('#qa-pts').value) || 10));
     const required = modal.querySelector('#qa-req').value !== '0';
