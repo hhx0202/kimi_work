@@ -1210,12 +1210,13 @@ function renderTasks() {
   const opt = ts.filter(t => t.required === false);
   // 家长消息卡固定在最顶端：加球 / 扣分 / 审批通过，孩子点「知道啦」才消失
   const notices = noticesHTML();
+  // 每日叮嘱：即使今天没有任务也要显示（家长的话比任务列表更重要）
+  const note = S.viewNote ? noteCardHTML() : '';
   if (!ts.length && !wts.length) {
-    page.innerHTML = notices + `<div class="empty-tip">今天还没有任务哦，让家长去布置吧～</div>`;
+    page.innerHTML = notices + dateNavHTML() + note + `<div class="empty-tip">今天还没有任务哦，让家长去布置吧～</div>`;
     return;
   }
-  let html = notices + dateNavHTML();
-  if (S.viewNote) html += noteCardHTML();
+  let html = notices + dateNavHTML() + note;
   html += `<div id="progress-wrap"></div>`;
   html += rulesHintHTML();
   // 必做任务：按类别分区展示（校内在先，孩子先做完校内）
@@ -2004,11 +2005,13 @@ function ptsNoticeHTML() {
   return `<div class="pts-notice">🔔 家长发来 <b>+${unread}</b> 积分！<button class="chip red" data-action="pts-dismiss">知道了</button></div>`;
 }
 // 切换查看日期后加载当天叮嘱（孩子端/家长端）
-async function refreshViewNote() { S.viewNote = await DB.getNote(S.viewDate); render(); }
-async function refreshParentNote() { S.parentNote = await DB.getNote(S.parentDate); render(); }
-// 孩子端：当日叮嘱卡片（等宽圆角，和任务列表一致），随日期切换
+async function refreshViewNote() { S.viewNote = await DB.getNote(S.viewDate) || null; render(); }
+async function refreshParentNote() { S.parentNote = await DB.getNote(S.parentDate) || null; render(); }
+// 孩子端：当日叮嘱卡片（等宽圆角，和任务列表一致），随日期切换；家长写的换行原样保留
 function noteCardHTML() {
-  return `<div class="note-card">💬 每日叮嘱：${S.viewNote}</div>`;
+  const txt = String(S.viewNote == null ? '' : S.viewNote).trim();
+  if (!txt) return '';
+  return `<div class="note-card">💬 <span class="note-txt"><b>每日叮嘱</b>${escHTML(txt).replace(/\n/g, '<br>')}</span></div>`;
 }
 function bindKidTabs() {
   const tabs = document.querySelectorAll('.tabbar button[data-tab]');
@@ -3207,13 +3210,23 @@ function openNoteEditor() {
     </div>
   `;
   modal.querySelector('[data-cancel]').onclick = () => modal.remove();
-  modal.querySelector('[data-save]').onclick = async () => {
+  modal.querySelector('[data-save]').onclick = async ev => {
+    const btn = ev.currentTarget;
     const n = modal.querySelector('#note-text').value.trim();
-    await DB.setNote(S.parentDate, n);
-    S.parentNote = n || null;
-    modal.remove();
-    toast(n ? '已保存叮嘱' : '已清除叮嘱');
-    render();
+    btn.disabled = true;
+    try {
+      await DB.setNote(S.parentDate, n);
+      // 家长端和查看日期是同一天时，同步孩子端的数据，切过去立刻能看到，不用刷新页面
+      if (S.parentDate === S.viewDate) S.viewNote = n || null;
+      S.parentNote = n || null;
+      modal.remove();
+      toast(n ? '已保存叮嘱' : '已清除叮嘱');
+      render();
+    } catch (err) {
+      btn.disabled = false;
+      toast('保存失败：' + (err && err.message ? err.message : err));
+      reportError('保存叮嘱失败', `${err && err.message ? err.message : err}（日期 ${S.parentDate}）`, err && err.stack, '');
+    }
   };
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
