@@ -1804,13 +1804,13 @@ function renderPokemons() {
   `;
 }
 
-// 获取时间：小卡上只放「月-日 时:分」，完整时间放到 title 里，免得把卡撑破
+// 获取时间：小卡上放「年-月-日 时:分」，title 里放同样的完整时间
 function caughtShort(iso) {
   if (!iso) return '时间未知';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return String(iso).slice(0, 16);
   const p = n => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 function caughtFull(iso) {
   if (!iso) return '';
@@ -1818,6 +1818,18 @@ function caughtFull(iso) {
   if (isNaN(d.getTime())) return String(iso);
   const p = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// 获取时间前的小图标：按宝可梦 id 稳定随机选一种精灵球（不随重渲染跳动）
+function pmBallIcon(pmId) {
+  const balls = [
+    () => POKE_ICON.ball('#e53935'),   // 红白球
+    () => POKE_ICON.great(),           // 超级球
+    () => POKE_ICON.ultra(),           // 高级球
+    () => POKE_ICON.master(),          // 大师球
+  ];
+  const i = Math.abs(Number(pmId) || 0) % balls.length;
+  return balls[i]();
 }
 
 // 小卡牌（列表）：第一行「属性 + 名字」，第二行获取时间
@@ -1840,7 +1852,7 @@ function pmCardHTML(pm) {
       <span class="mini-type" style="background:${TYPE_COLOR[type] || '#a8a878'}">${TYPE_NAME[type] || type}</span>
       <span class="mini-name">${info.name}</span>
     </div>
-    <div class="mini-time">🕒 ${caughtShort(pm.caught_at)}</div>
+    <div class="mini-time"><span class="mini-ball">${pmBallIcon(pm.id)}</span> ${caughtShort(pm.caught_at)}</div>
   </div>`;
 }
 
@@ -1873,6 +1885,7 @@ function showCardDetail(pm) {
       ${typeof PK_FLAVOR !== 'undefined' && PK_FLAVOR[pm.pokedex_no] ? `
       <div class="ptcg-flavor">📖 ${PK_FLAVOR[pm.pokedex_no]}</div>` : ''}
       <div class="ptcg-foot">
+        <div class="ptcg-caught"><span class="mini-ball">${pmBallIcon(pm.id)}</span> ${caughtFull(pm.caught_at)}</div>
         <div class="ptcg-exprow">${maxed ? (pm.shiny ? '✨ 已满级（封顶）' : '✅ 已进入闪耀形态（这张是普通卡）') : `EXP ${pm.exp}/${expThreshold(pm)}`}</div>
         <div class="exp-track"><div class="exp-fill" style="width:${expPct}%"></div></div>
         ${evoChainLine(pm.pokedex_no)}
