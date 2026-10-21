@@ -372,6 +372,12 @@ body {
   color: #c62828; padding: 0 4px; border-radius: 50%; font-weight: 400; line-height: 1.1;
 }
 .quick-chip.pressed { transform: scale(.95); box-shadow: 0 0 0 2px rgba(21, 101, 192, .35) inset; }
+/* 拖动中的标签：放大 + 蓝边 + 轻微上浮，iOS 不支持 vibrate，靠这个视觉反馈提示"已可拖" */
+.quick-chip.dragging {
+  transform: scale(1.06);
+  box-shadow: 0 6px 16px rgba(21, 101, 192, .25), 0 0 0 2px rgba(21, 101, 192, .55) inset;
+  z-index: 3; position: relative;
+}
 .quick-add { flex: 0 0 auto; padding: 6px 14px; font-size: 18px; line-height: 1.35; }
 /* 常用任务标题行：标题不换行，「排序」「＋」固定在右边；窄屏藏掉说明文字免得挤成两行 */
 .quick-head h3 { white-space: nowrap; }

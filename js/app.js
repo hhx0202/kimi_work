@@ -2893,9 +2893,18 @@ function bindQuickLongPress() {
     const under = document.elementFromPoint(x, y);
     const target = under && under.closest ? under.closest('.quick-chip') : null;
     if (!target || target === el) return;
+    // 拖动中 DOM 正在被移动，elementFromPoint 命中的元素关系可能瞬时失效；
+    // 若 el / target / 插入参照点不属于当前列表，直接跳过这次换位，避免 insertBefore 抛 NotFoundError
+    if (el.parentNode !== box || target.parentNode !== box) return;
     const r = target.getBoundingClientRect();
-    box.insertBefore(el, x > r.left + r.width / 2 ? target.nextSibling : target);
-    sdrag.moved = true;
+    const ref = x > r.left + r.width / 2 ? target.nextSibling : target;
+    if (ref !== null && ref.parentNode !== box) return;
+    try {
+      box.insertBefore(el, ref);
+      sdrag.moved = true;
+    } catch (err) {
+      // 拖太快 DOM 瞬时不一致，忽略这一次即可
+    }
   };
   const sortEnd = () => {
     clearTimeout(stimer); stimer = null;
