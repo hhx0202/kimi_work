@@ -338,13 +338,12 @@ function inEffect(t, d) {
   return true;
 }
 
-// 某日期的常规任务 = active 且每日/单次/子任务 且在生效日期范围内
-function tasksOnDate(date) { return S.tasks.filter(t => t.active && (t.schedule === 'daily' || t.schedule === 'once' || t.schedule === 'child') && inEffect(t, date)); }
+// 某日期的常规任务 = 每日/单次/子任务 且在生效日期范围内（不管 active，已完成/待审核都保留展示）
+function tasksOnDate(date) { return S.tasks.filter(t => (t.schedule === 'daily' || t.schedule === 'once' || t.schedule === 'child') && inEffect(t, date)); }
 // 今日常规任务
 function todayTasks() { return tasksOnDate(DB.today()); }
-// 某日期用于「进度条/全清判定」的任务集合：active 的 + 当天已提交/已完成的 once/child。
-// 这类任务打卡后会被置 active=false（完成后即下架），若只按 active 统计，它们会同时从分子分母消失，
-// 导致进度条不动、必做全清奖励不触发。这里靠打卡记录把它们找回，保证分母稳定。
+// 某日期用于「进度条/全清判定」的任务集合：每日/单次/子任务 且在生效期内。
+// 任务不再因完成而下架，这里无需再用打卡记录找回；保留该兜底兼容历史已下架数据。
 function dayTasksForProgress(date) {
   return S.tasks.filter(t => {
     if (!(t.schedule === 'daily' || t.schedule === 'once' || t.schedule === 'child')) return false;
@@ -353,10 +352,10 @@ function dayTasksForProgress(date) {
     return !!(S.logs[date]?.[t.id]?.done);
   });
 }
-// 多日(长期)任务 = 父任务，各自带截止日期
-function weeklyTasks() { return S.tasks.filter(t => t.active && t.schedule === 'weekly'); }
-// 某父任务的子任务（仅 active）
-function childTasks(parentId) { return S.tasks.filter(t => t.active && t.parent_id === parentId); }
+// 多日(长期)任务 = 父任务，各自带截止日期（不管 active，完成后保留展示）
+function weeklyTasks() { return S.tasks.filter(t => t.schedule === 'weekly'); }
+// 某父任务的子任务（含已完成，完成后保留展示）
+function childTasks(parentId) { return S.tasks.filter(t => t.parent_id === parentId); }
 // 某父任务的全部子任务（含已完成，用于进度统计）
 function allChildTasks(parentId) { return S.tasks.filter(t => t.parent_id === parentId); }
 
@@ -513,36 +512,33 @@ async function checkin(taskId, btn, progress = null) {
   const today = DB.today();
 
   // ===== 子任务打卡（独立计分，多日任务的一部分）=====
+  // 和 daily/once 一致走"提交-审批"：approved=false，任务留卡片显示「已提交」，审批通过后仍保留展示
   if (task.parent_id) {
-    await DB.setLog(taskId, today, true, null, null);
+    await DB.setLog(taskId, today, true, null, null, false);
     S.logs[today] = S.logs[today] || {};
-    S.logs[today][taskId] = { done: true, progress: 0 };
+    S.logs[today][taskId] = { done: true, progress: 0, approved: false };
     const pts = task.points || 0;
     if (pts > 0) {
       const pid = await DB.addPointLog(pts, `完成:${task.title}`, today, { confirmed: false, task_id: taskId });
       S.pointLogs.push({ id: pid, log_date: today, amount: pts, reason: `完成:${task.title}`, confirmed: false, task_id: taskId });
     }
     if (S.leadId) { const lead = S.pokemons.find(p => p.id === S.leadId); if (lead) await grantExp(lead, CONFIG.LEAD_EXP_PER_TASK); }
-    // 子任务完成即下架（只完成一次，防止每天重复刷分）
-    await DB.updateTask(taskId, { active: false });
-    task.active = false;
+    // 提交后不下架，审批通过后也不下架（任务保留在列表展示完成状态）
     const parent = S.tasks.find(t => t.id === task.parent_id);
     const total = parent ? taskProgress(parent.id) : taskProgress(taskId);
-    if (total >= 100 && parent) {
-      await DB.updateTask(parent.id, { active: false });
-      parent.active = false;
-      for (const c of allChildTasks(parent.id)) { await DB.updateTask(c.id, { active: false }); c.active = false; }
-      confetti({ particleCount: 120, spread: 100, origin: { y: .5 } });
+    // 父任务所有子任务都已提交：触发多日完成奖（待家长确认），但暂不下架父任务
+    if (total >= 100 && parent && !S.pointLogs.some(l => l.reason === `多日完成奖:${parent.title}`)) {
       const bonus = parent.bonus || CONFIG.WEEKLY_DONE_BONUS;
       if (bonus > 0) {
         const bpid = await DB.addPointLog(bonus, `多日完成奖:${parent.title}`, today, { confirmed: false });
         S.pointLogs.push({ id: bpid, log_date: today, amount: bonus, reason: `多日完成奖:${parent.title}`, confirmed: false });
       }
-      toast(`🎉 多日任务「${parent.title}」完成！${bonus > 0 ? '+' + bonus + '分' : ''}`);
+      confetti({ particleCount: 120, spread: 100, origin: { y: .5 } });
+      toast(`🎉 多日任务「${parent.title}」已全部提交！${bonus > 0 ? '+' + bonus + '分' : ''}（待家长确认）`);
     } else {
-      toast(`✅ 「${task.title}」完成！「${parent ? parent.title : ''}」进度 ${total}%`);
+      toast(`📝 「${task.title}」已提交，等家长确认～「${parent ? parent.title : ''}」进度 ${total}%`);
     }
-    renderTop(); render();
+    renderTop(); renderProgress(); renderTasks();
     return;
   }
 
@@ -566,15 +562,8 @@ async function checkin(taskId, btn, progress = null) {
       if (lead) await grantExp(lead, CONFIG.LEAD_EXP_PER_TASK);
     }
     const total = parent ? taskProgress(parent.id) : taskProgress(taskId);
+    // 完成 100% 后不再下架任务，保留在列表里展示完成状态
     if (total >= 100) {
-      if (parent) {
-        await DB.updateTask(parent.id, { active: false });
-        parent.active = false;
-        for (const c of allChildTasks(parent.id)) { await DB.updateTask(c.id, { active: false }); c.active = false; }
-      } else {
-        await DB.updateTask(taskId, { active: false });
-        task.active = false;
-      }
       confetti({ particleCount: 110, spread: 90, origin: { y: .5 } });
       toast(`🎉 「${label}」完成！`);
     } else {
@@ -600,7 +589,7 @@ async function checkin(taskId, btn, progress = null) {
     if (lead) await grantExp(lead, CONFIG.LEAD_EXP_PER_TASK);
   }
 
-  // 注意：提交后不下架任务；家长审批通过后才下架(once/child)，详见 confirmPending
+  // 注意：提交后不下架任务，审批通过后任务也保留在列表里展示完成状态
 
   // 全清判定 + 奖励（必做/选做分开）
   const dayTasks = dayTasksForProgress(today);
@@ -655,6 +644,15 @@ async function cancelSubmission(taskId) {
   if (S.logs[today]) S.logs[today][taskId] = { done: false, progress: 0, approved: true };
   // 若全清奖励因此变得不成立，回收还未发放的对应待确认奖励
   await cleanupAllClearPending(today);
+  // 撤销子任务提交后，若父任务进度回落 < 100%，回收尚未发放的多日完成奖
+  if (task.parent_id) {
+    const parent = S.tasks.find(t => t.id === task.parent_id);
+    if (parent && taskProgress(parent.id) < 100) {
+      const bonusPend = S.pointLogs.filter(l => l.confirmed === false && l.reason === `多日完成奖:${parent.title}`);
+      for (const l of bonusPend) { await DB.deletePointLog(l.id); }
+      S.pointLogs = S.pointLogs.filter(l => !bonusPend.some(p => p.id === l.id));
+    }
+  }
   toast('已撤销提交');
   renderTop();
   renderProgress();
@@ -2081,7 +2079,7 @@ function renderMe() {
 }
 // 孩子端「我的」页打卡日历（与统计同一维度）
 function kidCalPanel() {
-  const dailyTasks = S.tasks.filter(t => t.active && t.schedule === 'daily');
+  const dailyTasks = S.tasks.filter(t => t.schedule === 'daily');
   return `
     <div class="panel" style="margin-top:16px">
       <h3>📅 打卡日历 <small style="font-weight:400">按每日任务</small></h3>
@@ -2107,7 +2105,7 @@ function kidCalPanel() {
 }
 // 每日任务打卡记录面板（孩子「我的」和家长端共用，下拉选任务看历史打卡）
 function checkinLogPanel(title, idPrefix) {
-  const dailyTasks = S.tasks.filter(t => t.active && t.schedule === 'daily');
+  const dailyTasks = S.tasks.filter(t => t.schedule === 'daily');
   if (!dailyTasks.length) return '';
   const selId = idPrefix + '-log-task', listId = idPrefix + '-log-list';
   return `
@@ -2140,7 +2138,7 @@ function showTaskLogs(listId, key) {
   const el = document.getElementById(listId);
   if (!el) return;
   if (!key) { el.innerHTML = ''; return; }
-  const daily = S.tasks.filter(t => t.active && t.schedule === 'daily');
+  const daily = S.tasks.filter(t => t.schedule === 'daily');
   let dates = [];
   if (key === '__all') {
     // 全部每日任务的打卡日（去重）
@@ -3865,7 +3863,7 @@ function pointLogPanel() {
 
 // 按维度过滤每日任务：all 全部每日 / req 必做 / opt 选做
 function filterDailyByDim(dim) {
-  let daily = S.tasks.filter(t => t.active && t.schedule === 'daily');
+  let daily = S.tasks.filter(t => t.schedule === 'daily');
   if (dim === 'req') daily = daily.filter(t => t.required !== false);
   else if (dim === 'opt') daily = daily.filter(t => t.required === false);
   else if (dim && dim !== 'all') daily = daily.filter(t => t.id === Number(dim));  // 单个重复任务
@@ -4107,7 +4105,7 @@ async function confirmPending() {
   await DB.confirmPointLogs(ids);
   S.pointLogs.forEach(l => { if (ids.includes(l.id)) l.confirmed = true; });
   S.balance += sum;
-  // 家长审批通过：把对应任务标记为"已完成"，并下架一次性/子任务（一次任务审批后即消失）
+  // 家长审批通过：把对应任务标记为"已完成"（不下架，任务保留在列表里展示完成状态）
   const approved = [];
   for (const id of ids) {
     const l = S.pointLogs.find(x => x.id === id);
@@ -4115,10 +4113,6 @@ async function confirmPending() {
       await DB.setLog(l.task_id, l.log_date, true, null, null, true);
       if (S.logs[l.log_date]?.[l.task_id]) S.logs[l.log_date][l.task_id].approved = true;
       const t = S.tasks.find(x => x.id === l.task_id);
-      if (t && (t.schedule === 'once' || t.schedule === 'child') && t.active) {
-        await DB.updateTask(t.id, { active: false });
-        t.active = false;
-      }
       approved.push({
         title: (t && t.title) || String(l.reason || '').replace(/^完成[:：]\s*/, '') || '任务',
         pts: l.amount,
@@ -4147,9 +4141,7 @@ async function undoPoint(id) {
   if (l.task_id) {
     await DB.setLog(l.task_id, l.log_date, false);
     if (S.logs[l.log_date]) delete S.logs[l.log_date][l.task_id];
-    // 撤销"单次任务"时重新激活，避免撤销后任务消失
-    const t = S.tasks.find(x => x.id === l.task_id);
-    if (t && (t.schedule === 'once' || t.schedule === 'child') && !t.active) { await DB.updateTask(t.id, { active: true }); t.active = true; }
+    // 任务不再因完成而下架，撤销积分后它自然恢复为未完成状态，无需处理 active
   }
   toast('已撤销');
   render();
