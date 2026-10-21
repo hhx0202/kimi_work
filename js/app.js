@@ -604,20 +604,18 @@ async function checkin(taskId, btn, progress = null) {
     }
     renderTop(); renderProgress(); renderTasks();
     // 后台落库：打卡记录 + 积分 + 经验 + 多日完成奖（full 已在同步阶段锁定）
+    // 这些写入互不依赖，并发发出（跨境网络下串行会累加成好几秒）
     bgWrite('打卡', async () => {
-      await DB.setLog(taskId, day, true, null, null, false);
-      if (pts > 0) {
-        const pid = await DB.addPointLog(pts, `完成:${task.title}`, day, { confirmed: false, task_id: taskId });
-        S.pointLogs.push({ id: pid, log_date: day, amount: pts, reason: `完成:${task.title}`, confirmed: false, task_id: taskId });
-      }
-      if (S.leadId) { const lead = S.pokemons.find(p => p.id === S.leadId); if (lead) await grantExp(lead, CONFIG.LEAD_EXP_PER_TASK); }
-      if (full) {
-        const bonus = parent.bonus || CONFIG.WEEKLY_DONE_BONUS;
-        if (bonus > 0) {
-          const bpid = await DB.addPointLog(bonus, `多日完成奖:${parent.title}`, day, { confirmed: false });
-          S.pointLogs.push({ id: bpid, log_date: day, amount: bonus, reason: `多日完成奖:${parent.title}`, confirmed: false });
-        }
-      }
+      const lead = S.leadId ? S.pokemons.find(p => p.id === S.leadId) : null;
+      const bonus = full ? (parent.bonus || CONFIG.WEEKLY_DONE_BONUS) : 0;
+      const [, pid, , bpid] = await Promise.all([
+        DB.setLog(taskId, day, true, null, null, false),
+        pts > 0 ? DB.addPointLog(pts, `完成:${task.title}`, day, { confirmed: false, task_id: taskId }) : null,
+        lead ? grantExp(lead, CONFIG.LEAD_EXP_PER_TASK) : null,
+        (full && bonus > 0) ? DB.addPointLog(bonus, `多日完成奖:${parent.title}`, day, { confirmed: false }) : null,
+      ]);
+      if (pts > 0 && pid != null) S.pointLogs.push({ id: pid, log_date: day, amount: pts, reason: `完成:${task.title}`, confirmed: false, task_id: taskId });
+      if (bpid != null) S.pointLogs.push({ id: bpid, log_date: day, amount: bonus, reason: `多日完成奖:${parent.title}`, confirmed: false });
     });
     return;
   }
@@ -641,18 +639,16 @@ async function checkin(taskId, btn, progress = null) {
       toast(`⏰ 「${label}」已完成 ${total}%，还差 ${100 - total}%`);
     }
     renderTop(); render();
-    // 后台落库：打卡记录 + 积分 + 经验
+    // 后台落库：打卡记录 + 积分 + 经验（并发发出，互不依赖）
     bgWrite('打卡', async () => {
-      await DB.setLog(taskId, day, true, null, progress);
-      if (pts > 0) {
+      const lead = S.leadId ? S.pokemons.find(p => p.id === S.leadId) : null;
+      const [, pid] = await Promise.all([
+        DB.setLog(taskId, day, true, null, progress),
         // 待家长确认后发放：先记"待确认"流水，余额不变
-        const pid = await DB.addPointLog(pts, `完成:${label} ${progress}%`, day, { confirmed: false, task_id: taskId });
-        S.pointLogs.push({ id: pid, log_date: day, amount: pts, reason: `完成:${label} ${progress}%`, confirmed: false, task_id: taskId });
-      }
-      if (S.leadId) {
-        const lead = S.pokemons.find(p => p.id === S.leadId);
-        if (lead) await grantExp(lead, CONFIG.LEAD_EXP_PER_TASK);
-      }
+        pts > 0 ? DB.addPointLog(pts, `完成:${label} ${progress}%`, day, { confirmed: false, task_id: taskId }) : null,
+        lead ? grantExp(lead, CONFIG.LEAD_EXP_PER_TASK) : null,
+      ]);
+      if (pts > 0 && pid != null) S.pointLogs.push({ id: pid, log_date: day, amount: pts, reason: `完成:${label} ${progress}%`, confirmed: false, task_id: taskId });
     });
     return;
   }
@@ -706,24 +702,21 @@ async function checkin(taskId, btn, progress = null) {
   renderTasks();
 
   // 后台落库：打卡记录 + 积分 + 经验 + 全清奖励（awardReq/awardOpt 已在同步阶段锁定）
+  // 最多 5 次写库互不依赖 → 并发发出，跨境网络下从"5 次往返相加"变成"1 次往返"
   bgWrite('打卡', async () => {
-    await DB.setLog(taskId, day, true, null, null, false);
-    // 加分先记"待确认"流水，家长审批后才到账（余额不变）
-    const pid = await DB.addPointLog(task.points, `完成:${task.title}`, day, { confirmed: false, task_id: taskId });
+    const lead = S.leadId ? S.pokemons.find(p => p.id === S.leadId) : null;
+    const [, pid, , rpid, opid] = await Promise.all([
+      DB.setLog(taskId, day, true, null, null, false),
+      // 加分先记"待确认"流水，家长审批后才到账（余额不变）
+      DB.addPointLog(task.points, `完成:${task.title}`, day, { confirmed: false, task_id: taskId }),
+      // 出战宝可梦加经验
+      lead ? grantExp(lead, CONFIG.LEAD_EXP_PER_TASK) : null,
+      awardReq ? DB.addPointLog(CONFIG.REQUIRED_DONE_BONUS, `必选全清_${day}`, day, { confirmed: false }) : null,
+      awardOpt ? DB.addPointLog(CONFIG.OPTIONAL_DONE_BONUS, `可选全清_${day}`, day, { confirmed: false }) : null,
+    ]);
     S.pointLogs.push({ id: pid, log_date: day, amount: task.points, reason: `完成:${task.title}`, confirmed: false, task_id: taskId });
-    // 出战宝可梦加经验
-    if (S.leadId) {
-      const lead = S.pokemons.find(p => p.id === S.leadId);
-      if (lead) await grantExp(lead, CONFIG.LEAD_EXP_PER_TASK);
-    }
-    if (awardReq) {
-      const rpid = await DB.addPointLog(CONFIG.REQUIRED_DONE_BONUS, `必选全清_${day}`, day, { confirmed: false });
-      S.pointLogs.push({ id: rpid, log_date: day, amount: CONFIG.REQUIRED_DONE_BONUS, reason: `必选全清_${day}`, confirmed: false });
-    }
-    if (awardOpt) {
-      const opid = await DB.addPointLog(CONFIG.OPTIONAL_DONE_BONUS, `可选全清_${day}`, day, { confirmed: false });
-      S.pointLogs.push({ id: opid, log_date: day, amount: CONFIG.OPTIONAL_DONE_BONUS, reason: `可选全清_${day}`, confirmed: false });
-    }
+    if (rpid != null) S.pointLogs.push({ id: rpid, log_date: day, amount: CONFIG.REQUIRED_DONE_BONUS, reason: `必选全清_${day}`, confirmed: false });
+    if (opid != null) S.pointLogs.push({ id: opid, log_date: day, amount: CONFIG.OPTIONAL_DONE_BONUS, reason: `可选全清_${day}`, confirmed: false });
   });
 }
 
@@ -736,25 +729,27 @@ async function cancelSubmission(taskId) {
   const task = S.tasks.find(t => t.id === taskId);
   if (!task) return;
   if (day !== today && task.schedule !== 'once') { toast('补卡只支持单次任务'); return; }
-  // 删除该任务当天的待确认积分（家长尚未发放）
+  // 先在本地清掉提交状态和待确认积分，后面的判定（父任务进度、全清）都按新状态算
   const pend = S.pointLogs.filter(l => l.task_id === taskId && l.log_date === day && l.confirmed === false);
-  for (const l of pend) { await DB.deletePointLog(l.id); }
   S.pointLogs = S.pointLogs.filter(l => !pend.some(p => p.id === l.id));
-  // 清除打卡提交状态（恢复未完成）
-  await DB.setLog(taskId, day, false, null, null, true);
   if (S.logs[day]) S.logs[day][taskId] = { done: false, progress: 0, approved: true };
-  // 若全清奖励因此变得不成立，回收还未发放的对应待确认奖励
-  await cleanupAllClearPending(day);
   // 撤销子任务提交后，若父任务进度回落 < 100%，回收尚未发放的多日完成奖
-  if (task.parent_id) {
-    const parent = S.tasks.find(t => t.id === task.parent_id);
-    if (parent && taskProgress(parent.id) < 100) {
-      const bonusPend = S.pointLogs.filter(l => l.confirmed === false && l.reason === `多日完成奖:${parent.title}`);
-      for (const l of bonusPend) { await DB.deletePointLog(l.id); }
-      S.pointLogs = S.pointLogs.filter(l => !bonusPend.some(p => p.id === l.id));
-      awardLocked.delete(`多日完成奖:${parent.title}`);
-    }
+  const parent = task.parent_id ? S.tasks.find(t => t.id === task.parent_id) : null;
+  const bonusPend = (parent && taskProgress(parent.id) < 100)
+    ? S.pointLogs.filter(l => l.confirmed === false && l.reason === `多日完成奖:${parent.title}`)
+    : [];
+  if (bonusPend.length) {
+    S.pointLogs = S.pointLogs.filter(l => !bonusPend.some(p => p.id === l.id));
+    awardLocked.delete(`多日完成奖:${parent.title}`);
   }
+  // 删除待确认积分 + 清打卡状态：互不依赖 → 并发发出
+  await Promise.all([
+    ...pend.map(l => DB.deletePointLog(l.id)),
+    ...bonusPend.map(l => DB.deletePointLog(l.id)),
+    DB.setLog(taskId, day, false, null, null, true),
+  ]);
+  // 撤销后若不再全清，回收还未发放的对应待确认奖励
+  await cleanupAllClearPending(day);
   toast('已撤销提交');
   renderTop();
   renderProgress();
@@ -773,7 +768,7 @@ async function cleanupAllClearPending(date) {
   if (!optDone) drop.push(`可选全清_${date}`);
   if (!drop.length) return;
   const pend = S.pointLogs.filter(l => l.confirmed === false && drop.includes(l.reason));
-  for (const l of pend) { await DB.deletePointLog(l.id); }
+  await Promise.all(pend.map(l => DB.deletePointLog(l.id)));   // 并发删除，别再一条一条等
   S.pointLogs = S.pointLogs.filter(l => !pend.some(p => p.id === l.id));
   // 释放本次会话的锁定，撤销后重新达成全清仍可再发
   drop.forEach(key => awardLocked.delete(key));
@@ -3396,8 +3391,8 @@ function openWeeklyEditor(id) {
     const totalPts = items.reduce((s, x) => s + x.points, 0);
     await DB.updateTask(id, { title, hint, category, points: totalPts, deadline, bonus });
     Object.assign(t, { title, hint, category, points: totalPts, deadline, bonus });
-    // 重建子任务：删旧子任务（连同打卡记录），按新配置创建
-    for (const k of allChildTasks(id)) await DB.deleteTask(k.id);
+    // 重建子任务：删旧子任务（连同打卡记录），按新配置创建（删除顺序无关 → 并发）
+    await Promise.all(allChildTasks(id).map(k => DB.deleteTask(k.id)));
     for (const it of items) {
       await DB.addTask({ title: it.title, hint: it.hint, category, points: it.points, schedule: 'child', parent_id: id, percent: null, required: it.required });
     }
@@ -3901,17 +3896,20 @@ function openMultiDayAssign() {
     const groups = parseMultiDay(text);
     if (!groups.length) { toast('没解析到有效的日期分组，第一行请先写日期'); return; }
     let n = 0, dup = 0;
+    const toAdd = [];
     for (const g of groups) {
       const added = new Set();
       for (const it of g.items) {
         // 同名拦截：同一天里重名的只留一个（不同天允许同名，那是两天的独立任务）
         if (added.has(it.title) || sameTitleTask(it.title, { parentId: null, date: g.date })) { dup++; continue; }
         saveCat(it.category);
-        await DB.addTask({ title: it.title, hint: it.hint, category: it.category, points: it.points, schedule: 'once', required: it.required, start_date: g.date, end_date: g.date });
+        toAdd.push({ title: it.title, hint: it.hint, category: it.category, points: it.points, schedule: 'once', required: it.required, start_date: g.date, end_date: g.date });
         added.add(it.title);
         n++;
       }
     }
+    // 逐天逐条 await 在跨境网络下会拖很久（10 个任务 ≈ 16 秒），一次并发发出
+    await Promise.all(toAdd.map(x => DB.addTask(x)));
     modal.remove();
     await refreshAll(); render();
     if (!n) toast(`都是同名任务，没有布置（跳过 ${dup} 个）`);
@@ -4261,15 +4259,16 @@ async function confirmPending() {
   if (!boxes.length) { toast('没有选中的积分'); return; }
   const ids = boxes.map(b => Number(b.dataset.plid));
   const sum = S.pointLogs.filter(l => ids.includes(l.id)).reduce((s, l) => s + l.amount, 0);
-  await DB.confirmPointLogs(ids);
   S.pointLogs.forEach(l => { if (ids.includes(l.id)) l.confirmed = true; });
   S.balance += sum;
   // 家长审批通过：把对应任务标记为"已完成"（不下架，任务保留在列表里展示完成状态）
+  // 本地状态先算好，写库请求一次性并发发出（原来一条条 await，选 10 条就是 10 次往返）
   const approved = [];
+  const logWrites = [];
   for (const id of ids) {
     const l = S.pointLogs.find(x => x.id === id);
     if (l && l.task_id) {
-      await DB.setLog(l.task_id, l.log_date, true, null, null, true);
+      logWrites.push(DB.setLog(l.task_id, l.log_date, true, null, null, true));
       if (S.logs[l.log_date]?.[l.task_id]) S.logs[l.log_date][l.task_id].approved = true;
       const raw = S.tasks.find(x => x.id === l.task_id);
       const t = raw ? taskAttrFor(raw, l.log_date) : null;   // 用那天的名称（编辑只对今天及之后生效）
@@ -4279,6 +4278,7 @@ async function confirmPending() {
       });
     }
   }
+  await Promise.all([DB.confirmPointLogs(ids), ...logWrites]);
   toast(`✅ 已发放 ${sum} 积分`);
   // 孩子任务页顶端留一条家长消息，点「知道啦」才消失
   if (approved.length === 1) {
