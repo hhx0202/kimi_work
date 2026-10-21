@@ -88,6 +88,7 @@
 | 闪耀形态 `SHINY_EXP` | 100 | ✅ |
 | 连清天数 `STREAK_DAYS_FOR_BALL` | 7（必做全清，断一天重数） | ✅ |
 | 达标送卡 `STREAK_REWARD_SHINY` | 1（张闪耀卡） | ✅ |
+| 单次补卡天数 `MAKEUP_DAYS` | 1（只补单次任务；补卡不发当天全清奖） | ✅（已在 SETTING_FIELDS） |
 | 买球价 `BALL_PRICE` | 100 | ✅（已在 SETTING_FIELDS） |
 | 稀有概率 `RARE_PROBABILITY` | 0.15 | — |
 | 默认类别 `DEFAULT_CATEGORIES` | 校内/校外/作业/打卡/阅读/运动/家务/英语/数学/音乐/练字/编程 | — |
@@ -97,7 +98,8 @@
 ## 五、关键实现位置（改哪儿找哪儿）
 
 - **任务渲染/排序**：`renderTasks / catSectionHTML / taskCardHTML / taskSort`；列表按查看日期渲染（`tasksOnDate(S.viewDate)`，翻历史显示那天的任务，别改回 `todayTasks()`）；进度用 `dayTasksForProgress(date)`（任务不再因完成而下架，列表不过滤 active，已完成/待审核都保留；该函数仍保留打卡记录兜底兼容历史下架数据）。历史日期只读：未完成显示禁用按钮「未完成」（不是可点的「查看历史」）
-- **打卡链路**：`checkin`（**乐观更新**：先改本地 `S.logs` 立即渲染按钮变「已提交」，DB 写入放 `bgWrite` 后台落库，失败才提示错误）→ `cancelSubmission`（撤销）→ `confirmPending`（审批发分）→ `undoPoint`（撤销已发分）
+- **打卡链路**：`checkin`（**乐观更新**：先改本地 `S.logs` 立即渲染按钮变「已提交」，DB 写入放 `bgWrite` 后台落库，失败才提示错误；打卡记账日期用 `day = S.viewDate`（补卡）或今天）→ `cancelSubmission`（撤销）→ `confirmPending`（审批发分）→ `undoPoint`（撤销已发分）
+- **补卡**：`isMakeupDate / makeupDays`（config `MAKEUP_DAYS`，默认 1）。孩子端翻到补卡窗口内的历史日期时，漏掉的**单次任务**显示「⏪ 补完成」（重复/子任务不可补；单次任务已完成过任何一天也不能再补，`isTaskDoneEver` 防重复领分）。补交记录写到那天（积分流水 `log_date` 也是那天，家长端待确认面板按日期分组照常审批），**不发当天的必选/可选全清奖**（`awardReq/awardOpt` 在补卡分支被跳过）；补卡期内单次任务的待审批提交可撤销（撤了可再补），重复任务的历史提交不可撤销（撤了没法重新提交）。连续全清（streak）按打卡记录自然计算，补卡补齐的那天会计入连击但无全清奖分
 - **全清奖**：`isAllDone` / `cleanupAllClearPending`（异步，防重复）+ 模块级 `awardLocked` Set 防并发重复发（必选/可选全清 + 多日完成奖）；撤销提交/积分时连带清理待发奖励并释放锁定
 - **任务详情 / 清单**：`showTaskDetail(id)`、`showProgressDetail(kind)`、`taskStatusOf(taskId, date)`
 - **进化链**：`expThreshold / canEvolve / evolvePm / isMaxed / evoStageLabel`；图鉴家族 `evoFamily / dexGot / ownedNumbers`；`pkNoOf` 按名字兜底修老数据的 `pokedex_no`

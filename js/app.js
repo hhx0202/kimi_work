@@ -51,7 +51,17 @@ const SETTING_FIELDS = [
   { key: 'SHINY_EXP', label: '进入闪耀形态所需经验' },
   { key: 'STREAK_DAYS_FOR_BALL', label: '连续几天必做全清' },
   { key: 'STREAK_REWARD_SHINY', label: '达标送几张闪耀卡' },
+  { key: 'MAKEUP_DAYS', label: '单次任务可补几天' },
 ];
+
+// 补卡：允许给最近 N 天（不含今天）漏掉的「单次任务」补完成；补交不发当天全清奖
+function makeupDays() { return Math.max(0, Number(CONFIG.MAKEUP_DAYS) || 0); }
+function isMakeupDate(date) {
+  const n = makeupDays();
+  if (!n || !date) return false;
+  const today = DB.today();
+  return date < today && date > shiftDate(today, -n - 1);
+}
 
 // 日期工具
 function shiftDate(dateStr, delta) {
@@ -518,18 +528,21 @@ function bgWrite(desc, fn) {
 }
 
 async function checkin(taskId, btn, progress = null) {
-  const already = logToday(taskId);
-  if (already) return;
   const task = S.tasks.find(t => t.id === taskId);
   if (!task) return;
   const today = DB.today();
+  // 补卡：翻到补卡窗口内的历史日期时，记录写到那一天（day = 实际记账日期）
+  const makeupMode = S.viewDate !== today && isMakeupDate(S.viewDate);
+  const day = makeupMode ? S.viewDate : today;
+  if (logOn(taskId, day)) return;
+  if (task.schedule === 'once' && isTaskDoneEver(taskId)) { toast('这个任务已经完成过啦'); return; }
 
   // ===== 子任务打卡（独立计分，多日任务的一部分）=====
   // 和 daily/once 一致走"提交-审批"：approved=false，任务留卡片显示「已提交」，审批通过后仍保留展示
   if (task.parent_id) {
     // 乐观更新：先改本地状态立即反馈，数据库写放后台
-    S.logs[today] = S.logs[today] || {};
-    S.logs[today][taskId] = { done: true, progress: 0, approved: false };
+    S.logs[day] = S.logs[day] || {};
+    S.logs[day][taskId] = { done: true, progress: 0, approved: false };
     const pts = task.points || 0;
     const parent = S.tasks.find(t => t.id === task.parent_id);
     const total = parent ? taskProgress(parent.id) : taskProgress(taskId);
@@ -550,17 +563,17 @@ async function checkin(taskId, btn, progress = null) {
     renderTop(); renderProgress(); renderTasks();
     // 后台落库：打卡记录 + 积分 + 经验 + 多日完成奖（full 已在同步阶段锁定）
     bgWrite('打卡', async () => {
-      await DB.setLog(taskId, today, true, null, null, false);
+      await DB.setLog(taskId, day, true, null, null, false);
       if (pts > 0) {
-        const pid = await DB.addPointLog(pts, `完成:${task.title}`, today, { confirmed: false, task_id: taskId });
-        S.pointLogs.push({ id: pid, log_date: today, amount: pts, reason: `完成:${task.title}`, confirmed: false, task_id: taskId });
+        const pid = await DB.addPointLog(pts, `完成:${task.title}`, day, { confirmed: false, task_id: taskId });
+        S.pointLogs.push({ id: pid, log_date: day, amount: pts, reason: `完成:${task.title}`, confirmed: false, task_id: taskId });
       }
       if (S.leadId) { const lead = S.pokemons.find(p => p.id === S.leadId); if (lead) await grantExp(lead, CONFIG.LEAD_EXP_PER_TASK); }
       if (full) {
         const bonus = parent.bonus || CONFIG.WEEKLY_DONE_BONUS;
         if (bonus > 0) {
-          const bpid = await DB.addPointLog(bonus, `多日完成奖:${parent.title}`, today, { confirmed: false });
-          S.pointLogs.push({ id: bpid, log_date: today, amount: bonus, reason: `多日完成奖:${parent.title}`, confirmed: false });
+          const bpid = await DB.addPointLog(bonus, `多日完成奖:${parent.title}`, day, { confirmed: false });
+          S.pointLogs.push({ id: bpid, log_date: day, amount: bonus, reason: `多日完成奖:${parent.title}`, confirmed: false });
         }
       }
     });
@@ -570,8 +583,8 @@ async function checkin(taskId, btn, progress = null) {
   // ===== 进度型打卡（带百分比按钮的普通进度任务）=====
   if (progress) {
     // 乐观更新：先改本地状态立即反馈，数据库写放后台
-    S.logs[today] = S.logs[today] || {};
-    S.logs[today][taskId] = { done: true, progress };
+    S.logs[day] = S.logs[day] || {};
+    S.logs[day][taskId] = { done: true, progress };
 
     const parent = task.parent_id ? S.tasks.find(t => t.id === task.parent_id) : null;
     const ptsSource = parent || task;
@@ -588,11 +601,11 @@ async function checkin(taskId, btn, progress = null) {
     renderTop(); render();
     // 后台落库：打卡记录 + 积分 + 经验
     bgWrite('打卡', async () => {
-      await DB.setLog(taskId, today, true, null, progress);
+      await DB.setLog(taskId, day, true, null, progress);
       if (pts > 0) {
         // 待家长确认后发放：先记"待确认"流水，余额不变
-        const pid = await DB.addPointLog(pts, `完成:${label} ${progress}%`, today, { confirmed: false, task_id: taskId });
-        S.pointLogs.push({ id: pid, log_date: today, amount: pts, reason: `完成:${label} ${progress}%`, confirmed: false, task_id: taskId });
+        const pid = await DB.addPointLog(pts, `完成:${label} ${progress}%`, day, { confirmed: false, task_id: taskId });
+        S.pointLogs.push({ id: pid, log_date: day, amount: pts, reason: `完成:${label} ${progress}%`, confirmed: false, task_id: taskId });
       }
       if (S.leadId) {
         const lead = S.pokemons.find(p => p.id === S.leadId);
@@ -605,23 +618,23 @@ async function checkin(taskId, btn, progress = null) {
   // ===== 常规打卡（孩子提交，待家长审批） =====
   // 提交：approved=false，任务仍保留在页面上展示为「已提交」，待家长审批后才标记完成
   // 乐观更新：先改本地状态立即反馈，数据库写放后台
-  S.logs[today] = S.logs[today] || {};
-  S.logs[today][taskId] = { done: true, progress: 0, approved: false };
+  S.logs[day] = S.logs[day] || {};
+  S.logs[day][taskId] = { done: true, progress: 0, approved: false };
 
   // 注意：提交后不下架任务，审批通过后任务也保留在列表里展示完成状态
 
-  // 全清判定 + 奖励（必做/选做分开）
-  const dayTasks = dayTasksForProgress(today);
+  // 全清判定 + 奖励（必做/选做分开）；补卡只拿任务本身的分，不参与当天的全清奖
+  const dayTasks = dayTasksForProgress(day);
   const reqTasks = dayTasks.filter(t => t.required !== false);
   const optTasks = dayTasks.filter(t => t.required === false);
-  const isDayDone = arr => arr.length > 0 && arr.every(t => S.logs[today]?.[t.id]?.done === true);
+  const isDayDone = arr => arr.length > 0 && arr.every(t => S.logs[day]?.[t.id]?.done === true);
   const reqDone = isDayDone(reqTasks);
   const optDone = isDayDone(optTasks);
   // 全清奖励每日只发一次：同步阶段锁定（内存 Set，避免本次会话内并发打卡重复发）
-  const awardReq = reqDone && !S.pointLogs.some(l => l.reason === `必选全清_${today}`) && !awardLocked.has(`必选全清_${today}`);
-  const awardOpt = optDone && !S.pointLogs.some(l => l.reason === `可选全清_${today}`) && !awardLocked.has(`可选全清_${today}`);
-  if (awardReq) awardLocked.add(`必选全清_${today}`);
-  if (awardOpt) awardLocked.add(`可选全清_${today}`);
+  const awardReq = !makeupMode && reqDone && !S.pointLogs.some(l => l.reason === `必选全清_${day}`) && !awardLocked.has(`必选全清_${day}`);
+  const awardOpt = !makeupMode && optDone && !S.pointLogs.some(l => l.reason === `可选全清_${day}`) && !awardLocked.has(`可选全清_${day}`);
+  if (awardReq) awardLocked.add(`必选全清_${day}`);
+  if (awardOpt) awardLocked.add(`可选全清_${day}`);
 
   // 7 天必做全清达标：这里只庆祝 + 提示，奖励改成在最下方进度条点「领取」（不再自动发）
   let celebrating = false;
@@ -643,29 +656,31 @@ async function checkin(taskId, btn, progress = null) {
   const card = btn ? btn.closest('.task-card') : null;
   if (card) card.classList.add('just-done');
   confetti({ particleCount: 40, spread: 60, scalar: .8, origin: { y: .5 } });
-  if (!celebrating) toast(`📝 「${task.title}」已提交，等家长确认～`);
+  if (!celebrating) toast(makeupMode
+    ? `⏪ 已补交 ${day.slice(5)} 的「${task.title}」，等家长确认～（补卡不发全清奖）`
+    : `📝 「${task.title}」已提交，等家长确认～`);
   renderTop();
   renderProgress();
   renderTasks();
 
   // 后台落库：打卡记录 + 积分 + 经验 + 全清奖励（awardReq/awardOpt 已在同步阶段锁定）
   bgWrite('打卡', async () => {
-    await DB.setLog(taskId, today, true, null, null, false);
+    await DB.setLog(taskId, day, true, null, null, false);
     // 加分先记"待确认"流水，家长审批后才到账（余额不变）
-    const pid = await DB.addPointLog(task.points, `完成:${task.title}`, today, { confirmed: false, task_id: taskId });
-    S.pointLogs.push({ id: pid, log_date: today, amount: task.points, reason: `完成:${task.title}`, confirmed: false, task_id: taskId });
+    const pid = await DB.addPointLog(task.points, `完成:${task.title}`, day, { confirmed: false, task_id: taskId });
+    S.pointLogs.push({ id: pid, log_date: day, amount: task.points, reason: `完成:${task.title}`, confirmed: false, task_id: taskId });
     // 出战宝可梦加经验
     if (S.leadId) {
       const lead = S.pokemons.find(p => p.id === S.leadId);
       if (lead) await grantExp(lead, CONFIG.LEAD_EXP_PER_TASK);
     }
     if (awardReq) {
-      const rpid = await DB.addPointLog(CONFIG.REQUIRED_DONE_BONUS, `必选全清_${today}`, today, { confirmed: false });
-      S.pointLogs.push({ id: rpid, log_date: today, amount: CONFIG.REQUIRED_DONE_BONUS, reason: `必选全清_${today}`, confirmed: false });
+      const rpid = await DB.addPointLog(CONFIG.REQUIRED_DONE_BONUS, `必选全清_${day}`, day, { confirmed: false });
+      S.pointLogs.push({ id: rpid, log_date: day, amount: CONFIG.REQUIRED_DONE_BONUS, reason: `必选全清_${day}`, confirmed: false });
     }
     if (awardOpt) {
-      const opid = await DB.addPointLog(CONFIG.OPTIONAL_DONE_BONUS, `可选全清_${today}`, today, { confirmed: false });
-      S.pointLogs.push({ id: opid, log_date: today, amount: CONFIG.OPTIONAL_DONE_BONUS, reason: `可选全清_${today}`, confirmed: false });
+      const opid = await DB.addPointLog(CONFIG.OPTIONAL_DONE_BONUS, `可选全清_${day}`, day, { confirmed: false });
+      S.pointLogs.push({ id: opid, log_date: day, amount: CONFIG.OPTIONAL_DONE_BONUS, reason: `可选全清_${day}`, confirmed: false });
     }
   });
 }
@@ -673,18 +688,21 @@ async function checkin(taskId, btn, progress = null) {
 // ---------- 撤销提交（孩子再点"已提交"） ----------
 async function cancelSubmission(taskId) {
   const today = DB.today();
-  if (S.viewDate !== today) { toast('只能撤销今天的提交'); return; }
+  const day = S.viewDate;
+  // 今天随时可撤；补卡窗口内的历史日期只允许撤单次任务的提交（撤了还能再补交）
+  if (day !== today && !isMakeupDate(day)) { toast('只能撤销今天或补卡期内的提交'); return; }
   const task = S.tasks.find(t => t.id === taskId);
   if (!task) return;
-  // 删除该任务今天的待确认积分（家长尚未发放）
-  const pend = S.pointLogs.filter(l => l.task_id === taskId && l.log_date === today && l.confirmed === false);
+  if (day !== today && task.schedule !== 'once') { toast('补卡只支持单次任务'); return; }
+  // 删除该任务当天的待确认积分（家长尚未发放）
+  const pend = S.pointLogs.filter(l => l.task_id === taskId && l.log_date === day && l.confirmed === false);
   for (const l of pend) { await DB.deletePointLog(l.id); }
   S.pointLogs = S.pointLogs.filter(l => !pend.some(p => p.id === l.id));
   // 清除打卡提交状态（恢复未完成）
-  await DB.setLog(taskId, today, false, null, null, true);
-  if (S.logs[today]) S.logs[today][taskId] = { done: false, progress: 0, approved: true };
+  await DB.setLog(taskId, day, false, null, null, true);
+  if (S.logs[day]) S.logs[day][taskId] = { done: false, progress: 0, approved: true };
   // 若全清奖励因此变得不成立，回收还未发放的对应待确认奖励
-  await cleanupAllClearPending(today);
+  await cleanupAllClearPending(day);
   // 撤销子任务提交后，若父任务进度回落 < 100%，回收尚未发放的多日完成奖
   if (task.parent_id) {
     const parent = S.tasks.find(t => t.id === task.parent_id);
@@ -1367,10 +1385,13 @@ function renderProgress() {
       </div>
     `;
   };
-  // 必做 / 选做 独立两条进度条
+  // 必做 / 选做 独立两条进度条（补卡日期：若全清奖没在当天发过，达成也不补发，文案如实提示）
+  const mk = isMakeupDate(S.viewDate);
+  const reqBonusPaid = S.pointLogs.some(l => l.reason === `必选全清_${S.viewDate}`);
+  const optBonusPaid = S.pointLogs.some(l => l.reason === `可选全清_${S.viewDate}`);
   let html = `<div class="progress-card">
-    ${bar(req, '🔴 必做任务全清', `全清 +${CONFIG.REQUIRED_DONE_BONUS} 分`, `🎉 全清 +${CONFIG.REQUIRED_DONE_BONUS} 分`, 'req')}
-    ${opt.length ? bar(opt, '🟢 选做任务全清', `全清 +${CONFIG.OPTIONAL_DONE_BONUS} 分`, `🎉 全清 +${CONFIG.OPTIONAL_DONE_BONUS} 分`, 'opt') : ''}
+    ${bar(req, '🔴 必做任务全清', `全清 +${CONFIG.REQUIRED_DONE_BONUS} 分`, mk && !reqBonusPaid ? '补卡完成不发全清奖' : `🎉 全清 +${CONFIG.REQUIRED_DONE_BONUS} 分`, 'req')}
+    ${opt.length ? bar(opt, '🟢 选做任务全清', `全清 +${CONFIG.OPTIONAL_DONE_BONUS} 分`, mk && !optBonusPaid ? '补卡完成不发全清奖' : `🎉 全清 +${CONFIG.OPTIONAL_DONE_BONUS} 分`, 'opt') : ''}
   </div>`;
   // 多日任务进度条挨着增加
   if (wts.length) html += `<div class="progress-card">${wts.map(weeklyProgressBar).join('')}</div>`;
@@ -1556,16 +1577,21 @@ function taskCardHTML(t) {
     : '<span class="req-tag">🔴 必做</span>';
   // 家长小提示
   const hint = t.hint ? `<div class="task-hint">💡 ${t.hint}</div>` : '';
+  // 补卡：查看日期在补卡窗口内时，漏掉的「单次任务」可补交（重复/子任务不可补，更早的日期锁定只读）
+  const mkOnce = !isToday && isMakeupDate(S.viewDate) && t.schedule === 'once';
   // 三种状态：已审批完成(done) / 已提交待审批(submitted) / 未做
   let btnHtml, statusClass = '';
   if (done) {
     btnHtml = `<button class="btn-done" disabled>✅ 已完成</button>`;
     statusClass = 'done';
   } else if (submitted) {
-    btnHtml = `<button class="btn-done submitted-btn" data-action="cancel-submit" data-tid="${t.id}" ${isToday ? '' : 'disabled'}>🟦 已提交</button>`;
+    // 补卡期内单次任务的待审批提交可撤销（撤了还能再补）；重复任务历史提交不可撤，撤了就没法重新提交
+    btnHtml = `<button class="btn-done submitted-btn" data-action="cancel-submit" data-tid="${t.id}" ${(isToday || mkOnce) ? '' : 'disabled'}>🟦 已提交</button>`;
     statusClass = 'submitted';
   } else if (!isToday) {
-    btnHtml = `<button class="btn-done" disabled>未完成</button>`;
+    btnHtml = mkOnce && !isTaskDoneEver(t.id)
+      ? `<button class="btn-done" data-action="checkin" data-tid="${t.id}">⏪ 补完成</button>`
+      : `<button class="btn-done" disabled>未完成</button>`;
   } else {
     btnHtml = `<button class="btn-done" data-action="checkin" data-tid="${t.id}">✅ 完成</button>`;
   }
