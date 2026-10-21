@@ -2068,9 +2068,11 @@ function ownedNumbers() {
 function dexGotCount() { return Object.keys(dexGot().got).length; }
 function dexHTML() {
   const { got, shinyOwned } = dexGot();
+  // POKEMON 数组按属性分组定义（组内升序、组间乱序），图鉴展示必须严格按编号 1-151
+  const ordered = POKEMON.slice().sort((a, b) => a.no - b.no);
   return `
     <div class="dex-grid">
-      ${POKEMON.map(p => {
+      ${ordered.map(p => {
         const has = got[p.no];
         const shiny = shinyOwned.has(p.no);
         return `
