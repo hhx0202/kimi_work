@@ -89,6 +89,7 @@
 | 连清天数 `STREAK_DAYS_FOR_BALL` | 7（必做全清，断一天重数） | ✅ |
 | 达标送卡 `STREAK_REWARD_SHINY` | 1（张闪耀卡） | ✅ |
 | 单次补卡天数 `MAKEUP_DAYS` | 1（只补单次任务；补卡不发当天全清奖） | ✅（已在 SETTING_FIELDS） |
+| 跨设备轮询间隔 `POLL_SECONDS` | 20 秒（0=关闭轮询） | —（技术项，只在 config.js） |
 | 买球价 `BALL_PRICE` | 100 | ✅（已在 SETTING_FIELDS） |
 | 稀有概率 `RARE_PROBABILITY` | 0.15 | — |
 | 默认类别 `DEFAULT_CATEGORIES` | 校内/校外/作业/打卡/阅读/运动/家务/英语/数学/音乐/练字/编程 | — |
@@ -110,7 +111,8 @@
 - **喂养**：`openFeed(pmId)`（自定义分数 + 「刚好进化」）、`feedPm(pm, pts)`（喂完重开详情卡）
 - **卡面**：`showCardDetail / showDexDetail / showDexMissing / movesBlockHTML / bindMoveClicks`；特效 `FX_BY_TYPE / fxKeyOf / cardFxHTML / cardGlitterHTML`
 - **消息卡**：`pushNotice / noticesHTML / ackNotice`（存**共享存储** `settings.notices`，见下条）；触发点在 `giveBall / givePts / minusPts / confirmPending / applyOverduePenalty`
-- **跨设备共享的小数据**（`sharedGet / sharedSet / migrateLocalToShared`，2026-10-21）：常用任务、自定义类别+隐藏类别、家长消息卡、出战宝可梦、领奖标记都存在 `settings` 表的键值里（value 是 text，内容为 JSON 字符串），家长手机和孩子平板看到同一份；内存镜像 `SHARED` 是真源，`refreshAll` 时随 settings 一起拉回，写入一律"本地立即生效 + `bgWrite` 后台落库"。**老数据搬家**：`migrateLocalToShared` 只在共享里还没有该项时才把本机 localStorage 的老值传上去（不覆盖别的设备已改的值）。**刻意不共享**：错误日志 `LK('errors')`（同步会"写失败→记错误→再写失败"自激）、身份 `role`、家长免密 `parent_authed`、积分提示已读 `seen_pts`（都是"这台设备"的语义）。**关于"实时"**：本应用是**纯拉取式**同步——全库没有任何轮询/订阅，只有 12 处 `refreshAll()`（都在"本机做完某个操作之后"）。所以**跨设备的可见性对所有数据都一样**：家长手机上审批完，孩子平板（不管看的是任务、打卡、积分还是这里的共享配置）都要等它下一次 `refreshAll` 才看得到。这与"配置存在本地还是库里"无关：存储位置决定的是**能不能跨设备看到、清缓存会不会丢**；实时性取决于**变更通知机制**。共享化是将来做实时推送的前置条件（数据不在库里没法推），但共享本身不等于实时。要做实时：`setInterval` 轮询（省事，注意别在有弹窗/正在输入时重渲染）或 Supabase Realtime 订阅（真推送，需处理断线重连与局部更新）demo 模式的 `setSettings` 已改成按 key 合并（与 supabase upsert 一致），别改回整体覆盖
+- **跨设备轮询**（`pollOnce / pollBusy / preserveScroll / startPoll` + `DB.getRev`，config `POLL_SECONDS` 默认 20，0=关闭）：`getRev()` 只做 5 个极轻的只读查询（task_logs/point_logs/tasks 各取主键倒序 limit 1 + notes 最新一条 + settings.rev）拼成版本串；`sharedSet` 写入时顺手更新 `settings.rev`，所以任何共享数据变更都能被探到。**调度规则：演示模式不轮询；页面不可见不轮询；`pollBusy()` 为真就跳过这一轮**（有 `.modal-mask` 弹窗 / `#overlay` 未 hidden（捕捉进化动画、宝可梦卡牌）/ `.dragging` 拖动中 / 输入框有焦点 / `#app` 里有没提交的输入内容）。刷新时用 `preserveScroll` 保住**滚动位置 + 折叠面板展开状态**。改动轮询务必保持"没在操作才刷、刷完保住现场"，`tests/poll.test.js` 就是守这条的
+- **跨设备共享的小数据**（`sharedGet / sharedSet / migrateLocalToShared`，2026-10-21）：常用任务、自定义类别+隐藏类别、家长消息卡、出战宝可梦、领奖标记都存在 `settings` 表的键值里（value 是 text，内容为 JSON 字符串），家长手机和孩子平板看到同一份；内存镜像 `SHARED` 是真源，`refreshAll` 时随 settings 一起拉回，写入一律"本地立即生效 + `bgWrite` 后台落库"。**老数据搬家**：`migrateLocalToShared` 只在共享里还没有该项时才把本机 localStorage 的老值传上去（不覆盖别的设备已改的值）。**刻意不共享**：错误日志 `LK('errors')`（同步会"写失败→记错误→再写失败"自激）、身份 `role`、家长免密 `parent_authed`、积分提示已读 `seen_pts`（都是"这台设备"的语义）。**关于"实时"**：本应用是**拉取式**同步（没有 WebSocket 推送）。跨设备可见性靠 `pollOnce`（见下条）轻量轮询：家长手机上的改动，孩子端最多 `POLL_SECONDS`（默认 20 秒）后自己刷新出来；切回前台时会立刻探一次。**注意：存储位置（本地/库里）决定的是"能不能跨设备看到、清缓存会不会丢"，实时性取决于变更通知机制**——不要把这两件事混为一谈demo 模式的 `setSettings` 已改成按 key 合并（与 supabase upsert 一致），别改回整体覆盖
 - **错误日志**：`reportError / showErrBanner / errorLogPanel / openErrorLog`（存 `LK('errors')`）
 - **类别**：`allCategories / catSelectHTML / onCatSelectChange / readCat`（新建任务、编辑、多日布置都用同一套下拉）
 - **常用任务**：`quickTasks / saveQuickList / openQuickEdit / openQuickAddTask / delQuick / bindQuickLongPress`（localStorage `km_quick_tasks`，每项 `{title,category,points,required,iconKey}`；图标 key 池在 `js/poke-icons.js` 的 `POKE_ICON_KEY_MAP`）。长按手势要用 `touchMode` 屏蔽合成的 mousedown/mouseleave，并在松手后吞掉那次合成 click，否则弹窗会被遮罩点击关掉

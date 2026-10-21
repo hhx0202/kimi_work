@@ -286,6 +286,8 @@ const DB = (() => {
     async getSettings() { return lsGet(P + 'settings', {}) || {}; },
     // 按 key 合并写入（与 supabase 的 upsert 行为一致）：只传一个 key 时不能把其它设置冲掉
     async setSettings(obj) { lsSet(P + 'settings', { ...(lsGet(P + 'settings', {}) || {}), ...obj }); },
+    // 数据版本（跨设备轮询用）：演示模式数据只在本机，没有"别的设备改了"这回事
+    async getRev() { return ''; },
   };
 
   // ==========================================================
@@ -410,6 +412,21 @@ const DB = (() => {
       const { error } = await sClient().from('settings').upsert(rows, { onConflict: 'key' });
       if (error) sFail(error, '存设置');
     },
+    // 数据版本：几张会跨设备变动的表各取"最新一条"（都走主键倒序 limit 1，很便宜），拼成字符串比较。
+    // 只用来判断"别的设备是不是改了什么"，不用来读数据；失败不抛错，避免轮询把页面搞崩。
+    async getRev() {
+      const maxId = async table => {
+        const { data, error } = await sClient().from(table).select('id').order('id', { ascending: false }).limit(1);
+        if (error) return 'x';
+        return (data && data[0]) ? data[0].id : 0;
+      };
+      const noteQ = sClient().from('notes').select('log_date, note').order('log_date', { ascending: false }).limit(1);
+      const revQ = sClient().from('settings').select('value').eq('key', 'rev').limit(1);
+      const [logs, pts, tasks, note, rev] = await Promise.all([maxId('task_logs'), maxId('point_logs'), maxId('tasks'), noteQ, revQ]);
+      const n = (note.data && note.data[0]) ? `${note.data[0].log_date}:${note.data[0].note || ''}` : '';
+      const r = (rev.data && rev.data[0]) ? rev.data[0].value : '';
+      return [logs, pts, tasks, n, r].join('|');
+    },
   };
 
   // ==========================================================
@@ -442,5 +459,6 @@ const DB = (() => {
     setNote: impl.setNote.bind(impl),
     getSettings: impl.getSettings.bind(impl),
     setSettings: impl.setSettings.bind(impl),
+    getRev: impl.getRev.bind(impl),
   };
 })();

@@ -61,7 +61,16 @@ function baseGlobals(over = {}) {
     askConfirm: async () => true,
     pmReason: () => '',
     $: () => ({ value: '' }),
-    document: { querySelectorAll: () => g.__boxes || [] },
+    document: {
+      querySelectorAll: () => g.__boxes || [],
+      querySelector: () => (g.__modal ? {} : null),
+      visibilityState: 'visible',
+      activeElement: null,
+      addEventListener: () => {},
+    },
+    window: { scrollY: 0, scrollTo: (x, y) => { g.window.scrollY = y; } },
+    pollRev: '', pollTimer: null,
+    DEMO_ACTIVE: false,
     localStorage: {
       _m: {},
       getItem(k) { return k in this._m ? this._m[k] : null; },

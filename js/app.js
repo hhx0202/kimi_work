@@ -3557,7 +3557,8 @@ function sharedGet(key, dflt) {
 }
 function sharedSet(key, val) {
   SHARED[key] = JSON.stringify(val);
-  bgWrite(SHARED_LABEL[key] || key, () => DB.setSettings({ [key]: SHARED[key] }));
+  // 顺带更新 rev：别的设备靠它（一次轻查询）发现"有人改了共享数据"
+  bgWrite(SHARED_LABEL[key] || key, () => DB.setSettings({ [key]: SHARED[key], rev: String(Date.now()) }));
 }
 // 老数据搬家：共享里还没有这一项、而本机 localStorage 里有 → 传上去（只跑一次，之后以共享为准）
 function migrateLocalToShared() {
@@ -3580,6 +3581,56 @@ function migrateLocalToShared() {
 }
 function sharedLeadId() { return Number(sharedGet('lead', 0)) || null; }
 function setSharedLead(id) { sharedSet('lead', Number(id) || null); }
+
+// ---------- 跨设备轮询 ----------
+// 目的：家长在自己手机上审批/发分/送球/改配置后，孩子那台设备隔一会儿能自己看到。
+// 原则：只做"轻量探测 + 安全时才刷新"，绝不打扰正在操作的人。
+let pollTimer = null, pollRev = '';
+function pollIntervalMs() { return Math.max(0, Number(CONFIG.POLL_SECONDS) || 0) * 1000; }
+// 这些状态下这一轮直接跳过：有弹窗/全屏动画、正在输入、正在拖动排序
+function pollBusy() {
+  try {
+    if (document.querySelector('.modal-mask')) return true;
+    const ov = $('overlay');
+    if (ov && !ov.classList.contains('hidden')) return true;   // 捕捉/进化动画、宝可梦卡牌
+    if (document.querySelector('.dragging')) return true;
+    const el = document.activeElement;
+    if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName || '')) return true;
+    // 页面上还有没提交的输入内容（家长填了表单但焦点挪开了）→ 重画会把它冲掉，这轮别刷
+    const filled = [...document.querySelectorAll('#app input, #app textarea')].some(el => String(el.value == null ? '' : el.value).trim() !== '');
+    if (filled) return true;
+  } catch (e) { /* 探测失败就当不忙，后面还有 try 兜着 */ }
+  return false;
+}
+// 重画整页时保住"现场"：滚动位置 + 折叠面板的展开状态（不能把孩子翻到一半的页面弹回顶部、把打开的说明合上）
+function preserveScroll(fn) {
+  const y = (typeof window !== 'undefined' && window.scrollY) || 0;
+  let detailsOpen = [];
+  try { detailsOpen = [...document.querySelectorAll('details')].map(d => !!d.open); } catch (e) {}
+  fn();
+  try { [...document.querySelectorAll('details')].forEach((d, i) => { if (detailsOpen[i]) d.open = true; }); } catch (e) {}
+  if (y && typeof window !== 'undefined' && window.scrollTo) window.scrollTo(0, y);
+}
+// 探一次；返回是否真的刷新了（测试里直接调这个）
+async function pollOnce() {
+  if (DEMO_ACTIVE || !pollIntervalMs()) return false;                    // 演示模式数据只在本机
+  if (typeof document === 'undefined' || document.visibilityState !== 'visible') return false;  // 切后台不拉
+  if (pollBusy()) return false;                                          // 正在操作 → 这轮不打扰
+  let rev;
+  try { rev = await DB.getRev(); } catch (e) { return false; }           // 拉失败静默跳过，下一轮再试
+  if (!pollRev) { pollRev = rev; return false; }                         // 第一次只记基线
+  if (rev === pollRev) return false;                                     // 没变化
+  pollRev = rev;
+  await refreshAll();
+  preserveScroll(() => render());
+  return true;
+}
+function startPoll() {
+  if (DEMO_ACTIVE || !pollIntervalMs() || pollTimer) return;
+  pollTimer = setInterval(pollOnce, pollIntervalMs());
+  // 从后台切回来立刻探一次：孩子回到平板就想看到家长的新消息
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pollOnce(); });
+}
 
 // ---------- 类别记忆：新输入的类别会记住，用于下拉和孩子端分区排序 ----------
 const K_CATS = LK('categories');
@@ -4458,6 +4509,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     await refreshAll();
     render();
     bindActions();
+    startPoll();                  // 跨设备轮询（演示模式 / POLL_SECONDS=0 时不启）
   } catch (err) {
     console.error(err);
     reportError('启动失败', `${err.message}（检查 CONFIG 里的数据库配置）`, err.stack, '');
