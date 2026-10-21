@@ -1578,6 +1578,19 @@ function taskSort(a, b) {
   return (a.title || '').localeCompare(b.title || '', 'zh');
 }
 // 必做/选做分区内直接平铺任务（不再按类别分组块），排序交给 taskSort
+// 保存展示顺序：把这一组任务按给定 id 顺序写成 sort=0..n-1。
+// 只写真正变化的行（原来每次都全量重写 + 逐条 await，一组 10 个任务要 10 次往返），
+// 本地 sort 立即生效、写库并发丢后台 → 调用方紧接着 render 就能看到新顺序。
+function persistTaskOrder(orderedIds) {
+  const changes = [];
+  orderedIds.forEach((id, i) => {
+    const t = S.tasks.find(x => x.id === id);
+    if (!t) return;
+    if ((t.sort || 0) !== i) { changes.push({ id, sort: i }); t.sort = i; }
+  });
+  if (!changes.length) return;
+  bgWrite('保存顺序', () => Promise.all(changes.map(c => DB.updateTask(c.id, { sort: c.sort }))));
+}
 function catSectionHTML(tasks, title) {
   if (!tasks.length) return '';
   const arr = tasks.slice().sort(taskSort);
@@ -2548,10 +2561,10 @@ function enableDragSort(sel) {
       drag.el.classList.add('dragging');
     }
   }
-  async function saveSort() {
-    const r = rows();
-    for (let i = 0; i < r.length; i++) await DB.updateTask(Number(r[i].dataset.tid), { sort: i });
-    await refreshAll(); render();
+  function saveSort() {
+    // 松手即按 DOM 顺序存：本地立即生效 + 渲染，写库只写变化的行并并发发出
+    persistTaskOrder(rows().map(el => Number(el.dataset.tid)));
+    render();
   }
   // 手机：长按 650ms 且按下后基本没移动，才进入拖动（避免滑动页面时误触发排序）
   list.addEventListener('touchstart', e => {
@@ -2657,8 +2670,9 @@ async function moveTask(id, dir) {
   if (i < 0 || j < 0 || j >= list.length) { toast('已经是边缘了'); return; }
   const arr = [...list];
   [arr[i], arr[j]] = [arr[j], arr[i]];
-  for (let k = 0; k < arr.length; k++) await DB.updateTask(arr[k].id, { sort: k });
-  await refreshAll(); render();
+  // 本地立即换位 + 渲染，写库只写变化的行（并发），不再全量重写、也不用整页重载
+  persistTaskOrder(arr.map(x => x.id));
+  render();
 }
 
 function bindActions() {
