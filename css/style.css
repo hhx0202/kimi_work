@@ -852,7 +852,8 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 }
 .mini-name { font-weight: 800; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .mini-time { font-size: 10px; color: #90a4ae; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mini-time .mini-ball svg { width: 11px; height: 11px; display: inline-block; vertical-align: -1px; margin-right: 3px; }
+.mini-time .ball-ico { display: inline-block; width: 11px; height: 11px; vertical-align: -1px; margin-right: 3px; }
+.mini-time .ball-ico svg { display: block; width: 100%; height: 100%; }
 @keyframes twinkle { 50% { opacity: .35; transform: scale(.85); } }
 
 /* ✨ 闪耀卡：宝可梦页最上方的一条奖励提示（有库存才出现），点「使用」进入选卡态 */
@@ -1272,7 +1273,8 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .ptcg-missing .ptcg-type { background: #78909c; }
 .ptcg-foot { margin-top: 10px; color: #263238; }
 .ptcg-caught { font-size: 9.5px; color: #a0a4a8; display: flex; align-items: center; gap: 3px; margin-bottom: 2px; }
-.ptcg-caught .mini-ball svg { width: 10px; height: 10px; vertical-align: -1px; }
+.ptcg-caught .ball-ico { display: inline-block; width: 10px; height: 10px; }
+.ptcg-caught .ball-ico svg { display: block; width: 100%; height: 100%; }
 .ptcg-exprow { font-size: 11px; font-weight: 700; margin-bottom: 4px; }
 .ptcg-chain { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .ptcg-chain span {

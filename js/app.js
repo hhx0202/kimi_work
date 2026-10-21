@@ -1852,7 +1852,7 @@ function pmCardHTML(pm) {
       <span class="mini-type" style="background:${TYPE_COLOR[type] || '#a8a878'}">${TYPE_NAME[type] || type}</span>
       <span class="mini-name">${info.name}</span>
     </div>
-    <div class="mini-time"><span class="mini-ball">${pmBallIcon(pm.id)}</span> ${caughtShort(pm.caught_at)}</div>
+    <div class="mini-time"><span class="ball-ico">${pmBallIcon(pm.id)}</span> ${caughtShort(pm.caught_at)}</div>
   </div>`;
 }
 
@@ -1885,7 +1885,7 @@ function showCardDetail(pm) {
       ${typeof PK_FLAVOR !== 'undefined' && PK_FLAVOR[pm.pokedex_no] ? `
       <div class="ptcg-flavor">📖 ${PK_FLAVOR[pm.pokedex_no]}</div>` : ''}
       <div class="ptcg-foot">
-        <div class="ptcg-caught"><span class="mini-ball">${pmBallIcon(pm.id)}</span> ${caughtFull(pm.caught_at)}</div>
+        <div class="ptcg-caught"><span class="ball-ico">${pmBallIcon(pm.id)}</span> ${caughtFull(pm.caught_at)}</div>
         <div class="ptcg-exprow">${maxed ? (pm.shiny ? '✨ 已满级（封顶）' : '✅ 已进入闪耀形态（这张是普通卡）') : `EXP ${pm.exp}/${expThreshold(pm)}`}</div>
         <div class="exp-track"><div class="exp-fill" style="width:${expPct}%"></div></div>
         ${evoChainLine(pm.pokedex_no)}
