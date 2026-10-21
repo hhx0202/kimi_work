@@ -96,7 +96,7 @@
 
 ## 五、关键实现位置（改哪儿找哪儿）
 
-- **任务渲染/排序**：`renderTasks / catSectionHTML / taskCardHTML / taskSort`；进度用 `dayTasksForProgress(date)`（任务不再因完成而下架，列表不过滤 active，已完成/待审核都保留；该函数仍保留打卡记录兜底兼容历史下架数据）
+- **任务渲染/排序**：`renderTasks / catSectionHTML / taskCardHTML / taskSort`；列表按查看日期渲染（`tasksOnDate(S.viewDate)`，翻历史显示那天的任务，别改回 `todayTasks()`）；进度用 `dayTasksForProgress(date)`（任务不再因完成而下架，列表不过滤 active，已完成/待审核都保留；该函数仍保留打卡记录兜底兼容历史下架数据）。历史日期只读：未完成显示禁用按钮「未完成」（不是可点的「查看历史」）
 - **打卡链路**：`checkin`（**乐观更新**：先改本地 `S.logs` 立即渲染按钮变「已提交」，DB 写入放 `bgWrite` 后台落库，失败才提示错误）→ `cancelSubmission`（撤销）→ `confirmPending`（审批发分）→ `undoPoint`（撤销已发分）
 - **全清奖**：`isAllDone` / `cleanupAllClearPending`（异步，防重复）+ 模块级 `awardLocked` Set 防并发重复发（必选/可选全清 + 多日完成奖）；撤销提交/积分时连带清理待发奖励并释放锁定
 - **任务详情 / 清单**：`showTaskDetail(id)`、`showProgressDetail(kind)`、`taskStatusOf(taskId, date)`

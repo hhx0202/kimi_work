@@ -1449,7 +1449,7 @@ async function claimStreak() {
 
 function renderTasks() {
   const page = $('page');
-  const ts = todayTasks();
+  const ts = tasksOnDate(S.viewDate);   // 渲染当前查看日期的任务（翻历史时显示那天的任务，而不是今天的）
   const wts = weeklyTasks();
   const req = ts.filter(t => t.required !== false);
   const opt = ts.filter(t => t.required === false);
@@ -1460,7 +1460,7 @@ function renderTasks() {
   // 连续必做全清进度条固定在这页最下方（只看今天，翻历史日期时不显示）
   const streak = S.viewDate === DB.today() ? streakCardHTML() : '';
   if (!ts.length && !wts.length) {
-    page.innerHTML = notices + dateNavHTML() + note + `<div class="empty-tip">今天还没有任务哦，让家长去布置吧～</div>` + streak;
+    page.innerHTML = notices + dateNavHTML() + note + `<div class="empty-tip">${S.viewDate === DB.today() ? '今天' : '这天'}还没有任务哦，让家长去布置吧～</div>` + streak;
     return;
   }
   let html = notices + dateNavHTML() + note;
@@ -1565,7 +1565,7 @@ function taskCardHTML(t) {
     btnHtml = `<button class="btn-done submitted-btn" data-action="cancel-submit" data-tid="${t.id}" ${isToday ? '' : 'disabled'}>🟦 已提交</button>`;
     statusClass = 'submitted';
   } else if (!isToday) {
-    btnHtml = `<button class="btn-done" disabled>查看历史</button>`;
+    btnHtml = `<button class="btn-done" disabled>未完成</button>`;
   } else {
     btnHtml = `<button class="btn-done" data-action="checkin" data-tid="${t.id}">✅ 完成</button>`;
   }
