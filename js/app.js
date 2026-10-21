@@ -1513,6 +1513,7 @@ function sameTitleTask(title, opts) {
   if (!name) return null;
   return S.tasks.find(x => {
     if (x.active === false || x.id === o.ignoreId) return false;
+    if (x.end_date && x.end_date < DB.today()) return false;   // 已结束的（含删除的重复任务）不再挡同名新任务
     if (String(x.title || '').trim() !== name) return false;
     if (o.parentId !== undefined && (x.parent_id || null) !== (o.parentId || null)) return false;
     if (o.date && x.schedule === 'once' && x.start_date && x.start_date !== o.date) return false;
@@ -1705,6 +1706,16 @@ function showProgressDetail(kind) {
 }
 // 删除任务（家长）
 async function delTask(id) {
+  const t = S.tasks.find(x => x.id === id);
+  if (!t) return;
+  // 重复任务「删除」= 停止布置：结束日期设为昨天，之前日期的打卡记录/进度/积分原样保留（软停用）
+  if (t.schedule === 'daily') {
+    if (!await askConfirm('删除后从今天起不再布置这个任务，之前日期的完成记录和积分原样保留。确定删除？', { okText: '删除' })) return;
+    await DB.updateTask(id, { end_date: shiftDate(DB.today(), -1) });
+    await refreshAll(); render();
+    toast('已删除，之前的记录保留');
+    return;
+  }
   if (!await askConfirm('确定删除这个任务？', { okText: '删除' })) return;
   await DB.deleteTask(id);
   await refreshAll(); render();
