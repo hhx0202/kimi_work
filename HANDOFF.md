@@ -109,7 +109,8 @@
 - **多日进度**：`taskProgress / childWeight / childWeightMode / isTaskDoneEver`（权重优先分数 → percent → 条数均分）
 - **喂养**：`openFeed(pmId)`（自定义分数 + 「刚好进化」）、`feedPm(pm, pts)`（喂完重开详情卡）
 - **卡面**：`showCardDetail / showDexDetail / showDexMissing / movesBlockHTML / bindMoveClicks`；特效 `FX_BY_TYPE / fxKeyOf / cardFxHTML / cardGlitterHTML`
-- **消息卡**：`pushNotice / noticesHTML / ackNotice`（存 `LK('notices')`）；触发点在 `giveBall / givePts / minusPts / confirmPending / applyOverduePenalty`
+- **消息卡**：`pushNotice / noticesHTML / ackNotice`（存**共享存储** `settings.notices`，见下条）；触发点在 `giveBall / givePts / minusPts / confirmPending / applyOverduePenalty`
+- **跨设备共享的小数据**（`sharedGet / sharedSet / migrateLocalToShared`，2026-10-21）：常用任务、自定义类别+隐藏类别、家长消息卡、出战宝可梦、领奖标记都存在 `settings` 表的键值里（value 是 text，内容为 JSON 字符串），家长手机和孩子平板看到同一份；内存镜像 `SHARED` 是真源，`refreshAll` 时随 settings 一起拉回，写入一律"本地立即生效 + `bgWrite` 后台落库"。**老数据搬家**：`migrateLocalToShared` 只在共享里还没有该项时才把本机 localStorage 的老值传上去（不覆盖别的设备已改的值）。**刻意不共享**：错误日志 `LK('errors')`（同步会"写失败→记错误→再写失败"自激）、身份 `role`、家长免密 `parent_authed`、积分提示已读 `seen_pts`（都是"这台设备"的语义）。**非实时**：共享值只在 `refreshAll` 时刷新（每次操作/切页都会调），所以家长在自己手机上的操作要等孩子端下一次刷新才可见，想做实时推送得上 Supabase Realtime。demo 模式的 `setSettings` 已改成按 key 合并（与 supabase upsert 一致），别改回整体覆盖
 - **错误日志**：`reportError / showErrBanner / errorLogPanel / openErrorLog`（存 `LK('errors')`）
 - **类别**：`allCategories / catSelectHTML / onCatSelectChange / readCat`（新建任务、编辑、多日布置都用同一套下拉）
 - **常用任务**：`quickTasks / saveQuickList / openQuickEdit / openQuickAddTask / delQuick / bindQuickLongPress`（localStorage `km_quick_tasks`，每项 `{title,category,points,required,iconKey}`；图标 key 池在 `js/poke-icons.js` 的 `POKE_ICON_KEY_MAP`）。长按手势要用 `touchMode` 屏蔽合成的 mousedown/mouseleave，并在松手后吞掉那次合成 click，否则弹窗会被遮罩点击关掉
@@ -137,7 +138,7 @@
 8. **数据库 SQL 只更新 `sql/upgrade_all.sql` 一个文件**（幂等），用户只在 Supabase 运行它；不要新建 upgrade_vX 增量文件
 9. 家长密码 2048；config 自动判断：localhost=演示数据、线上域名=真库
 10. **前端字段 ↔ 数据库列必须对齐**：改 `js/db.js` 的 insert/update/select 字段时，同步核对 `sql/upgrade_all.sql`；改表结构同理要查前端。**踩过的坑（2026-10-20）**：`sup.addTask` 曾往 insert 里塞了 `note: null`，而 tasks 表没这列 → 线上正式模式添加任务全挂（PGRST204「找不到 note 列」）；demo(localStorage) 不校验 schema 所以本地正常，造成「demo 能加、正式不能加」的假象。修复 = SQL `add column if not exists note text` + db.js 入参去掉 note。**教训：demo 模式正常 ≠ 正式模式正常，涉及写库的改动必须用线上同款 payload 验证。**
-11. 临时测试脚本（`_t.js` / `_smoke.js`）用完必须删，别留在仓库里；`tools/_cache_moves.json.tmp` 已被 `.gitignore` 忽略
+11. **测试写进 `tests/`（常驻，别再用临时脚本）**：`node tests/run.js` 一键跑全部用例（2026-10-21 起，130+ 断言）。新增/改动核心逻辑时**先补一个 `tests/*.test.js` 用例再改代码**，用 `tests/harness.js` 的 `makeCtx(函数名数组, 全局覆盖)` 从 `js/app.js` 切真实函数进 vm 沙箱（`laggyDB(lag)` 造带往返延迟的假库、`runBg(ctx)` 手动驱动后台写库以便断言"渲染先于落库"）。临时脚本（`_t.js` / `_smoke.js`）用完仍必须删；`tools/_cache_moves.json.tmp` 已被 `.gitignore` 忽略
 12. **iOS 14 兼容（家里有旧 iPhone）**：Safari 14 不支持 `aspect-ratio`（图鉴格子/小卡框/详情卡大图靠它撑正方形，丢了就高度塌陷、图鉴不全、卡片乱）、`inset` 简写、无前缀 `backdrop-filter`。新加正方形容器时别只用 `aspect-ratio`，要用 `@supports not (aspect-ratio: 1 / 1)` + `padding-bottom` 兜底（style.css 末尾有现成模板）；全屏遮罩用 `inset: 0` 的要补 top/left/right/bottom
 13. 部署：`git push` 到 `origin master` 即自动更新 GitHub Pages（`https://hhx0202.github.io/kimi_work/`）
 

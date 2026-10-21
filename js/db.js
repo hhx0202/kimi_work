@@ -284,7 +284,8 @@ const DB = (() => {
     async setNote(date, note) { lsSet(P + 'note_' + date, note || ''); },
     // 家长规则设置（覆盖 config 数值）
     async getSettings() { return lsGet(P + 'settings', {}) || {}; },
-    async setSettings(obj) { lsSet(P + 'settings', obj); },
+    // 按 key 合并写入（与 supabase 的 upsert 行为一致）：只传一个 key 时不能把其它设置冲掉
+    async setSettings(obj) { lsSet(P + 'settings', { ...(lsGet(P + 'settings', {}) || {}), ...obj }); },
   };
 
   // ==========================================================

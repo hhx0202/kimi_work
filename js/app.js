@@ -309,6 +309,10 @@ async function refreshAll() {
   ]);
   // 家长设置的规则数值覆盖默认 config（只覆盖配置过的 key）
   Object.keys(settings || {}).forEach(k => { if (CONFIG[k] !== undefined && settings[k] !== '') CONFIG[k] = Number(settings[k]); });
+  // 跨设备共享的小数据（消息卡/常用任务/类别/出战宝可梦/领奖标记）随这次刷新一起拉回来
+  SHARED = {};
+  Object.keys(settings || {}).forEach(k => { if (SHARED_LABEL[k]) SHARED[k] = settings[k]; });
+  migrateLocalToShared();   // 老数据（只在本机的）搬到共享存储
   S.viewNote = vNote || null;
   S.parentNote = pNote || null;
   S.tasks = tasks;
@@ -337,9 +341,13 @@ async function refreshAll() {
   S.balance = pointLogs.reduce((s, l) => s + (l.confirmed === false ? 0 : l.amount), 0);
   S.balls = balls;
   S.shinyCards = shinyCards;   // ✨ 闪耀卡库存（只在连续必做全清领奖时产出，用一张让一只宝可梦多一张闪耀卡）
-  if (S.leadId && !pokemons.some(p => p.id === S.leadId)) { S.leadId = null; localStorage.removeItem(LK('lead')); }
+  // 出战宝可梦以共享值为准（家长手机/孩子平板看到同一只伙伴）
+  const sharedLead = sharedLeadId();
+  if (sharedLead && pokemons.some(p => p.id === sharedLead)) S.leadId = sharedLead;
+  if (S.leadId && !pokemons.some(p => p.id === S.leadId)) S.leadId = null;
   // 有宝可梦但没选出战（演示数据/首次进入）→ 自动选第一只当伙伴，省得手动设置
-  if (!S.leadId && pokemons.length) { S.leadId = pokemons[0].id; localStorage.setItem(LK('lead'), S.leadId); }
+  if (!S.leadId && pokemons.length) S.leadId = pokemons[0].id;
+  if (sharedLeadId() !== S.leadId) setSharedLead(S.leadId);   // 首次/换设备/失效时同步回共享
 }
 
 function activeTasks() { return S.tasks.filter(t => t.active); }
@@ -497,7 +505,7 @@ function reqStreakDays() {
 function calcStreak() { return reqStreakDays(); }
 // 本轮（上次领奖之后）已经连了几天必做全清
 const K_STREAK_CLAIM = LK('streak_claim');
-function streakClaimedOn() { return lsGet(K_STREAK_CLAIM, '') || ''; }
+function streakClaimedOn() { return sharedGet('streak_claim', '') || ''; }
 function streakCycleDays() {
   const stop = streakClaimedOn();
   const today = DB.today();
@@ -964,7 +972,7 @@ async function catchOne() {
   const info = PK_BY_NO[no];
   const newPm = await DB.addPokemon({ pokedex_no: no, shiny: false });
   S.pokemons.push(newPm);
-  if (!S.leadId) { S.leadId = newPm.id; localStorage.setItem(LK('lead'), newPm.id); }
+  if (!S.leadId) { S.leadId = newPm.id; setSharedLead(newPm.id); }   // 出战伙伴跨设备共享
   await showCatch(false, no, `收服了新宝可梦 ${info.name}！`);
   renderTop(); renderPokemons();
 }
@@ -1205,12 +1213,12 @@ function noticeTime(n) {
 }
 function loadNotices() {
   try {
-    const list = lsGet(LK('notices'), []);
+    const list = sharedGet('notices', []);   // 跨设备：家长在自己手机上发的消息，孩子平板也能看到
     return Array.isArray(list) ? list.filter(n => n && n.id && n.text) : [];
   } catch (e) { return []; }
 }
 function saveNotices(list) {
-  try { lsSet(LK('notices'), list.slice(-NOTICE_MAX)); } catch (e) {}
+  try { sharedSet('notices', list.slice(-NOTICE_MAX)); } catch (e) {}
 }
 // 记一条家长消息（孩子下次打开任务页会在顶端看到，点「知道啦」才消失）
 function pushNotice(type, text, sub) {
@@ -1507,7 +1515,7 @@ async function claimStreak() {
     await DB.addItemLog('shiny', n, reason, today);
     S.shinyCards += n;
   }
-  lsSet(K_STREAK_CLAIM, today);
+  sharedSet('streak_claim', today);
   confetti({ particleCount: 180, spread: 130, origin: { y: .5 } });
   renderTop(); render();
   toast(`🏆 领到闪耀卡 ×${n}，去宝可梦页点「✨ 闪耀卡」选一只宝可梦用掉吧`);
@@ -2760,7 +2768,7 @@ function bindActions() {
   };
 }
 function setLead(id) {
-  S.leadId = id; localStorage.setItem(LK('lead'), id);
+  S.leadId = id; setSharedLead(id);
   render();
   toast(`⭐ 它成为你的伙伴了！完成任务会帮它 +${CONFIG.LEAD_EXP_PER_TASK} 经验`);
 }
@@ -3535,12 +3543,50 @@ const K_QUICK = LK('quick_tasks');
 function lsGet(k, d) { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch { return d; } }
 function lsSet(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
 
+// ---------- 跨设备共享的小数据（家长手机 ↔ 孩子平板看到同一份） ----------
+// 存在数据库 settings 表里（key/value，value 是 text，内容为 JSON 字符串），
+// 内存镜像 SHARED 是真源：refreshAll 时随 settings 一起拉回来，写入走"本地立即生效 + 后台落库"。
+// 刻意留在 localStorage 不共享的：错误日志（跨设备同步会"写失败→记错误→再写失败"自激）、
+// 身份 role、家长免密标记 parent_authed、积分提示已读 seen_pts（都是"这台设备"的语义）。
+const SHARED_LABEL = { notices: '家长消息', quick_tasks: '常用任务', categories: '类别', categories_hidden: '类别', lead: '出战宝可梦', streak_claim: '领奖记录' };
+let SHARED = {};
+function sharedGet(key, dflt) {
+  const v = SHARED[key];
+  if (v === undefined || v === null || v === '') return dflt;
+  try { const x = JSON.parse(v); return x === null ? dflt : x; } catch (e) { return dflt; }
+}
+function sharedSet(key, val) {
+  SHARED[key] = JSON.stringify(val);
+  bgWrite(SHARED_LABEL[key] || key, () => DB.setSettings({ [key]: SHARED[key] }));
+}
+// 老数据搬家：共享里还没有这一项、而本机 localStorage 里有 → 传上去（只跑一次，之后以共享为准）
+function migrateLocalToShared() {
+  const map = {
+    quick_tasks: K_QUICK, categories: K_CATS, categories_hidden: K_CATS_HIDE,
+    notices: LK('notices'), lead: LK('lead'), streak_claim: K_STREAK_CLAIM,
+  };
+  const up = {};
+  for (const k in map) {
+    if (SHARED[k] !== undefined && SHARED[k] !== '') continue;
+    let raw = null;
+    try { raw = localStorage.getItem(map[k]); } catch (e) {}
+    if (raw === null || raw === '') continue;
+    up[k] = raw;
+  }
+  if (!Object.keys(up).length) return;
+  Object.assign(SHARED, up);
+  // 迁移失败不打扰用户（数据还在本机，下次打开会再试一次）
+  Promise.resolve(DB.setSettings(up)).catch(err => console.error('[共享数据迁移]', err));
+}
+function sharedLeadId() { return Number(sharedGet('lead', 0)) || null; }
+function setSharedLead(id) { sharedSet('lead', Number(id) || null); }
+
 // ---------- 类别记忆：新输入的类别会记住，用于下拉和孩子端分区排序 ----------
 const K_CATS = LK('categories');
 const K_CATS_HIDE = LK('categories_hidden');
-function loadCats() { return lsGet(K_CATS, CONFIG.DEFAULT_CATEGORIES); }
+function loadCats() { return sharedGet('categories', CONFIG.DEFAULT_CATEGORIES); }
 // 被家长从下拉里删掉的类别（只是隐藏，任务本身不受影响）
-function hiddenCats() { return lsGet(K_CATS_HIDE, []); }
+function hiddenCats() { return sharedGet('categories_hidden', []); }
 // 全部可用类别 = 记忆类别 + 现有任务实际用过的历史类别（去重保序，去掉隐藏的）
 // 这样：从批量/演示/旧数据里来的类别，即使没走过 saveCat，也能在下拉里选到
 function allCategories() {
@@ -3560,16 +3606,16 @@ function saveCat(cat) {
   if (!cat) return;
   // 重新启用一个曾被删掉的类别
   const hide = hiddenCats();
-  if (hide.includes(cat)) lsSet(K_CATS_HIDE, hide.filter(c => c !== cat));
+  if (hide.includes(cat)) sharedSet('categories_hidden', hide.filter(c => c !== cat));
   const cats = loadCats();
-  if (!cats.includes(cat)) { cats.push(cat); lsSet(K_CATS, cats); }
+  if (!cats.includes(cat)) { cats.push(cat); sharedSet('categories', cats); }
 }
 function deleteCat(cat) {
   cat = String(cat || '').trim();
   if (!cat) return;
-  lsSet(K_CATS, loadCats().filter(c => c !== cat));
+  sharedSet('categories', loadCats().filter(c => c !== cat));
   const hide = hiddenCats();
-  if (!hide.includes(cat)) { hide.push(cat); lsSet(K_CATS_HIDE, hide); }
+  if (!hide.includes(cat)) { hide.push(cat); sharedSet('categories_hidden', hide); }
 }
 // 类别选择控件：用原生 <select>（手机上是系统选择器，任何浏览器都能选）
 // 末尾附「自定义类别…」，选中后显示输入框；历史类别全部在内
@@ -3610,7 +3656,7 @@ function catOrder(cat) {
 
 // 常用任务列表：老数据没有 iconKey 的补一个随机图标并回写（同一标签之后图标固定）
 function quickTasks() {
-  let q = lsGet(K_QUICK, null);
+  let q = sharedGet('quick_tasks', null);
   if (q === null) {
     // 首次使用：用默认模板 + 老的「最近用过」初始化一次（图标随机且尽量不重样）
     const seed = TPL.map(t => ({ title: t.title, category: t.category, points: t.points, required: true }));
@@ -3624,10 +3670,10 @@ function quickTasks() {
       used.add(key);
       out.push({ ...it, iconKey: key });
     }
-    q = out; lsSet(K_QUICK, q);
+    q = out; sharedSet('quick_tasks', q);
     return q;
   }
-  if (!Array.isArray(q)) { q = []; lsSet(K_QUICK, q); return q; }
+  if (!Array.isArray(q)) { q = []; sharedSet('quick_tasks', q); return q; }
   // 老数据没图标 key（或 key 已失效）→ 补一个随机的并回写
   const used = new Set(q.map(it => it.iconKey).filter(k => POKE_ICON_KEYS.includes(k)));
   let changed = false;
@@ -3638,10 +3684,10 @@ function quickTasks() {
     used.add(key);
     return { ...it, iconKey: key };
   });
-  if (changed) lsSet(K_QUICK, q);
+  if (changed) sharedSet('quick_tasks', q);
   return q;
 }
-function saveQuickList(list) { lsSet(K_QUICK, list); }
+function saveQuickList(list) { sharedSet('quick_tasks', list); }
 
 function delQuick(idx) {
   const q = quickTasks();
