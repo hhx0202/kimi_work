@@ -359,6 +359,11 @@ body {
   -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none;
   -webkit-touch-callout: none;
 }
+/* 家长端任务行长按拖动排序同理：禁止选中文字/弹复制菜单，否则系统选字会抢走长按 */
+.prow, .prow * {
+  -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+}
 /* 图标/文字不接收指针事件：长按的落点变成标签本身，系统就不会当作文本去选字（✕ 仍可点） */
 .quick-chip svg, .quick-chip .qc-name, .quick-chip .qc-pts { pointer-events: none; }
 .quick-chip .qc-name { max-width: 10em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1510,3 +1515,32 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .err-item small { color: #78909c; word-break: break-all; display: block; margin-top: 2px; }
 .err-item pre { font-size: 11px; white-space: pre-wrap; word-break: break-all; color: #546e7a; margin-top: 4px; }
 .err-item summary { cursor: pointer; color: #607d8b; margin-top: 4px; font-size: 11px; }
+
+/* ---------- iOS 14 及更早 Safari 兼容 ----------
+   aspect-ratio 在 Safari 15 / iOS 15 才支持，旧版 Safari 不识别会直接丢弃，
+   导致宝可梦图鉴格子、小卡牌框、详情卡大图高度塌陷、图片被裁、卡片布局乱。
+   这里用经典的 padding-bottom 撑高技巧给它们补上正方形高度；
+   @supports not 只有真正不支持 aspect-ratio 的浏览器才命中，新浏览器不受影响。
+   注意：内部原本 absolute 定位的元素（属性徽章/特效层）保持原样，只有主图改 absolute 填满。 */
+@supports not (aspect-ratio: 1 / 1) {
+  /* 图鉴格子：保持 flex 居中，补最小高度避免图片被裁/格子塌成一条 */
+  .dex-cell { min-height: 64px; }
+  /* 小卡牌图框：padding-bottom 撑正方形，图片铺满 */
+  .mini-frame { height: 0; padding-bottom: 100%; }
+  .mini-frame > img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  /* 详情卡大图：padding-bottom 撑正方形，图片铺满（fx/type/glitter 仍是 absolute，盖在上面） */
+  .ptcg-art { height: 0; padding-bottom: 100%; }
+  .ptcg-art > img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  /* 日历格子 */
+  .cal-day { min-height: 40px; }
+}
+
+/* inset 简写在 Safari 14.0-14.4 / iOS 14.0-14.4 不支持，全屏遮罩会失去铺满效果 */
+@supports not (inset: 0) {
+  .modal-mask, .overlay, .shiny-bg, .shiny-rain, .ptcg-glitter, .ptcg-fx {
+    top: 0; left: 0; right: 0; bottom: 0;
+  }
+}
+
+/* backdrop-filter 在 Safari 需要 -webkit- 前缀才生效（旧版 Safari 认带前缀的） */
+.modal-mask, .overlay { -webkit-backdrop-filter: blur(4px); }

@@ -22,13 +22,13 @@
 |---|---|---|
 | 任务 | daily/once/weekly(子任务)/必做可选/批量粘贴/日历 | ✅ |
 | 奖励 | 任务积分、必做全清+5、选做全清+5、**连续 7 天必做全清**在最下方进度条点「领取」得 ✨ 闪耀卡（宝可梦页点「使用」自己挑一只）、多日完成奖 | ✅ |
-| 提交/审批 | 孩子点「完成」→ 卡片原地变**已提交**（按下态，不挪位），再点可撤销；家长「待确认积分」审批后 → **已完成**；积分先进待发池 | ✅ |
+| 提交/审批 | 孩子点「完成」→ **乐观更新立即变已提交**（不等数据库，DB 后台落库失败才提示）；再点可撤销；家长「待确认积分」审批后 → **已完成**；积分先进待发池；**任务完成后不再下架**，待审核/已完成都保留在孩子页与家长页列表展示，按钮按状态显示（完成/已提交/已完成） | ✅ |
 | 详情 | 任务详情弹窗保持**一行紧凑信息**：分类 · 分数 · 类型 · 开始日期 · 截止日期（+剩 N 天），子任务跟随多日任务的截止日期并标注「随多日任务」，另起一行写所属多日任务；**多日任务**点进度条弹出的子任务清单头部带截止日期/剩余天数/进度/全清奖 | ✅ |
 | 进度条 | 必做、选做两条进度条**都可点开该组清单**（完成 N/M + 全清奖 + 每行状态），再点某行 → 该任务详情；分母 = `dayTasksForProgress()`，与条上数字严格一致。**颜色随百分比走**：0% 淡雾蓝 → 半程淡青绿 → 100% 绿（不再从红色起，刚布置不该像报警），完成态是绿色 + 白光扫过 | ✅ |
 | 家长消息 | 任务页顶端消息卡（送球/扣分/审批通过/额外奖励），孩子点「知道啦」才消失，多条可一键全确认；Tab 有未读角标；存本机，刷新不丢 | ✅ |
 | 出错提示 | 全局 `error`/`unhandledrejection`/DB 报错 → 顶部红条（可展开堆栈、一键复制），同类 5 秒合并，最多 30 条；家长中心「🐞 错误日志」可查 | ✅ |
 | 常用任务 | 家长自维护标签（图标+名称+分数+✕）：单击开「添加任务」表单（名称/类别/分数/必做/布置到 + **小提示**都可改）确认、长按改名称/分数、＋ 新增（图标随机分配）；**「排序」按钮**进入排序模式（长按拖动换位、松手写回 `km_quick_tasks`，点「确认」或点别处退出） | ✅ |
-| 任务行操作 | 家长端任务行可长按拖动排序、**左滑露出「删除」**（滑 ≥40px 松手，点行或点别处收起，同一时间只开一行） | ✅ |
+| 任务行操作 | 家长端任务行可长按拖动排序、**左滑露出「删除」**（滑 ≥40px 松手，点行或点别处收起，同一时间只开一行）；任务行已禁选字/弹复制菜单（`enableDragSort` 拦截 `selectstart`/`contextmenu` + `.prow` CSS `user-select:none`），手机长按不会抢成选字 | ✅ |
 | 家长端其它 | 「📅 批量布置多天任务」只留按钮（说明都在弹窗里）；「🆕 新建任务」「🎁 奖励 / 扣分」标题带图标；原「本周完成率」面板已删除 | ✅ |
 | 演示 | intro.html 介绍页 + **演示模式**（独立 `kmd_` 数据，家长端进入/退出/重置） | ✅ |
 | 捕捉 | 必出新且**只出基础形态**（`CATCH_POOL` = 没有进化前体的编号）；进化形态只能靠喂养进化获得，伊布分支进化会弹选择框；基础形态抓齐后不扣球；**闪耀形态不由捕捉产出** | ✅ |
@@ -41,7 +41,7 @@
 | 孩子端 | 双进度条、按类别分区（校内在前）、历史日期切换（只读）、打卡日历、提交流程 | ✅ |
 | 类别 | 类别自动记忆（下拉可选历史类别）+ 家长端管理 + 孩子端分区 + 规则小抄 | ✅ |
 | 子任务 | 每个子任务都带分数（父任务总分 = 子任务之和），进度按子任务权重算；历史 0 分子任务自动按 percent / 条数均分兜底，不会卡在 0%；百分比自动归一化 + 多日任务 ✏️ 编辑 | ✅ |
-| 排序 | 必做/选做两区平铺、↑↓ + 长按拖动（650ms）；家长调完孩子端同步（共用 `taskSort`：sort → 类别 → 名称） | ✅ |
+| 排序 | 必做/选做两区平铺、↑↓ + 长按拖动（650ms）；家长调完孩子端同步（共用 `taskSort`：sort → 类别 → 名称）；家长端任务行小字已去掉日期图标（`prowRowHTML` 不再显示 📅） | ✅ |
 | 分享 | 成就图生成，长按保存发朋友圈 | ✅ |
 | 素材 | 302 动图 + 151 高清插画 + 151 属性 + 151 招式表 | ✅ |
 | 数据 | 双模式（demo localStorage / supabase 真库）；localhost 自动 demo、线上自动真库 | ✅ |
@@ -96,9 +96,9 @@
 
 ## 五、关键实现位置（改哪儿找哪儿）
 
-- **任务渲染/排序**：`renderTasks / catSectionHTML / taskCardHTML / taskSort`；进度用 `dayTasksForProgress(date)`（含已下架但当天完成的任务 + 子任务）
-- **打卡链路**：`checkin`（写 `done` + `approved=false` + 待发积分）→ `cancelSubmission`（撤销）→ `confirmPending`（审批发分）→ `undoPoint`（撤销已发分）
-- **全清奖**：`isAllDone` / `cleanupAllClearPending`（异步，防重复）；任务下架/撤销时要连带清理待发奖励
+- **任务渲染/排序**：`renderTasks / catSectionHTML / taskCardHTML / taskSort`；进度用 `dayTasksForProgress(date)`（任务不再因完成而下架，列表不过滤 active，已完成/待审核都保留；该函数仍保留打卡记录兜底兼容历史下架数据）
+- **打卡链路**：`checkin`（**乐观更新**：先改本地 `S.logs` 立即渲染按钮变「已提交」，DB 写入放 `bgWrite` 后台落库，失败才提示错误）→ `cancelSubmission`（撤销）→ `confirmPending`（审批发分）→ `undoPoint`（撤销已发分）
+- **全清奖**：`isAllDone` / `cleanupAllClearPending`（异步，防重复）+ 模块级 `awardLocked` Set 防并发重复发（必选/可选全清 + 多日完成奖）；撤销提交/积分时连带清理待发奖励并释放锁定
 - **任务详情 / 清单**：`showTaskDetail(id)`、`showProgressDetail(kind)`、`taskStatusOf(taskId, date)`
 - **进化链**：`expThreshold / canEvolve / evolvePm / isMaxed / evoStageLabel`；图鉴家族 `evoFamily / dexGot / ownedNumbers`；`pkNoOf` 按名字兜底修老数据的 `pokedex_no`
 - **多日进度**：`taskProgress / childWeight / childWeightMode / isTaskDoneEver`（权重优先分数 → percent → 条数均分）
@@ -133,7 +133,8 @@
 9. 家长密码 2048；config 自动判断：localhost=演示数据、线上域名=真库
 10. **前端字段 ↔ 数据库列必须对齐**：改 `js/db.js` 的 insert/update/select 字段时，同步核对 `sql/upgrade_all.sql`；改表结构同理要查前端。**踩过的坑（2026-10-20）**：`sup.addTask` 曾往 insert 里塞了 `note: null`，而 tasks 表没这列 → 线上正式模式添加任务全挂（PGRST204「找不到 note 列」）；demo(localStorage) 不校验 schema 所以本地正常，造成「demo 能加、正式不能加」的假象。修复 = SQL `add column if not exists note text` + db.js 入参去掉 note。**教训：demo 模式正常 ≠ 正式模式正常，涉及写库的改动必须用线上同款 payload 验证。**
 11. 临时测试脚本（`_t.js` / `_smoke.js`）用完必须删，别留在仓库里；`tools/_cache_moves.json.tmp` 已被 `.gitignore` 忽略
-12. 部署：`git push` 到 `origin master` 即自动更新 GitHub Pages（`https://hhx0202.github.io/kimi_work/`）
+12. **iOS 14 兼容（家里有旧 iPhone）**：Safari 14 不支持 `aspect-ratio`（图鉴格子/小卡框/详情卡大图靠它撑正方形，丢了就高度塌陷、图鉴不全、卡片乱）、`inset` 简写、无前缀 `backdrop-filter`。新加正方形容器时别只用 `aspect-ratio`，要用 `@supports not (aspect-ratio: 1 / 1)` + `padding-bottom` 兜底（style.css 末尾有现成模板）；全屏遮罩用 `inset: 0` 的要补 top/left/right/bottom
+13. 部署：`git push` 到 `origin master` 即自动更新 GitHub Pages（`https://hhx0202.github.io/kimi_work/`）
 
 ## 八、开发验证技巧
 
