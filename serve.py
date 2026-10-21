@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ============================================================
-# Kimi 任务岛 - 一键启动本地服务器
+# 佑佑 任务岛 - 一键启动本地服务器
 # 用法：start.bat(Windows 双击) / bash start.sh(Mac/Linux)
 # 或直接 python serve.py
 # ============================================================
@@ -28,7 +28,7 @@ def lan_ip():
 
 ip = lan_ip()
 print('=' * 46)
-print('  🏝️  Kimi 任务岛 · 本地服务器')
+print('  🏝️  佑佑 任务岛 · 本地服务器')
 print('=' * 46)
 print(f'  电脑访问 : http://localhost:{PORT}')
 print(f'  手机访问 : http://{ip}:{PORT}   (手机和电脑连同一个 WiFi)')

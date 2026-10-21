@@ -1,5 +1,5 @@
 // ============================================================
-// Kimi 任务岛 - 主程序
+// 佑佑 任务岛 - 主程序
 // ============================================================
 
 // confetti 安全包装（CDN 加载失败时静默降级，不影响功能）
@@ -2359,7 +2359,7 @@ function kidShellHTML() {
   return `
     <div class="topbar">
       ${DEMO_ACTIVE ? '<div class="demo-tag">🎬 演示模式</div>' : ''}
-      <div class="title">🏝️ Kimi的任务岛<small>${mottoText()}</small></div>
+      <div class="title">🏝️ 佑佑的任务岛<small>${mottoText()}</small></div>
       <div class="badges">
         <span class="badge">⭐ <b id="pt">0</b></span>
         <span class="badge ball">🔴 <b id="bl">0</b></span>
@@ -4293,7 +4293,7 @@ function shareCardHTML() {
   const theme = TYPE_THEME[type] || TYPE_THEME.normal;
   return `
     <div class="share-card" style="--tc:${theme.color}; --bg1:${theme.bg1}; --bg2:${theme.bg2}">
-      <div class="share-head">🏝️ Kimi的任务岛</div>
+      <div class="share-head">🏝️ 佑佑的任务岛</div>
       <div class="share-pm">
         <img src="${lead ? artworkPath(leadNo) : 'assets/artwork/25.png'}" alt="">
         <div class="share-pm-name">${lead ? PK_BY_NO[leadNo].name + (lead.shiny ? ' ✨' : '') : '皮卡丘'}<span>${lead ? evoStageLabel(lead) : '基础'}</span></div>
