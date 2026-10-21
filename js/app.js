@@ -742,22 +742,25 @@ async function cancelSubmission(taskId) {
     S.pointLogs = S.pointLogs.filter(l => !bonusPend.some(p => p.id === l.id));
     awardLocked.delete(`多日完成奖:${parent.title}`);
   }
-  // 删除待确认积分 + 清打卡状态：互不依赖 → 并发发出
-  await Promise.all([
-    ...pend.map(l => DB.deletePointLog(l.id)),
-    ...bonusPend.map(l => DB.deletePointLog(l.id)),
-    DB.setLog(taskId, day, false, null, null, true),
-  ]);
-  // 撤销后若不再全清，回收还未发放的对应待确认奖励
-  await cleanupAllClearPending(day);
-  toast('已撤销提交');
+  // 撤销后若不再全清，本地回收尚未发放的全清奖（返回要从库里删掉的流水 id）
+  const dropIds = dropAllClearPending(day);
+  // 乐观更新：本地状态和界面都已改好 → 先渲染再落库（撤销不再等网络）
   renderTop();
   renderProgress();
   renderTasks();
+  toast('已撤销提交');
+  bgWrite('撤销提交', async () => {
+    await Promise.all([
+      ...pend.map(l => DB.deletePointLog(l.id)),
+      ...bonusPend.map(l => DB.deletePointLog(l.id)),
+      ...dropIds.map(id => DB.deletePointLog(id)),
+      DB.setLog(taskId, day, false, null, null, true),
+    ]);
+  });
 }
 
-// 撤销提交后，若必做/选做不再全清，回收尚未发放的待确认全清奖励
-async function cleanupAllClearPending(date) {
+// 撤销提交后，若必做/选做不再全清：本地回收尚未发放的全清奖，返回需要在库里删除的流水 id
+function dropAllClearPending(date) {
   const dayTasks = dayTasksForProgress(date);
   const reqTasks = dayTasks.filter(t => t.required !== false);
   const optTasks = dayTasks.filter(t => t.required === false);
@@ -766,12 +769,12 @@ async function cleanupAllClearPending(date) {
   const drop = [];
   if (!reqDone) drop.push(`必选全清_${date}`);
   if (!optDone) drop.push(`可选全清_${date}`);
-  if (!drop.length) return;
+  if (!drop.length) return [];
   const pend = S.pointLogs.filter(l => l.confirmed === false && drop.includes(l.reason));
-  await Promise.all(pend.map(l => DB.deletePointLog(l.id)));   // 并发删除，别再一条一条等
   S.pointLogs = S.pointLogs.filter(l => !pend.some(p => p.id === l.id));
   // 释放本次会话的锁定，撤销后重新达成全清仍可再发
   drop.forEach(key => awardLocked.delete(key));
+  return pend.map(l => l.id);
 }
 
 // ---------- 经验 / 进化（不再有等级，经验满一管即进化） ----------
@@ -1008,13 +1011,18 @@ function showShiny(pm, sub = null) {
 // ---------- 买球 ----------
 async function buyBall() {
   if (S.balance < CONFIG.BALL_PRICE) { toast('积分不够（球要 ' + CONFIG.BALL_PRICE + ' 分）'); return; }
-  const pid = await DB.addPointLog(-CONFIG.BALL_PRICE, '购买精灵球', DB.today());
-  S.pointLogs.push({ id: pid, log_date: DB.today(), amount: -CONFIG.BALL_PRICE, reason: '购买精灵球' });
+  // 乐观更新：扣分/加球先反映到界面，落库后台
   S.balance -= CONFIG.BALL_PRICE;
-  await DB.addItemLog('ball', 1, '购买', DB.today());
   S.balls++;
   renderTop(); renderPokemons();
   toast('🔴 精灵球 +1');
+  bgWrite('买球', async () => {
+    const [pid] = await Promise.all([
+      DB.addPointLog(-CONFIG.BALL_PRICE, '购买精灵球', DB.today()),
+      DB.addItemLog('ball', 1, '购买', DB.today()),
+    ]);
+    S.pointLogs.push({ id: pid, log_date: DB.today(), amount: -CONFIG.BALL_PRICE, reason: '购买精灵球' });
+  });
 }
 
 // ---------- 动画：捕捉 ----------
@@ -4222,35 +4230,44 @@ async function resetDemo() {
 async function giveBall() {
   const why = pmReason();
   const reason = why ? `家长奖励：${why}` : '家长奖励';
-  await DB.addItemLog('ball', 1, reason, DB.today());
+  // 乐观更新：数量/提示先给，落库后台
   S.balls++;
   toast('🔴 已送 1 个精灵球');
   pushNotice('ball', '家长送了你 1 个精灵球！', `现在一共有 ${S.balls} 个${why ? ' · ' + why : ''}`);
   render();
+  bgWrite('送精灵球', () => DB.addItemLog('ball', 1, reason, DB.today()));
 }
 async function givePts() {
   const n = parseInt($('pt-givepts').value) || 0;
   if (!n) { toast('填数量'); return; }
   const why = pmReason();
   const reason = why ? `家长奖励：${why}` : '家长奖励';
-  const pid = await DB.addPointLog(n, reason, DB.today());
-  S.pointLogs.push({ id: pid, log_date: DB.today(), amount: n, reason });
+  // 乐观更新：余额和提示先给，流水的 id 要等库返回，到了再补进列表
   S.balance += n;
   toast(`⭐ 已发 ${n} 积分`);
   pushNotice('bonus', `家长额外奖励你 ${n} 积分！`, why ? `原因：${why}` : `现在一共有 ${S.balance} 分`);
   render();
+  bgWrite('发积分', async () => {
+    const pid = await DB.addPointLog(n, reason, DB.today());
+    S.pointLogs.push({ id: pid, log_date: DB.today(), amount: n, reason });
+    render();
+  });
 }
 async function minusPts() {
   const n = parseInt($('pt-minuspts').value) || 0;
   if (!n) { toast('填数量'); return; }
   const why = pmReason();
   const reason = why ? `家长扣分：${why}` : '家长扣分';
-  const pid = await DB.addPointLog(-n, reason, DB.today());
-  S.pointLogs.push({ id: pid, log_date: DB.today(), amount: -n, reason });
+  // 乐观更新：余额和提示先给，落库后台
   S.balance -= n;
   toast(`➖ 已扣 ${n} 积分`);
   pushNotice('minus', `家长扣了你 ${n} 积分`, why ? `原因：${why}` : `现在还剩 ${S.balance} 分`);
   render();
+  bgWrite('扣积分', async () => {
+    const pid = await DB.addPointLog(-n, reason, DB.today());
+    S.pointLogs.push({ id: pid, log_date: DB.today(), amount: -n, reason });
+    render();
+  });
 }
 
 // ---------- 待确认积分：一键发放 / 撤销 ----------
@@ -4262,13 +4279,12 @@ async function confirmPending() {
   S.pointLogs.forEach(l => { if (ids.includes(l.id)) l.confirmed = true; });
   S.balance += sum;
   // 家长审批通过：把对应任务标记为"已完成"（不下架，任务保留在列表里展示完成状态）
-  // 本地状态先算好，写库请求一次性并发发出（原来一条条 await，选 10 条就是 10 次往返）
   const approved = [];
-  const logWrites = [];
+  const logWrites = [];   // [{task_id, log_date}]，落库时并发发出
   for (const id of ids) {
     const l = S.pointLogs.find(x => x.id === id);
     if (l && l.task_id) {
-      logWrites.push(DB.setLog(l.task_id, l.log_date, true, null, null, true));
+      logWrites.push({ task_id: l.task_id, log_date: l.log_date });
       if (S.logs[l.log_date]?.[l.task_id]) S.logs[l.log_date][l.task_id].approved = true;
       const raw = S.tasks.find(x => x.id === l.task_id);
       const t = raw ? taskAttrFor(raw, l.log_date) : null;   // 用那天的名称（编辑只对今天及之后生效）
@@ -4278,7 +4294,7 @@ async function confirmPending() {
       });
     }
   }
-  await Promise.all([DB.confirmPointLogs(ids), ...logWrites]);
+  // 乐观更新：余额/流水/打卡状态本地都已改好 → 先提示并渲染，落库放后台
   toast(`✅ 已发放 ${sum} 积分`);
   // 孩子任务页顶端留一条家长消息，点「知道啦」才消失
   if (approved.length === 1) {
@@ -4288,6 +4304,12 @@ async function confirmPending() {
     pushNotice('points', `家长确认了 ${approved.length} 项任务，共 +${sum} 积分！`, `含：${names.slice(0, 3).join('、')}${names.length > 3 ? ' 等' : ''}`);
   }
   render();
+  bgWrite('审批积分', async () => {
+    await Promise.all([
+      DB.confirmPointLogs(ids),
+      ...logWrites.map(w => DB.setLog(w.task_id, w.log_date, true, null, null, true)),
+    ]);
+  });
 }
 
 async function undoPoint(id) {
@@ -4295,16 +4317,19 @@ async function undoPoint(id) {
   if (!l) return;
   const kind = l.confirmed === false ? '这条待确认积分' : `这笔已发放的 +${l.amount} 积分`;
   if (!await askConfirm(`撤销${kind}「${l.reason}」？对应任务会恢复为未完成。`, { okText: '撤销' })) return;
-  await DB.deletePointLog(id);
+  // 乐观更新：本地先改 + 立即渲染，落库放后台
   S.pointLogs = S.pointLogs.filter(x => x.id !== id);
   if (l.confirmed !== false && l.amount > 0) S.balance -= l.amount;
-  if (l.task_id) {
-    await DB.setLog(l.task_id, l.log_date, false);
-    if (S.logs[l.log_date]) delete S.logs[l.log_date][l.task_id];
-    // 任务不再因完成而下架，撤销积分后它自然恢复为未完成状态，无需处理 active
-  }
+  if (l.task_id && S.logs[l.log_date]) delete S.logs[l.log_date][l.task_id];
+  // 任务不再因完成而下架，撤销积分后它自然恢复为未完成状态，无需处理 active
   toast('已撤销');
   render();
+  bgWrite('撤销积分', async () => {
+    await Promise.all([
+      DB.deletePointLog(id),
+      l.task_id ? DB.setLog(l.task_id, l.log_date, false) : null,
+    ]);
+  });
 }
 
 // ---------- 朋友圈成就图 ----------
