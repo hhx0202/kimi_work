@@ -22,6 +22,7 @@ create table if not exists tasks (
   sort int not null default 0,  -- 孩子端展示顺序
   bonus int,                -- 多日任务全清额外分（null=用默认 10 分）
   note text,                -- 备注（暂未使用，留给前端兼容；日常叮嘱存在 notes 表里）
+  history jsonb,            -- 属性版本快照：编辑重复任务只对今天及之后生效，历史日期用这里的旧属性渲染
   created_at timestamptz not null default now()
 );
 -- 兼容早期 addTask 多塞了 note 字段（不影响线上）
@@ -119,3 +120,5 @@ alter table tasks add column if not exists end_date date;
 alter table tasks add column if not exists hint text;
 alter table tasks add column if not exists sort int not null default 0;
 alter table tasks add column if not exists bonus int;
+-- 属性版本快照（编辑只对今天及之后生效；历史日期按 history 里的旧属性渲染）
+alter table tasks add column if not exists history jsonb;

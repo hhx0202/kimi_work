@@ -351,19 +351,59 @@ function inEffect(t, d) {
   return true;
 }
 
+// 属性按日期取版本：编辑重复任务只对「今天及之后」生效，昨天及以前用 history 里的旧属性快照渲染。
+// history: [{ from, to, title, points, required, category, hint, schedule, start_date, end_date, parent_id }]，
+// from/to 为闭区间（from 空 = 从最早开始；按顺序匹配，先命中的版本胜出）
+function taskAttrFor(t, date) {
+  const h = t.history;
+  if (!Array.isArray(h) || !h.length || !date) return t;
+  const v = h.find(x => (!x.from || date >= x.from) && (!x.to || date <= x.to));
+  return v ? { ...t, ...v } : t;
+}
+// 编辑保存时调用：任务在昨天及以前已生效过，就把旧属性追加成历史快照（写进 patch.history）
+function pushAttrHistory(t, next, patch) {
+  const yesterday = shiftDate(DB.today(), -1);
+  const hadPast = !t.start_date || t.start_date <= yesterday;   // 今天才布置的任务没有历史，随便改
+  const attrsChanged =
+    next.title !== (t.title || '') ||
+    next.points !== t.points ||
+    next.required !== (t.required !== false) ||
+    next.category !== (t.category || '') ||
+    (next.hint || '') !== (t.hint || '');
+  const scheduleChanged = !!patch.schedule && patch.schedule !== t.schedule;
+  if (!hadPast || (!attrsChanged && !scheduleChanged)) return false;
+  const hist = Array.isArray(t.history) ? t.history.slice() : [];
+  hist.push({
+    from: t.start_date || '', to: yesterday,
+    title: t.title || '', points: t.points, required: t.required !== false,
+    category: t.category, hint: t.hint || null,
+    schedule: t.schedule, start_date: t.start_date || null, end_date: t.end_date || null,
+    parent_id: t.parent_id || null,
+  });
+  patch.history = hist;
+  return true;
+}
+
 // 某日期的常规任务 = 每日/单次/子任务 且在生效日期范围内（不管 active，已完成/待审核都保留展示）
-function tasksOnDate(date) { return S.tasks.filter(t => (t.schedule === 'daily' || t.schedule === 'once' || t.schedule === 'child') && inEffect(t, date)); }
+// 先取该日期的属性版本，再判是否生效/展示（这样编辑改名改分不会串到历史日期）
+function tasksOnDate(date) {
+  return S.tasks
+    .map(t => taskAttrFor(t, date))
+    .filter(t => (t.schedule === 'daily' || t.schedule === 'once' || t.schedule === 'child') && inEffect(t, date));
+}
 // 今日常规任务
 function todayTasks() { return tasksOnDate(DB.today()); }
 // 某日期用于「进度条/全清判定」的任务集合：每日/单次/子任务 且在生效期内。
 // 任务不再因完成而下架，这里无需再用打卡记录找回；保留该兜底兼容历史已下架数据。
 function dayTasksForProgress(date) {
-  return S.tasks.filter(t => {
-    if (!(t.schedule === 'daily' || t.schedule === 'once' || t.schedule === 'child')) return false;
-    if (!inEffect(t, date)) return false;
-    if (t.active) return true;
-    return !!(S.logs[date]?.[t.id]?.done);
-  });
+  return S.tasks
+    .map(t => taskAttrFor(t, date))
+    .filter(t => {
+      if (!(t.schedule === 'daily' || t.schedule === 'once' || t.schedule === 'child')) return false;
+      if (!inEffect(t, date)) return false;
+      if (t.active) return true;
+      return !!(S.logs[date]?.[t.id]?.done);
+    });
 }
 // 多日(长期)任务 = 父任务，各自带截止日期（不管 active，完成后保留展示）
 function weeklyTasks() { return S.tasks.filter(t => t.schedule === 'weekly'); }
@@ -528,12 +568,14 @@ function bgWrite(desc, fn) {
 }
 
 async function checkin(taskId, btn, progress = null) {
-  const task = S.tasks.find(t => t.id === taskId);
-  if (!task) return;
+  const rawTask = S.tasks.find(t => t.id === taskId);
+  if (!rawTask) return;
   const today = DB.today();
   // 补卡：翻到补卡窗口内的历史日期时，记录写到那一天（day = 实际记账日期）
   const makeupMode = S.viewDate !== today && isMakeupDate(S.viewDate);
   const day = makeupMode ? S.viewDate : today;
+  // 补交历史日期时用那天的属性版本（当时的名称/分值），别把今天改过的新分值算到过去
+  const task = makeupMode ? taskAttrFor(rawTask, day) : rawTask;
   if (logOn(taskId, day)) return;
   if (task.schedule === 'once' && isTaskDoneEver(taskId)) { toast('这个任务已经完成过啦'); return; }
 
@@ -1618,9 +1660,11 @@ function taskStatusOf(taskId, date) {
 }
 
 // 任务详情弹窗（手机上看不清时点卡片查看完整信息）
-function showTaskDetail(id) {
-  const t = S.tasks.find(x => x.id === id);
-  if (!t) return;
+function showTaskDetail(id, date) {
+  const raw = S.tasks.find(x => x.id === id);
+  if (!raw) return;
+  // date 有值时按那天取属性版本（孩子翻历史点开卡片看到的是当时的名称/分值）
+  const t = taskAttrFor(raw, date);
   const isChild = !!t.parent_id;
   const parent = isChild ? S.tasks.find(x => x.id === t.parent_id) : null;
   const isParent = S.role === 'parent';
@@ -1699,7 +1743,7 @@ function showProgressDetail(kind) {
   `;
   modal.querySelector('[data-close]').onclick = () => modal.remove();
   modal.querySelectorAll('.pd-row').forEach(row => {
-    row.onclick = () => { modal.remove(); showTaskDetail(Number(row.dataset.id)); };
+    row.onclick = () => { modal.remove(); showTaskDetail(Number(row.dataset.id), date); };
   });
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
@@ -2639,7 +2683,7 @@ function bindActions() {
     else if (act === 'cancel-submit') await cancelSubmission(Number(tid));
     else if (act === 'notice-ack') ackNotice(btn.dataset.nid);
     else if (act === 'notice-ack-all') ackNotice('*');
-    else if (act === 'task-detail') showTaskDetail(Number(tid));
+    else if (act === 'task-detail') showTaskDetail(Number(tid), S.viewDate);
     else if (act === 'progress-detail') showProgressDetail(btn.dataset.kind);
     else if (act === 'weekly-detail') showWeeklyChildren(Number(tid));
     else if (act === 'date-prev') { S.viewDate = shiftDate(S.viewDate, -1); render(); refreshViewNote(); }
@@ -3453,6 +3497,9 @@ function openTaskEditor(id) {
       }
     }
     saveCat(category);
+    // 编辑只对「今天及之后」生效：昨天及以前生效过的日子存成快照，历史日期照旧渲染旧名称/旧分值
+    // （打卡记录、积分、连续天数都按任务 id 走，本来就不受影响）
+    const versioned = pushAttrHistory(t, { title, points, required, category, hint }, patch);
     await DB.updateTask(id, patch);
     Object.assign(t, patch);
     // 关联变化时重算相关多日任务的总分
@@ -3460,7 +3507,7 @@ function openTaskEditor(id) {
     if (newParent) await syncParentPoints(newParent);
     modal.remove();
     await refreshAll(); render();
-    toast('已保存');
+    toast(versioned ? '已保存，改动从今天起生效（之前的日期保持原样）' : '已保存');
   };
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
@@ -4224,7 +4271,8 @@ async function confirmPending() {
     if (l && l.task_id) {
       await DB.setLog(l.task_id, l.log_date, true, null, null, true);
       if (S.logs[l.log_date]?.[l.task_id]) S.logs[l.log_date][l.task_id].approved = true;
-      const t = S.tasks.find(x => x.id === l.task_id);
+      const raw = S.tasks.find(x => x.id === l.task_id);
+      const t = raw ? taskAttrFor(raw, l.log_date) : null;   // 用那天的名称（编辑只对今天及之后生效）
       approved.push({
         title: (t && t.title) || String(l.reason || '').replace(/^完成[:：]\s*/, '') || '任务',
         pts: l.amount,
