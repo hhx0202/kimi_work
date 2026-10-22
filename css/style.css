@@ -837,6 +837,25 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 }
 .pm-card-mini:active { transform: scale(.95); }
 .pm-card-mini.shiny { background: linear-gradient(160deg, #fffde7, #ffecb3); box-shadow: 0 4px 18px rgba(255, 193, 7, .35); }
+/* 闪耀小卡：金色呼吸边框 + 全息扫光（明显区别于普通卡） */
+.pm-card-mini.shiny .mini-frame {
+  box-shadow: 0 0 0 2px rgba(255, 213, 79, .7), 0 0 16px rgba(255, 193, 7, .55);
+  animation: mini-shiny-glow 2.6s ease-in-out infinite;
+}
+@keyframes mini-shiny-glow {
+  50% { box-shadow: 0 0 0 3px rgba(255, 241, 170, .95), 0 0 26px rgba(255, 193, 7, .85); }
+}
+.pm-card-mini.shiny .mini-frame::after {
+  content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(115deg, transparent 32%, rgba(255,255,255,.5) 44%,
+              rgba(180,240,255,.35) 50%, rgba(255,200,255,.32) 56%, transparent 68%);
+  background-size: 260% 260%;
+  animation: mini-holo 3.8s linear infinite;
+  mix-blend-mode: screen;
+}
+@keyframes mini-holo { 0% { background-position: 210% 0; } 100% { background-position: -110% 0; } }
+/* 角标要盖在全息层上面 */
+.mini-shiny, .mini-lead, .mini-lv-badge, .mini-pick { z-index: 2; }
 .mini-frame {
   position: relative; border-radius: 12px; overflow: hidden;
   aspect-ratio: 1 / 1; border: 3px solid var(--tc, #a8a878);
@@ -849,8 +868,9 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   background: rgba(0,0,0,.65); color: #ffd54f; font-size: 11px; font-weight: 800;
   padding: 2px 7px; border-radius: 999px;
 }
-/* 第一行：属性小胶囊 + 名字；第二行：获取时间 */
+/* 第一行：图鉴编号 + 属性小胶囊 + 名字；第二行：获取时间 */
 .mini-line { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 7px; min-width: 0; }
+.mini-no { flex: 0 0 auto; font-size: 9px; font-weight: 800; color: #90a4ae; letter-spacing: .2px; }
 .mini-type {
   flex: 0 0 auto; font-size: 9px; font-weight: 800; color: #fff; line-height: 1;
   padding: 3px 5px; border-radius: 999px; letter-spacing: .3px;
@@ -994,6 +1014,94 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .ptcg-art.shiny-art img {
   filter: drop-shadow(0 0 10px #ffe082) drop-shadow(0 0 26px rgba(255, 193, 7, .8)) saturate(1.15) brightness(1.05);
   animation: art-float 3.2s ease-in-out infinite;
+}
+/* 闪耀卡整体：金色呼吸光晕（让"进入闪耀形态"一眼可见） */
+.ptcg.shiny-card {
+  box-shadow: 0 12px 44px rgba(0,0,0,.6), 0 0 0 2px rgba(255,241,170,.65),
+              0 0 34px rgba(255,193,7,.6), inset 0 0 0 2px rgba(255,255,255,.35);
+  animation: card-flip .5s cubic-bezier(.2,1.4,.4,1), shiny-card-glow 2.8s ease-in-out infinite .6s;
+}
+@keyframes shiny-card-glow {
+  0%, 100% { box-shadow: 0 12px 44px rgba(0,0,0,.6), 0 0 0 2px rgba(255,241,170,.6),
+                         0 0 30px rgba(255,193,7,.5), inset 0 0 0 2px rgba(255,255,255,.35); }
+  50%      { box-shadow: 0 12px 44px rgba(0,0,0,.6), 0 0 0 3px rgba(255,241,170,1),
+                         0 0 60px rgba(255,193,7,.9), inset 0 0 0 2px rgba(255,255,255,.5); }
+}
+/* 闪耀造型：切到异色像素动图时的展示（放大不糊、金色底衬） */
+.ptcg-art.sprite-art {
+  background: radial-gradient(circle at 50% 42%, #fffdf2 0%, rgba(255,241,170,.75) 45%, rgba(255,193,7,.28) 100%);
+}
+.ptcg-art.sprite-art img {
+  object-fit: contain; padding: 9%;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 10px #ffe082) drop-shadow(0 0 26px rgba(255,193,7,.8));
+  animation: art-float 3.2s ease-in-out infinite;
+}
+/* 详情卡右上角：造型切换（立绘 / 异色动图 / 场景卡） */
+.art-toggle {
+  position: absolute; top: 8px; right: 8px; z-index: 4;
+  border: 0; cursor: pointer; font-size: 11px; font-weight: 800;
+  padding: 5px 10px; border-radius: 999px;
+  background: rgba(255,255,255,.92); color: #b8860b;
+  box-shadow: 0 2px 10px rgba(255,193,7,.55);
+}
+.art-toggle:active { transform: scale(.95); }
+/* 场景卡：整张中文卡面，保持完整不裁切（黑底衬托），并去掉立绘的发光/浮动 */
+.ptcg-art.scene-art { background: radial-gradient(circle at 50% 40%, #2a3040, #10131a 75%); }
+.ptcg-art.scene-art img,
+.ptcg-art.shiny-art.scene-art img {
+  width: 100%; height: 100%; object-fit: contain;
+  padding: 0; filter: none; animation: none;
+  border-radius: 8px;
+  box-shadow: 0 6px 22px rgba(0,0,0,.6);
+}
+/* 场景卡模式：卡面上已经印了招式/说明 → 隐藏 App 自己的招式区和图鉴介绍，
+   并让图片按自身比例撑高（不再被正方形画框裁切），整张卡完整显示。
+   顶部那一行（名字 / ✨闪耀形态 / 阶段）**保留**：这是 App 自己抽到的宝可梦身份，
+   不是卡面印的内容，闪耀形态尤其要靠它一眼认出来。
+   卡牌外形（宽度、左右内边距、圆角、边框）一律沿用 .ptcg 不动：切换造型时整张卡不许变宽/跳，
+   图片才能保持素材本身的 400×559（0.7156）比例。
+   tests/ui-guards.test.js 守着「别给 .ptcg.scene-mode 设 width / 左右 padding」。 */
+.ptcg.scene-mode .ptcg-moves,
+.ptcg.scene-mode .ptcg-flavor { display: none; }
+/* 名字行下面留一条空带放造型按钮：卡图铺满后按钮会压住卡面右上角的 HP / 属性。
+   只动纵向间距，横向宽度不变（测试守着 width / 左右 padding）。 */
+.ptcg.scene-mode .ptcg-top { margin-bottom: 40px; }
+.ptcg.scene-mode .ptcg-art {
+  aspect-ratio: auto; height: auto; display: block;
+  /* 边框只改颜色不改宽度：少掉 2px 边框会让图片跟着宽 4px，切换瞬间有细微位移 */
+  border-color: transparent; background: transparent; overflow: visible;
+}
+.ptcg.scene-mode .ptcg-art img {
+  width: 100%; height: auto; object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 6px 22px rgba(0,0,0,.55);
+}
+/* 闪耀形态 + 场景卡：金色卡框继续包住整张中文卡面。
+   .ptcg.shiny-card 的呼吸光晕本来就在最外层，这里再给卡图补一圈金边 + 柔光，
+   否则切到场景卡（图片会盖掉 .ptcg-art 的底和边）就看不出这是闪耀形态了。
+   注意别用 art-float 上下浮动：整张卡面在动会显得比例在飘，只做光晕呼吸。 */
+.ptcg.shiny-card.scene-mode .ptcg-art { border-color: rgba(255,241,170,.9); }
+.ptcg.shiny-card.scene-mode .ptcg-art img {
+  filter: drop-shadow(0 0 8px rgba(255,224,130,.9)) drop-shadow(0 0 22px rgba(255,179,0,.6))
+          saturate(1.14) brightness(1.05);
+  animation: shiny-scene-glow 2.8s ease-in-out infinite;
+}
+@keyframes shiny-scene-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 6px rgba(255,224,130,.75)) drop-shadow(0 0 16px rgba(255,179,0,.5))
+            saturate(1.1) brightness(1.03);
+  }
+  50% {
+    filter: drop-shadow(0 0 14px rgba(255,241,170,1)) drop-shadow(0 0 34px rgba(255,193,7,.85))
+            saturate(1.18) brightness(1.07);
+  }
+}
+/* 场景卡模式下卡图铺满整张卡，按钮会正好压住卡面右上角的 HP / 属性：
+   挪到名字行下方那条空带里（.ptcg-art 在场景卡模式是 overflow: visible），顺便收小一点 */
+.ptcg.scene-mode .art-toggle {
+  top: -32px; right: 0;
+  padding: 4px 9px; font-size: 10px;
 }
 @keyframes art-float {
   0%, 100% { transform: translateY(0) scale(1); }
@@ -1547,6 +1655,9 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   /* 详情卡大图：padding-bottom 撑正方形，图片铺满（fx/type/glitter 仍是 absolute，盖在上面） */
   .ptcg-art { height: 0; padding-bottom: 100%; }
   .ptcg-art > img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  /* 场景卡：整张中文卡面按自身比例撑高，不能套正方形兜底（否则底下多出 100% 空白 + 图绝对定位塌陷） */
+  .ptcg.scene-mode .ptcg-art { height: auto; padding-bottom: 0; }
+  .ptcg.scene-mode .ptcg-art > img { position: static; height: auto; }
   /* 日历格子 */
   .cal-day { min-height: 40px; }
 }

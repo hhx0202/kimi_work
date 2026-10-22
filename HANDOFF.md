@@ -47,6 +47,23 @@
 | 数据 | 双模式（demo localStorage / supabase 真库）；localhost 自动 demo、线上自动真库 | ✅ |
 | 视觉 | 标题统一「佑佑的任务岛」（无空格）；宝可梦风 SVG 图标；123 条顶部短句按小时换 | ✅ |
 
+### 界面名词表（沟通时用这些词，避免歧义）
+
+| 说法 | 指的界面 | 代码位置 |
+|---|---|---|
+| **图鉴 / 图鉴格** | 宝可梦页最下方的 151 格网格（未收集是剪影） | `dexHTML` / `.dex-grid` / `.dex-cell` |
+| **我的宝可梦小卡**（别叫"大图"） | "我的宝可梦" 那一栏的卡片网格 | `renderPokemons` / `pmCardHTML` / `.pm-card-mini` |
+| **卡牌详情 / 全屏卡** | 点小卡或图鉴格弹出的 PTCG 大卡。三种形态：**完整版**（手上正好有这一只：经验条/获取时间/出战/喂糖果/进化）、**只读版**（**进化过去的前置形态**：进化是改同一条记录，手上已没有小火龙这个个体，但 `dexGot()` 通过 `evoAncestors` 仍把它标为已收集 → 点它显示彩色卡+真招式+"同家族你拥有火恐龙"，无操作按钮/经验条。拥有闪耀形态时整条链（祖先+后代）都算已收集，也会出现只读版）、**剪影版**（图鉴未收集：灰色卡+？？？+锁住的招式；包括"还没进化到的后代形态"，例如只有火恐龙时点喷火龙） | `showCardDetail` / `showDexDetail` / `showDexMissing` / `.ptcg` / `#overlay` |
+| **卡图 / 画框** | 卡牌详情中间那块正方形图（右上角按钮循环切换造型） | `.ptcg-art` / `cardArtSrc` |
+| **立绘**（旧称"原画"） | 官方高清立绘 PNG（475×475，透明底、全身、无背景无文字），所有卡默认显示；**闪耀卡默认也显示立绘**（官方没有异色版立绘）。别和 TCG 的"卡面插画/场景插画"混用 | `assets/artwork/{no}.png` / `artworkPath` |
+| **异色动图** | 官方像素精灵 GIF（50×46，会动）的 shiny 版；只有闪耀卡的详情能切到 | `assets/sprites/shiny/{no}.gif` / `spritePath(no, true)` |
+| **场景卡** | 整张**中文卡面**（不裁切，卡名/技能都是中文），普通卡和闪耀卡都能切 | `assets/scenes/{no}.jpg` / `scenePath` |
+| **捕捉 / 进化 / 闪耀动画** | 全屏动画 | `showCatch` / `showEvolve` / `showShiny` |
+| **喂养弹窗** | 点"喂糖果"后的弹窗 | `openFeed` |
+| **分享卡** | "生成成就图" | `shareCardHTML` |
+
+**用法示例**："在**卡牌详情**右上角加按钮"、"**我的宝可梦小卡**的编号太小"、"**图鉴格**里闪耀角标换位置"、"**卡图区域**加边缘渐隐"。避免单独说"大图/卡片"——小卡、详情卡、图鉴格都容易被理解成"卡片"。
+
 ## 三、技术架构速览
 
 - **纯静态前端**：无构建、无 node_modules，双击 `start.bat`（或 `python serve.py`）起服务器即可跑
@@ -62,6 +79,10 @@
   - `js/app.js` — 主程序（渲染 + 游戏逻辑 + 动画），约 3500 行
   - `css/style.css` — 全部样式与动画
   - `sql/upgrade_all.sql` — 唯一建库脚本（幂等，Supabase 只跑它；**已执行**）
+- **assets 目录**：
+  - `assets/artwork/{编号}.png` — 151 张官方立绘（475×475，透明底）
+  - `assets/sprites/normal/{编号}.gif`、`assets/sprites/shiny/{编号}.gif` — 各 151 张像素动图（50×46）
+  - `assets/scenes/{编号}.jpg` — 151 张**中文场景卡**（整张中文卡面，压到 400×600 内、q82，约 50–80KB/张；来源见 `tools/fetch_scenes.py`）
 - **数据模型**（Supabase，建表/升级全部合并在 `sql/upgrade_all.sql`，幂等可重复执行）：
   - `tasks`：title/category/points/schedule(daily=重复/once=单次/weekly=多日/child=子任务)/deadline/parent_id/percent/required/active/**start_date/end_date/hint/sort/bonus**/note(兼容占位)
   - `task_logs`：task_id/log_date/completed/progress/**approved**（`approved=false`=已提交待审批，默认 true 兼容旧数据；task_id+log_date 唯一，删任务保留历史）
@@ -102,20 +123,25 @@
 - **打卡链路**：`checkin`（**乐观更新**：先改本地 `S.logs` 立即渲染按钮变「已提交」，DB 写入放 `bgWrite` 后台落库，失败才提示错误；打卡记账日期用 `day = S.viewDate`（补卡）或今天）→ `cancelSubmission`（撤销）→ `confirmPending`（审批发分）→ `undoPoint`（撤销已发分）
 - **写库两条铁律（2026-10-21 实测 Supabase 单次往返 0.5~2.8s）**：①**互不依赖的写入一律 `Promise.all` 并发**，别写成串行 await（串行 4 次≈4.5s、并发 4 次≈2.0s）；②**交互一律乐观更新**——先同步改本地 `S` + 立即渲染，把写库丢进 `bgWrite`（失败 toast + 错误日志），**不要 `await` 完再渲染**，否则按钮要等 1~3 秒才有反应。已改造：`checkin` 三段、`cancelSubmission`（`dropAllClearPending` 同步回收全清奖）、`confirmPending`、`undoPoint`、`givePts / minusPts / giveBall / buyBall`。需要库返回 id 才能进本地列表的（发分/扣分/买球），先在后台拿到 id 再 push + 补一次 render。**新增交互时沿用这两条**；只有"父任务先建、子任务要 parent_id"这类真依赖才允许串行。例外：多日任务的子任务批量创建（`addTask` 循环）保持串行以保留家长输入的展示顺序
 - **补卡**：`isMakeupDate / makeupDays`（config `MAKEUP_DAYS`，默认 1）。孩子端翻到补卡窗口内的历史日期时，漏掉的**单次任务**显示「⏪ 补完成」（重复/子任务不可补；单次任务已完成过任何一天也不能再补，`isTaskDoneEver` 防重复领分）。补交记录写到那天（积分流水 `log_date` 也是那天，家长端待确认面板按日期分组照常审批），**不发当天的必选/可选全清奖**（`awardReq/awardOpt` 在补卡分支被跳过）；补卡期内单次任务的待审批提交可撤销（撤了可再补），重复任务的历史提交不可撤销（撤了没法重新提交）。连续全清（streak）按打卡记录自然计算，补卡补齐的那天会计入连击但无全清奖分
+- **重复任务从布置当天起生效（2026-10-22 修复）**：之前 `daily` 任务布置时 `start_date` 写 `null`，而 `inEffect` 把空值当"从最早开始生效"，于是**今天新加的重复任务会被算进昨天/前天的必做分母**，孩子昨天明明全清也会被判成没做完 → 连击直接断掉（用户实测遇到）。现在：① 新增重复任务 `start_date = S.parentDate`（`end_date` 仍为 null）；② 编辑里「改成重复」和「子任务取消关联恢复独立每天」也写 `start_date = 今天`；③ 老数据（早期版本建的、`start_date` 为空）在 `inEffect` 里用 `created_at` 兜底：`schedule === 'daily' && !start_date && created_at` → 布置日之前不算生效。连击口径**以孩子提交为准**（`reqDayDone` 只看 `done === true`，不看 `approved`），回调了用户确认不改。测试见 `tests/streak.test.js`
 - **删除重复任务 = 软停用**（`delTask`）：daily 任务删除改为 `updateTask(id, { end_date: 昨天 })`，不硬删。之前日期照常显示任务卡/打卡状态/全清判定（`inEffect` 按日期过滤，家长端清单本来就按 `S.parentDate` 渲染，无需额外处理）；今天起不再出现；历史统计（`doneStats`）和打卡记录面板照常（任务仍在表里）。`sameTitleTask` 会跳过已结束（`end_date < 今天`）的任务，停用后可再建同名任务。单次/子任务/多日删除仍是硬删（行为未变）。无需改 db.js/SQL（end_date 列早已存在）
 - **编辑只对「今天及之后」生效 = 属性版本快照**（`taskAttrFor / pushAttrHistory`，tasks 表 `history jsonb` 列）：编辑已生效过（昨天及以前）的任务时，把旧属性（title/points/required/category/hint/schedule/start_date/end_date/parent_id）追加成 `history` 快照 `{from,to,...}`（to = 昨天）；渲染一律「先按日期取版本、再判生效」——`tasksOnDate / dayTasksForProgress` 都是 `S.tasks.map(t => taskAttrFor(t, date)).filter(...)`，所以孩子端历史卡片、家长端历史清单、历史全清分母、`showTaskDetail(id, date)`、补卡记账（`checkin` 用当天版本的分值）、`confirmPending` 提示都用那天的属性。任务 id 不变 → 打卡记录、连续天数（`taskStreak`）、统计、待确认积分、图鉴全不受影响。**注意：`history` 是新列，改这里要同步 `sql/upgrade_all.sql`（已加 `add column if not exists history jsonb`），线上需跑一次 SQL，否则保存编辑会 PGRST204**。**范围约定（2026-10-21 与用户确认）**：子任务/多日任务不做属性版本化，改分后多日进度按最新分重算属于预期行为，别当 bug 修；版本化只针对重复/单次这类按天布置的任务
 - **全清奖**：`isAllDone` / `dropAllClearPending(date)`（同步回收本地待发全清奖并返回要删的流水 id，删除动作并进 `cancelSubmission` 的后台并发波）+ 模块级 `awardLocked` Set 防并发重复发（必选/可选全清 + 多日完成奖）；撤销提交/积分时连带清理待发奖励并释放锁定
 - **任务详情 / 清单**：`showTaskDetail(id)`、`showProgressDetail(kind)`、`taskStatusOf(taskId, date)`
-- **进化链**：`expThreshold / canEvolve / evolvePm / isMaxed / evoStageLabel`；图鉴家族 `evoFamily / dexGot / ownedNumbers`；`pkNoOf` 按名字兜底修老数据的 `pokedex_no`
+- **进化链**：`expThreshold / canEvolve / evolvePm / isMaxed / evoStageLabel`；图鉴家族 `evoFamily / dexGot / ownedNumbers`；`pkNoOf` 按名字兜底修老数据的 `pokedex_no`。**数据完整性由 `tests/pokemon-data.test.js` 守护**：扩充图鉴/改进化链后跑 `node tests/run.js`，如果进化目标不存在、某条链追溯不到基础形态、或有进化形态无法从捕捉池获得，测试会失败并列出具体编号
 - **多日进度**：`taskProgress / childWeight / childWeightMode / isTaskDoneEver`（权重优先分数 → percent → 条数均分）
 - **喂养**：`openFeed(pmId)`（自定义分数 + 「刚好进化」）、`feedPm(pm, pts)`（喂完重开详情卡）
 - **卡面**：`showCardDetail / showDexDetail / showDexMissing / movesBlockHTML / bindMoveClicks`；特效 `FX_BY_TYPE / fxKeyOf / cardFxHTML / cardGlitterHTML`
-- **宝可梦列表排序**（`pmSortMode / cyclePmSort / pmSortList`，2026-10-22）：`我的宝可梦` 标题右侧按钮循环切换「默认（获取先后）→ 获取时间正序 → 倒序」，选择存共享存储 `settings.pm_sort`（跨设备一致）；没有 `caught_at` 的老数据在按时间排序时永远排最后
+- **卡牌详情的造型切换**（2026-10-22，`cardArtSrc / cycleCardArt / currentCardArtMode`）：右上角按钮循环切换 **立绘 →（闪耀卡）异色动图 → 场景卡 → 立绘**；普通卡只有「立绘 / 场景卡」两档（存了 sprite 也会回退立绘）。选择存本机 `km_card_art_mode`（浏览偏好，不跨设备）。场景卡 = 整张中文卡面（不裁切），切到场景卡时进入 `scene-mode`：只隐藏 App 自己的招式区 `ptcg-moves` 和图鉴介绍 `ptcg-flavor`（卡面本身都印了），**顶部名字行 `ptcg-top` 保留**（宝可梦名字 / ✨闪耀形态 / 阶段是 App 侧的身份信息，卡面没有），卡图框改 `aspect-ratio: auto` 按图片自身比例撑高（素材统一 400×559），**卡面宽度不许单独改，继承 `.ptcg` 的 `min(320px, 90vw)`**——切造型时整张卡不能变宽，否则页面会跳、图片在更宽的框里显胖，`tests/ui-guards.test.js` 有守，底部经验条/进化链/按钮保留；属性粒子与角标也隐藏避免挡字；卡图铺满后造型按钮会压住卡面右上角的 HP/属性，所以 `.ptcg.scene-mode .ptcg-top` 加 `margin-bottom: 40px` 在名字行下方留出一条空带、按钮上移到 `top: -32px`（只动纵向，不动宽度/左右 padding，图片比例不受影响）；iOS 14 的 `@supports not (aspect-ratio)` 兜底里要单独把 `.ptcg.scene-mode .ptcg-art` 的 `padding-bottom` 归零（否则底下多一大块空白）。图片缺失时 `onerror` 回退立绘。切换只改这一张图和特效层，不重播整卡动画。**闪耀卡 + 场景卡**：金色卡框和光效都要保留——`.ptcg.shiny-card` 的外层呼吸光晕本来就在，另外加了 `.ptcg.shiny-card.scene-mode .ptcg-art` 金边 + `shiny-scene-glow` 图片金光呼吸（不用 `art-float` 浮动，整张卡面上下漂会显得比例在飘），星光层 `cardGlitterHTML(tall)` 在场景卡里也保留（落点按更高的卡面重算，切换时用 `retuneGlitter` 更新），只有属性粒子和属性角标在场景卡里隐藏（会盖住卡面上的字）
+- **闪耀形态的视觉**：小卡金色呼吸边框 + 全息扫光层（`.pm-card-mini.shiny .mini-frame::after`）+ 右上角 ✨；详情卡整卡金色呼吸光晕（`.ptcg.shiny-card`）+ 全息/星屑。**默认看到的是"普通配色的立绘 + 闪耀特效"**（官方没有异色版立绘），异色配色只在「异色动图」里
+- **场景卡素材来源**（2026-10-22）：`tools/fetch_scenes.py` 从神奇宝贝百科（wiki.52poke.com）的 `151C001.png … 151C192.png` 批量抓取（中文卡面），校验完整性后压成 400×600 内的 JPEG 存到 `assets/scenes/{图鉴编号}.jpg`（001–151 与图鉴编号一一对应）。**仅家庭自用**，卡图版权归官方所有，别公开分发。脚本支持 `--from/--to/--workers` 和断点续传（已有且能打开的文件会跳过）；源站限速严重时会比较慢
+- **宝可梦列表排序**（`pmSortMode / setPmSort / pmSortList / openPmSortPicker`，2026-10-22）：`我的宝可梦` 标题右侧「↕ 排序」按钮打开选项弹层，四选一——捕获顺序（默认）/ 捕获倒序 / 编号顺序 / 属性（按 `TYPE_THEME` 键顺序，同属性内按编号）；选择存**本机 localStorage**（`LK('pm_sort')`，是设备上的浏览偏好，刻意不跨设备）；没有 `caught_at` 的老数据在按时间排序时永远排最后。小卡第一行现在是「#编号 + 属性 + 名字」
 - **「我的」页明细列表滚动**：`.log-list` 固定 `max-height: 340px` + `overflow-y: auto`（任务提交/家长确认积分/额外奖励/扣分/积分记录共用），记录再多也只占一屏；改样式时别把 `overflow` 改回 `hidden`（`tests/ui-guards.test.js` 有守）
 - **消息卡**：`pushNotice / noticesHTML / ackNotice`（存**共享存储** `settings.notices`，见下条）；触发点在 `giveBall / givePts / minusPts / confirmPending / applyOverduePenalty`
 - **跨设备轮询**（`pollOnce / pollBusy / preserveScroll / startPoll` + `DB.getRev`，config `POLL_SECONDS` 默认 20，0=关闭）：`getRev()` 只做 5 个极轻的只读查询（task_logs/point_logs/tasks 各取主键倒序 limit 1 + notes 最新一条 + settings.rev）拼成版本串；`sharedSet` 写入时顺手更新 `settings.rev`，所以任何共享数据变更都能被探到。**调度规则：演示模式不轮询；页面不可见不轮询；`pollBusy()` 为真就跳过这一轮**（有 `.modal-mask` 弹窗 / `#overlay` 未 hidden（捕捉进化动画、宝可梦卡牌）/ `.dragging` 拖动中 / 输入框有焦点 / `#app` 里有没提交的输入内容）。刷新时用 `preserveScroll` 保住**滚动位置 + 折叠面板展开状态**。改动轮询务必保持"没在操作才刷、刷完保住现场"，`tests/poll.test.js` 就是守这条的
-- **跨设备共享的小数据**（`sharedGet / sharedSet / migrateLocalToShared`，2026-10-21）：常用任务、自定义类别+隐藏类别、家长消息卡、出战宝可梦、领奖标记、宝可梦排序方式（`pm_sort`）都存在 `settings` 表的键值里（value 是 text，内容为 JSON 字符串），家长手机和孩子平板看到同一份；内存镜像 `SHARED` 是真源，`refreshAll` 时随 settings 一起拉回，写入一律"本地立即生效 + `bgWrite` 后台落库"。**老数据搬家**：`migrateLocalToShared` 只在共享里还没有该项时才把本机 localStorage 的老值传上去（不覆盖别的设备已改的值）。**刻意不共享**：错误日志 `LK('errors')`（同步会"写失败→记错误→再写失败"自激）、身份 `role`、家长免密 `parent_authed`、积分提示已读 `seen_pts`（都是"这台设备"的语义）。**关于"实时"**：本应用是**拉取式**同步（没有 WebSocket 推送）。跨设备可见性靠 `pollOnce`（见下条）轻量轮询：家长手机上的改动，孩子端最多 `POLL_SECONDS`（默认 20 秒）后自己刷新出来；切回前台时会立刻探一次。**注意：存储位置（本地/库里）决定的是"能不能跨设备看到、清缓存会不会丢"，实时性取决于变更通知机制**——不要把这两件事混为一谈demo 模式的 `setSettings` 已改成按 key 合并（与 supabase upsert 一致），别改回整体覆盖
-- **错误日志**：`reportError / showErrBanner / errorLogPanel / openErrorLog`（存 `LK('errors')`）。**安卓切回前台报一堆 "Script error."（2026-10-22 已修）**：这是跨域脚本里的错误被浏览器脱敏后的样子（拿不到文件名/行号）。根因是 supabase-js 默认开着 Auth 的 `autoRefreshToken`，页面 `visibilitychange` 切回前台时会恢复会话、读写 localStorage，那段代码在 CDN 里，出错只能报 "Script error."。**本项目根本不用 Auth**，所以 `sClient()` 已设 `{ auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }`；同时给 3 个 jsdelivr 脚本加了 `crossorigin="anonymous"`（jsdelivr 返回 `access-control-allow-origin: *`），以后 CDN 脚本再报错就能看到真实信息。**别把 Auth 配置改回去**
+- **跨设备共享的小数据**（`sharedGet / sharedSet / migrateLocalToShared`，2026-10-21）：常用任务、自定义类别+隐藏类别、家长消息卡、出战宝可梦、领奖标记都存在 `settings` 表的键值里（value 是 text，内容为 JSON 字符串），家长手机和孩子平板看到同一份；内存镜像 `SHARED` 是真源，`refreshAll` 时随 settings 一起拉回，写入一律"本地立即生效 + `bgWrite` 后台落库"。**老数据搬家**：`migrateLocalToShared` 只在共享里还没有该项时才把本机 localStorage 的老值传上去（不覆盖别的设备已改的值）。**刻意不共享**：错误日志 `LK('errors')`（同步会"写失败→记错误→再写失败"自激）、身份 `role`、家长免密 `parent_authed`、积分提示已读 `seen_pts`（都是"这台设备"的语义）。**关于"实时"**：本应用是**拉取式**同步（没有 WebSocket 推送）。跨设备可见性靠 `pollOnce`（见下条）轻量轮询：家长手机上的改动，孩子端最多 `POLL_SECONDS`（默认 20 秒）后自己刷新出来；切回前台时会立刻探一次。**注意：存储位置（本地/库里）决定的是"能不能跨设备看到、清缓存会不会丢"，实时性取决于变更通知机制**——不要把这两件事混为一谈demo 模式的 `setSettings` 已改成按 key 合并（与 supabase upsert 一致），别改回整体覆盖
+- **错误日志**：`reportError / showErrBanner / errorLogPanel / openErrorLog`（存 `LK('errors')`）。**安卓切回前台报一堆 "Script error."（2026-10-22 已修）**：这是跨域脚本里的错误被浏览器脱敏后的样子（拿不到文件名/行号）。根因是 supabase-js 默认开着 Auth 的 `autoRefreshToken`，页面 `visibilitychange` 切回前台时会恢复会话、读写 localStorage，那段代码在 CDN 里，出错只能报 "Script error."。**本项目根本不用 Auth**，所以 `sClient()` 已设 `{ auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }`；同时给 3 个 jsdelivr 脚本加了 `crossorigin="anonymous"`（jsdelivr 返回 `access-control-allow-origin: *`），以后 CDN 脚本再报错就能看到真实信息。**别把 Auth 配置改回去**。
+  - **2026-10-22 复查：线上仍是 `Script error.`（说明还有别的跨域来源，比如浏览器扩展/App 内置 WebView 注入）**。为此补了两层"现场信息"：① `index.html` 里在任何外部脚本**之前**、用 capture 挂了一个 `window.__earlyErrors` 监听（CDN 脚本自己报错时 app.js 还没加载，必须提前挂），启动时由 `DOMContentLoaded` 收进错误日志；② `envSnapshot()` 在每条脚本错误里附带 UA、页面路径、`document.lastModified`（判断手机是否在跑旧版本）、可见性、在线状态、屏幕尺寸、外部脚本域名、三个 CDN 依赖是否就绪（`supabase/confetti/html2canvas`）、访问过的近期早期错误，以及"是否在切回前台 10 秒内"（`visibilityHint`）。跨域的 `Script error.` 单独归为「脚本错误（跨域，无详情）」。`reportError` 的 `extra` 容量从 240 提到 900 字。下次手机再弹错误，让家长端点「详情 → 复制」发来即可定位
 - **类别**：`allCategories / catSelectHTML / onCatSelectChange / readCat`（新建任务、编辑、多日布置都用同一套下拉）
 - **常用任务**：`quickTasks / saveQuickList / openQuickEdit / openQuickAddTask / delQuick / bindQuickLongPress`（localStorage `km_quick_tasks`，每项 `{title,category,points,required,iconKey}`；图标 key 池在 `js/poke-icons.js` 的 `POKE_ICON_KEY_MAP`）。长按手势要用 `touchMode` 屏蔽合成的 mousedown/mouseleave，并在松手后吞掉那次合成 click，否则弹窗会被遮罩点击关掉
 - **规则设置**：`SETTING_FIELDS`（app.js 顶部）+ `parentSettingsPanel / openSettings`
@@ -149,6 +175,8 @@
 ## 八、开发验证技巧
 
 - 本地：双击 `start.bat`（或 `python serve.py`）→ http://localhost:8000，控制台会打印手机访问地址
+- **本地服务器已禁用缓存**（`serve.py` 的 `NoCacheHandler` 发 `Cache-Control: no-store`，并忽略 `If-Modified-Since` 不返回 304），改完代码普通刷新就能看到新版本。若仍看到旧界面：先**重启**服务器（旧进程还在发缓存头），再在浏览器强刷一次（安卓没有硬刷新快捷键，最省事是开一个**无痕标签页**）
+- **启动自动清理旧服务器**：关终端不一定杀掉 `serve.py`，再次启动会 `Address already in use`。`serve.py` 里的 `free_port()` 会先找本项目的旧 `serve.py` 并停掉（Linux 扫 `/proc` 按「python 进程 + 命令行 serve.py + 工作目录是本项目」认人；读不到 cwd 的沙箱环境退回「相对路径 serve.py」判断；Windows 用 netstat + PowerShell 查命令行；macOS 用 lsof + ps）。只杀自己的进程，端口被别人占用时明确报错退出。`port_in_use()` 用 `SO_REUSEADDR` 判断，避免把 TIME_WAIT 误当成占用
 - 手机本地演示：手机和电脑连同一 WiFi，浏览器打开电脑打印的 `http://192.168.x.x:8000`；防火墙弹窗点允许
 - 演示/推荐页：`intro.html`；重置试玩在家长中心 →「🎮 重置试玩数据」
 - demo 模式数据存 localStorage（键 `km_*`；演示模式 `kmd_*`），可打开 DevTools → Application 直接改数据调试

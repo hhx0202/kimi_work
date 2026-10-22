@@ -289,6 +289,36 @@ function bindMoveClicks(ov) {
 
 function pmType(no) { return (typeof PK_TYPES !== 'undefined' && PK_TYPES[no]) || 'normal'; }
 function artworkPath(no) { return `assets/artwork/${no}.png`; }
+function scenePath(no) { return `assets/scenes/${no}.jpg`; }
+// 卡牌详情造型（点右上角按钮循环切换）：
+//   art   = 立绘（官方高清透明底图，默认）
+//   sprite= 异色像素动图（只有闪耀卡有这一档）
+//   scene = 场景卡（整张中文卡面，不裁切；素材在 assets/scenes/）
+// 选择存本机（浏览偏好，不跨设备）
+const CARD_ART_LABEL = { art: '🖼 立绘', sprite: '✨ 异色动图', scene: '🎴 场景卡' };
+function cardArtModes(pm) { return pm.shiny ? ['art', 'sprite', 'scene'] : ['art', 'scene']; }
+function savedCardArtMode() {
+  const m = lsGet(LK('card_art_mode'), 'art');
+  return (m === 'sprite' || m === 'scene') ? m : 'art';
+}
+function setCardArtMode(m) { lsSet(LK('card_art_mode'), m); }
+function currentCardArtMode(pm) {
+  const m = savedCardArtMode();
+  return cardArtModes(pm).includes(m) ? m : 'art';
+}
+function cardArtSrc(pm) {
+  const m = currentCardArtMode(pm);
+  if (m === 'sprite') return spritePath(pm.pokedex_no, true);
+  if (m === 'scene') return scenePath(pm.pokedex_no);
+  return artworkPath(pm.pokedex_no);
+}
+// 切到下一档，返回新模式
+function cycleCardArt(pm) {
+  const list = cardArtModes(pm);
+  const next = list[(list.indexOf(currentCardArtMode(pm)) + 1) % list.length];
+  setCardArtMode(next);
+  return next;
+}
 
 const $ = id => document.getElementById(id);
 const fmtDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -356,6 +386,14 @@ function activeTasks() { return S.tasks.filter(t => t.active); }
 function inEffect(t, d) {
   if (t.start_date && d < t.start_date) return false;
   if (t.end_date && d > t.end_date) return false;
+  // 重复任务不回溯：布置那天之前它并不存在。
+  // 老数据 start_date 为空（早期版本建重复任务时不写起始日），用 created_at 兜底判断，
+  // 否则今天新加的重复任务会被算进昨天，把昨天已经全清的连击判成没完成。
+  if (t.schedule === 'daily' && !t.start_date && t.created_at) {
+    let created = '';
+    try { created = fmtDate(new Date(t.created_at)); } catch (e) {}
+    if (created && d < created) return false;
+  }
   return true;
 }
 
@@ -1149,18 +1187,26 @@ function sparkleOn(card) {
 // 闪耀形态卡面：一层持续飘落的星星 + 扫过的全息光带
 // 注意：位移用 px（--fall），不能用 translateY(%)——百分比是按伪元素自身高度算的，
 // 高度只有一行字时只会移动几十像素，星星几乎进不了卡面，看起来就"几帧就没了"
-function cardGlitterHTML() {
+// tall = 场景卡（整张卡面，比正方形画框高得多）：落点也要跟着拉长，不然星星飘一半就没了
+function cardGlitterHTML(tall) {
   const CHARS = ['✦', '✧', '✨', '★', '✩', '❋', '⋆'];
   const stars = Array.from({ length: 18 }).map((_, i) => {
     const x = 3 + (i * 6.4) % 94;                          // 横向铺开
     const size = 10 + (i * 7) % 15;                        // 大小不一
     const dur = (2.4 + (i % 5) * 0.5).toFixed(2);          // 快慢不一
     const delay = (-(i % 9) * 0.31).toFixed(2);            // 负延迟：一打开就铺满整面
-    const fall = 280 + (i * 41) % 140;                     // 落到底部（px）
+    const fall = tall ? 400 + (i * 53) % 240 : 280 + (i * 41) % 140;   // 落到底部（px）
     const drift = ((i % 5) - 2) * 9;
     return `<i style="--x:${x.toFixed(1)}%;--fall:${fall}px;--drift:${drift}px;--dur:${dur}s;--delay:${delay}s;font-size:${size}px">${CHARS[i % CHARS.length]}</i>`;
   }).join('');
   return `<div class="ptcg-glitter">${stars}</div>`;
+}
+// 切换造型时星星落点要重算：场景卡比正方形画框高得多，沿用旧落点星星会飘一半就消失
+function retuneGlitter(artEl, tall) {
+  if (!artEl) return;
+  artEl.querySelectorAll('.ptcg-glitter i').forEach((el, i) => {
+    el.style.setProperty('--fall', (tall ? 400 + (i * 53) % 240 : 280 + (i * 41) % 140) + 'px');
+  });
 }
 
 // ---------- 卡面属性特效：不同属性配不同的动态氛围 ----------
@@ -1288,7 +1334,8 @@ function reportError(kind, message, stack, extra) {
       rec = {
         id: `${now}_${Math.random().toString(36).slice(2, 6)}`,
         kind: kind || '异常', message: msg,
-        stack: String(stack || '').slice(0, 1500), extra: String(extra || '').slice(0, 240),
+        // extra 装现场信息（UA / 页面 / 可见性 / 外部脚本 / 早期错误），240 字装不下跨域排查
+        stack: String(stack || '').slice(0, 1500), extra: String(extra || '').slice(0, 900),
         date: new Date().toLocaleString('zh-CN'), at: now, count: 1,
       };
       list.push(rec);
@@ -1343,14 +1390,79 @@ async function copyText(text) {
     return ok;
   } catch (e) { toast('复制失败，请长按文字手动复制'); return false; }
 }
+// ---------- 现场信息：只有 "Script error." 时靠这些定位 ----------
+// 跨域脚本（浏览器扩展 / 内置 WebView 注入 / 没带 crossorigin 的 CDN）报错时，
+// 浏览器出于安全只给 "Script error."，没有文件名和行号。那就把"当时的处境"记下来：
+// 哪个页面、什么机型、是不是刚从后台切回来、网络好不好、加载过哪些外部脚本。
+function envSnapshot(extra) {
+  const bits = [];
+  try {
+    const ua = navigator.userAgent || '';
+    bits.push('UA=' + ua.slice(0, 160));
+    // 常见机型/内核先摘出来，日志里一眼能看懂
+    const m = ua.match(/(Android|iPhone|iPad|CPU (?:iPhone )?OS [\d_]+|MicroMessenger|wxwork|EdgA?|Chrome\/[\d.]+|Version\/[\d.]+|Safari\/[\d.]+)/g);
+    if (m) bits.push('关键=' + [...new Set(m)].join(' '));
+  } catch (e) {}
+  try { bits.push('页面=' + (location.pathname + location.search).slice(0, 120)); } catch (e) {}
+  // 页面文件的最后修改时间 ≈ 部署时间，用来判断手机是不是还在跑旧版本
+  try { if (document.lastModified) bits.push('页面更新于=' + document.lastModified); } catch (e) {}
+  try {
+    bits.push('可见=' + (document.visibilityState || '?'));
+    bits.push('在线=' + (navigator.onLine === false ? '否' : '是'));
+    bits.push('屏幕=' + (window.screen ? `${screen.width}x${screen.height}` : '?'));
+  } catch (e) {}
+  try {
+    // 这个页面加载过的外部脚本：哪个域挂了、哪个没带 crossorigin
+    const ext = [...document.querySelectorAll('script[src]')]
+      .map(s => s.src).filter(s => /^https?:/.test(s) && s.indexOf(location.origin) !== 0)
+      .map(s => { try { return new URL(s).host; } catch (e) { return s; } });
+    if (ext.length) bits.push('外部脚本=' + [...new Set(ext)].join(','));
+    // 三个 CDN 依赖到底有没有就绪：缺哪个就是哪个没加载上（网络/CORS/被拦）
+    bits.push('就绪=' + [
+      'supabase:' + (typeof window.supabase !== 'undefined' ? '是' : '否'),
+      'confetti:' + (typeof window.confetti !== 'undefined' ? '是' : '否'),
+      'html2canvas:' + (typeof window.html2canvas !== 'undefined' ? '是' : '否'),
+    ].join(','));
+  } catch (e) {}
+  try {
+    if (window.__earlyErrors && window.__earlyErrors.length) {
+      bits.push('早期错误=' + window.__earlyErrors.slice(-3).map(x =>
+        `${x.message}${x.filename ? ` @${x.filename}:${x.lineno}` : ''}`).join(' / ').slice(0, 300));
+    }
+  } catch (e) {}
+  if (extra) bits.push(extra);
+  return bits.join(' | ').slice(0, 900);
+}
+// 从后台切回来的前后 10 秒内出错 → 大概率是恢复时的生命周期问题，标出来
+let lastVisibleAt = 0;
+try {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') lastVisibleAt = Date.now();
+  });
+} catch (e) {}
+function visibilityHint() {
+  return lastVisibleAt && Date.now() - lastVisibleAt < 10000
+    ? '切回前台后 ' + Math.round((Date.now() - lastVisibleAt) / 1000) + ' 秒内'
+    : '';
+}
+
 // 全局兜底：脚本错误 / 未处理的异步错误 / 数据库调用失败
 window.addEventListener('error', e => {
   if (!e || !e.message) return;    // 资源加载失败（图片缺失等）不打扰
-  reportError('脚本错误', e.message, e.error && e.error.stack, e.filename ? `${e.filename}:${e.lineno || 0}` : '');
+  const where = e.filename ? `${e.filename}:${e.lineno || 0}:${e.colno || 0}` : '（无文件名 → 跨域脚本）';
+  const cross = /^Script error\.?$/.test(e.message);
+  // 跨域错误连堆栈都没有：把 JS 引擎"认为"的出错位置和现场一起记下
+  reportError(
+    cross ? '脚本错误（跨域，无详情）' : '脚本错误',
+    e.message,
+    e.error && e.error.stack,
+    envSnapshot([where, cross ? '浏览器隐藏了跨域脚本的细节' : '', visibilityHint()].filter(Boolean).join(' | '))
+  );
 });
 window.addEventListener('unhandledrejection', e => {
   const r = e && e.reason;
-  reportError('异步错误', (r && (r.message || String(r))) || '未知异步错误', r && r.stack, '');
+  reportError('异步错误', (r && (r.message || String(r))) || '未知异步错误', r && r.stack,
+    envSnapshot(visibilityHint()));
 });
 const __origConsoleError = console.error.bind(console);
 console.error = function (...args) {
@@ -1630,6 +1742,8 @@ function rulesHintHTML() {
 function taskStartText(t) {
   if (!t.start_date || t.schedule !== 'daily') return '';
   if (t.start_date === S.viewDate) return '';
+  // 只在"刚开始这几天"提示一下；重复任务天天显示「🚩 x-x 起」纯属噪音
+  if (t.start_date < shiftDate(DB.today(), -2)) return '';
   return ` · 🚩 ${t.start_date.slice(5)} 起`;
 }
 function taskCardHTML(t) {
@@ -1886,50 +2000,86 @@ async function applyShinyCard(pmId) {
   await showShiny(copy, `${PK_BY_NO[copy.pokedex_no].name} 变成了闪耀形态，卡册里多了一张 ✨ 卡！`);
 }
 
-// 宝可梦排序：默认（原来的"获取先后"）/ 按获取时间正序 / 逆序，点按钮循环切换
+// 宝可梦排序：捕获顺序（默认）/ 捕获倒序 / 编号顺序 / 属性。
+// 这是"这台设备上的浏览偏好"，存 localStorage（不跨设备同步）。
+const PM_SORT_OPTS = [
+  ['capture', '捕获顺序', '最早抓到的在前'],
+  ['capture_desc', '捕获倒序', '最近抓到的在前'],
+  ['dex', '编号顺序', '按图鉴编号从小到大'],
+  ['type', '属性', '同属性放在一起'],
+];
 function pmSortMode() {
-  const m = sharedGet('pm_sort', 'default');
-  return (m === 'asc' || m === 'desc') ? m : 'default';
+  const v = lsGet(LK('pm_sort'), 'capture');
+  return PM_SORT_OPTS.some(o => o[0] === v) ? v : 'capture';   // 旧值/脏值回退到默认
 }
-function cyclePmSort() {
+function setPmSort(mode) { lsSet(LK('pm_sort'), mode); }
+// 按钮上直接显示当前排序（顺序看按钮就够了，标题旁边不再写说明）
+function pmSortLabel() {
   const cur = pmSortMode();
-  const next = cur === 'default' ? 'asc' : cur === 'asc' ? 'desc' : 'default';
-  sharedSet('pm_sort', next);
-  toast(next === 'default' ? '排序：默认顺序' : next === 'asc' ? '排序：获取时间正序（早→晚）' : '排序：获取时间倒序（晚→早）');
+  const opt = PM_SORT_OPTS.find(o => o[0] === cur);
+  return opt ? opt[1] : '捕获顺序';
 }
 function pmSortList() {
   const mode = pmSortMode();
   const list = S.pokemons.slice();
-  if (mode === 'asc' || mode === 'desc') {
+  const byId = (a, b) => (a.id || 0) - (b.id || 0);
+  if (mode === 'capture' || mode === 'capture_desc') {
     const t = p => { const v = Date.parse(p.caught_at); return isNaN(v) ? null : v; };
     return list.sort((a, b) => {
       const ta = t(a), tb = t(b);
-      if (ta === null && tb === null) return (a.id || 0) - (b.id || 0);
+      if (ta === null && tb === null) return byId(a, b);
       if (ta === null) return 1;      // 没有获取时间的（老数据）永远排最后
       if (tb === null) return -1;
-      return (mode === 'asc' ? ta - tb : tb - ta) || ((a.id || 0) - (b.id || 0));
+      return (mode === 'capture' ? ta - tb : tb - ta) || byId(a, b);
     });
   }
-  // 默认：按获取先后排（同时间按 id 兜底，演示数据都是同一批种下的）
-  return list.sort((a, b) => {
-    const ca = String(a.caught_at || ''), cb = String(b.caught_at || '');
-    if (ca !== cb) return ca < cb ? -1 : 1;
-    return (a.id || 0) - (b.id || 0);
+  if (mode === 'dex') {
+    return list.sort((a, b) => (Number(a.pokedex_no) || 0) - (Number(b.pokedex_no) || 0) || byId(a, b));
+  }
+  // 属性：按 TYPE_THEME 的键顺序（一般/火/水/电/草…），同属性内按编号
+  const order = Object.keys(TYPE_THEME);
+  const rank = p => { const i = order.indexOf(pmType(p.pokedex_no)); return i < 0 ? order.length : i; };
+  return list.sort((a, b) => rank(a) - rank(b) || (Number(a.pokedex_no) || 0) - (Number(b.pokedex_no) || 0) || byId(a, b));
+}
+// 点「排序」按钮：弹出选项，选完立即生效
+function openPmSortPicker() {
+  const cur = pmSortMode();
+  const modal = document.createElement('div');
+  modal.className = 'modal-mask';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:360px;width:calc(100% - 40px)">
+      <h3>排序方式</h3>
+      ${PM_SORT_OPTS.map(([k, name, desc]) => `
+        <div class="prow prow-click sort-opt" data-mode="${k}" style="margin-top:8px;border-radius:10px">
+          <div class="grow"><b>${name}</b><small style="display:block;color:#90a4ae">${desc}</small></div>
+          <span style="color:#43a047;font-weight:800">${k === cur ? '✓' : ''}</span>
+        </div>`).join('')}
+      <div style="margin-top:14px"><button class="btn-primary" data-close style="width:100%">关闭</button></div>
+    </div>`;
+  modal.querySelector('[data-close]').onclick = () => modal.remove();
+  modal.querySelectorAll('.sort-opt').forEach(el => {
+    el.onclick = () => {
+      setPmSort(el.dataset.mode);
+      modal.remove();
+      renderPokemons();
+      const opt = PM_SORT_OPTS.find(o => o[0] === el.dataset.mode);
+      toast('排序：' + (opt ? opt[1] : ''));
+    };
   });
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 function renderPokemons() {
   const page = $('page');
-  const mode = pmSortMode();
   const list = pmSortList();
-  const sortLabel = mode === 'default' ? '默认顺序' : mode === 'asc' ? '时间正序' : '时间倒序';
   page.innerHTML = `
     ${shinyBarHTML()}
     <div class="catch-zone">${catchZoneHTML()}</div>
     <div class="catch-hint" style="text-align:center;margin-bottom:12px">⭐ 卡上带 ⭐ 的「出战」宝可梦是你的伙伴，每次完成任务它都会 +${CONFIG.LEAD_EXP_PER_TASK} 经验。</div>
     ${list.length ? `
       <div class="section-title">
-        <span>我的宝可梦 <small>${list.length} 只 · ${sortLabel} · 点卡查看</small></span>
-        <button class="chip" data-action="pm-sort" title="切换排序方式">↕ ${sortLabel}</button>
+        <span>我的宝可梦 <small>${list.length} 只</small></span>
+        <button class="chip" data-action="pm-sort" title="选择排序方式">↕ ${pmSortLabel()}</button>
       </div>
       <div class="pm-grid">
         ${list.map(pmCardHTML).join('')}
@@ -1985,6 +2135,7 @@ function pmCardHTML(pm) {
       ${shinyPickOn && !locked ? '<span class="mini-pick">用它 ✨</span>' : ''}
     </div>
     <div class="mini-line">
+      <span class="mini-no">#${String(pm.pokedex_no || 0).padStart(3, '0')}</span>
       <span class="mini-type" style="background:${TYPE_COLOR[type] || '#a8a878'}">${TYPE_NAME[type] || type}</span>
       <span class="mini-name">${info.name}</span>
     </div>
@@ -2001,21 +2152,23 @@ function showCardDetail(pm) {
   const expPct = maxed ? 100 : Math.min(100, pm.exp / expThreshold(pm) * 100);
   const evo = canEvolve(pm);
   const isLead = pm.id === S.leadId;
+  const artMode = currentCardArtMode(pm);   // art 立绘 / sprite 异色动图 / scene 场景卡
   const ov = $('overlay');
   ov.classList.remove('hidden');
   ov.className = 'overlay card-view';
   ov.innerHTML = `
-    <div class="ptcg" style="--tc:${theme.color}; --bg1:${theme.bg1}; --bg2:${theme.bg2}">
+    <div class="ptcg${pm.shiny ? ' shiny-card' : ''}${artMode === 'scene' ? ' scene-mode' : ''}" style="--tc:${theme.color}; --bg1:${theme.bg1}; --bg2:${theme.bg2}">
       <div class="ptcg-top">
         <span class="ptcg-name">${info.name}</span>
         ${pm.shiny ? '<span class="ptcg-shiny">✨ 闪耀形态</span>' : ''}
         <span class="ptcg-lv">${evoStageLabel(pm)}</span>
       </div>
-      <div class="ptcg-art${pm.shiny ? ' shiny-art' : ''}">
-        <img src="${artworkPath(pm.pokedex_no)}">
-        ${cardFxHTML(type)}
-        <span class="ptcg-type">${TYPE_NAME[type] || type}</span>
-        ${pm.shiny ? cardGlitterHTML() : ''}
+      <div class="ptcg-art${pm.shiny ? ' shiny-art' : ''}${artMode === 'sprite' ? ' sprite-art' : ''}${artMode === 'scene' ? ' scene-art' : ''}">
+        <img src="${cardArtSrc(pm)}" alt="${info.name}">
+        ${artMode !== 'scene' ? cardFxHTML(type) : ''}
+        ${artMode !== 'scene' ? `<span class="ptcg-type">${TYPE_NAME[type] || type}</span>` : ''}
+        ${pm.shiny ? cardGlitterHTML(artMode === 'scene') : ''}
+        <button class="art-toggle" type="button">${CARD_ART_LABEL[artMode]}</button>
       </div>
       ${movesBlockHTML(pm.pokedex_no, theme)}
       ${typeof PK_FLAVOR !== 'undefined' && PK_FLAVOR[pm.pokedex_no] ? `
@@ -2041,6 +2194,42 @@ function showCardDetail(pm) {
   ov.querySelector('.btn-feed').onclick = () => { if (maxed) return; ov.classList.add('hidden'); openFeed(pm.id); };
   const evoBtn = ov.querySelector('.btn-evo');
   if (evoBtn) evoBtn.onclick = async () => { ov.classList.add('hidden'); await evolvePm(pm); };
+  // 造型切换：立绘 →（闪耀卡）异色动图 → 场景卡，点一下切下一档
+  // 只改这一张图和对应特效层，不重播整卡动画
+  const artEl = ov.querySelector('.ptcg-art');
+  const artImg = artEl ? artEl.querySelector('img') : null;
+  const sceneFallback = () => {
+    if (!artEl || !artImg) return;
+    artImg.onerror = null;
+    artImg.src = artworkPath(pm.pokedex_no);
+    artEl.classList.remove('scene-art');
+    const c = ov.querySelector('.ptcg');
+    if (c) c.classList.remove('scene-mode');
+    setCardArtMode('art');   // 这张还没有场景卡 → 记住回退到立绘，别每次打开都 404
+    const t = ov.querySelector('.art-toggle');
+    if (t) t.textContent = CARD_ART_LABEL.art;
+  };
+  if (artImg && artMode === 'scene') artImg.onerror = sceneFallback;
+  const artToggle = ov.querySelector('.art-toggle');
+  if (artToggle && artEl && artImg) {
+    artToggle.onclick = e => {
+      e.stopPropagation();
+      const mode = cycleCardArt(pm);
+      const cardEl = ov.querySelector('.ptcg');
+      if (cardEl) cardEl.classList.toggle('scene-mode', mode === 'scene');
+      artEl.classList.toggle('sprite-art', mode === 'sprite');
+      artEl.classList.toggle('scene-art', mode === 'scene');
+      // 场景卡是一整张中文卡面：隐藏属性粒子和角标，别挡住卡上的字；
+      // 但闪耀卡的星光/扫光要保留（那是"闪耀形态"的身份标识，压在卡面上也不挡字）
+      artEl.querySelectorAll('.ptcg-fx, .ptcg-type').forEach(el => {
+        el.style.display = mode === 'scene' ? 'none' : '';
+      });
+      retuneGlitter(artEl, mode === 'scene');
+      artImg.onerror = mode === 'scene' ? sceneFallback : null;
+      artImg.src = cardArtSrc(pm);
+      artToggle.textContent = CARD_ART_LABEL[mode];
+    };
+  }
   bindChainClicks(ov);
   bindMoveClicks(ov);
 }
@@ -2752,7 +2941,7 @@ function bindActions() {
     else if (act === 'lead') { setLead(Number(pmid)); }
     else if (act === 'catch') catchOne();
     else if (act === 'buyball') buyBall();
-    else if (act === 'pm-sort') { cyclePmSort(); renderPokemons(); }
+    else if (act === 'pm-sort') openPmSortPicker();
     else if (act === 'parent-save') saveParentTask(btn);
     else if (act === 'parent-del') {
       const dt = S.tasks.find(x => x.id === Number(tid));
@@ -3365,8 +3554,9 @@ async function saveParentTask() {
     }
   } else {
     // once = 单次 → 绑定家长当前查看/布置的日期（当天专属）
-    const bindDate = schedule === 'once' ? S.parentDate : null;
-    await DB.addTask({ title, hint, category, points, schedule, deadline, required, start_date: bindDate, end_date: bindDate });
+    // daily = 重复 → 从布置那天起生效（不写 start_date 会被当成"一直存在"，把布置前的日子也算进去）
+    const bindDate = schedule === 'once' ? S.parentDate : (schedule === 'daily' ? S.parentDate : null);
+    await DB.addTask({ title, hint, category, points, schedule, deadline, required, start_date: bindDate, end_date: schedule === 'once' ? bindDate : null });
   }
   $('pt-title').value = '';
   $('pt-deadline').value = '';
@@ -3544,11 +3734,13 @@ function openTaskEditor(id) {
       patch.parent_id = null;
       if (t.schedule === 'child') {
         patch.schedule = 'daily';  // 子任务取消关联 → 恢复独立每天
+        patch.start_date = DB.today();   // 从今天起才算，别回溯到子任务建立那天
       } else if (!isChild) {
         const schedule = modal.querySelector('#te-schedule').value;
         if (schedule !== t.schedule) {
           if (schedule === 'once') { patch.start_date = S.parentDate; patch.end_date = S.parentDate; }
-          else if (schedule === 'daily') { patch.start_date = null; patch.end_date = null; }
+          // 改成重复 = 从今天起每天都有；不能留空（留空会被当成"一直存在"，回溯到过去）
+          else if (schedule === 'daily') { patch.start_date = DB.today(); patch.end_date = null; }
           patch.schedule = schedule;
         }
       }
@@ -3580,7 +3772,7 @@ function lsSet(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
 // 内存镜像 SHARED 是真源：refreshAll 时随 settings 一起拉回来，写入走"本地立即生效 + 后台落库"。
 // 刻意留在 localStorage 不共享的：错误日志（跨设备同步会"写失败→记错误→再写失败"自激）、
 // 身份 role、家长免密标记 parent_authed、积分提示已读 seen_pts（都是"这台设备"的语义）。
-const SHARED_LABEL = { notices: '家长消息', quick_tasks: '常用任务', categories: '类别', categories_hidden: '类别', lead: '出战宝可梦', streak_claim: '领奖记录', pm_sort: '宝可梦排序' };
+const SHARED_LABEL = { notices: '家长消息', quick_tasks: '常用任务', categories: '类别', categories_hidden: '类别', lead: '出战宝可梦', streak_claim: '领奖记录' };
 let SHARED = {};
 function sharedGet(key, dflt) {
   const v = SHARED[key];
@@ -3884,10 +4076,11 @@ function openQuickAddTask(idx) {
     const points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt(modal.querySelector('#qa-pts').value) || 10));
     const required = modal.querySelector('#qa-req').value !== '0';
     const schedule = modal.querySelector('#qa-schedule').value === 'daily' ? 'daily' : 'once';
-    const bindDate = schedule === 'once' ? S.parentDate : null;
-    if (sameTitleTask(title, { parentId: null, date: bindDate })) { toast(dupTitleMsg(title)); return; }
+    // 重复任务也从布置那天起生效，别让它回溯到布置之前（会毁掉已经算好的连击）
+    const bindDate = S.parentDate;
+    if (sameTitleTask(title, { parentId: null, date: schedule === 'once' ? bindDate : null })) { toast(dupTitleMsg(title)); return; }
     saveCat(category);
-    await DB.addTask({ title, hint, category, points, schedule, required, start_date: bindDate, end_date: bindDate });
+    await DB.addTask({ title, hint, category, points, schedule, required, start_date: bindDate, end_date: schedule === 'once' ? bindDate : null });
     close();
     await refreshAll(); render();
     toast(`已添加「${title}」`);
@@ -4532,6 +4725,16 @@ function shareCardHTML() {
 
 // ---------- 启动 ----------
 window.addEventListener('DOMContentLoaded', async () => {
+  // 先把 index.html 里"在外部脚本之前"记下的早期错误收进来（CDN 脚本加载失败就靠这个）
+  try {
+    const early = window.__earlyErrors || [];
+    window.__earlyErrors = [];
+    early.forEach(x => reportError(
+      x.res ? '资源加载失败' : '脚本错误（早期）',
+      x.message,
+      '', envSnapshot([x.filename ? `${x.filename}:${x.lineno}:${x.colno}` : '（无文件名）'].join(' | '))
+    ));
+  } catch (e) {}
   try {
     DB.init();
     await refreshAll();

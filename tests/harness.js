@@ -90,12 +90,17 @@ function baseGlobals(over = {}) {
   return Object.assign(g, over);
 }
 
+// 往已有的 vm 上下文里载入 app.js 的函数（用于和 pokemon-data.js 之类共用同一个沙箱）
+function loadInto(ctx, fns) {
+  for (const n of fns) vm.runInContext(slice(n), ctx);
+  return ctx;
+}
+
 // 建沙箱并载入函数。fns = 函数名数组；over 覆盖全局
 function makeCtx(fns, over = {}) {
   const ctx = baseGlobals(over);
   vm.createContext(ctx);
-  for (const n of fns) vm.runInContext(slice(n), ctx);
-  return ctx;
+  return loadInto(ctx, fns);
 }
 
 // 把 makeCtx 里登记的后台写库任务跑完（模拟"稍后真正落库"）
@@ -130,4 +135,4 @@ function ok(cond, msg) {
 function section(name) { console.log('\n▸ ' + name); }
 function summary() { return state; }
 
-module.exports = { slice, makeCtx, runBg, laggyDB, sleep, ok, section, summary, baseGlobals, APP_SRC, DB_SRC };
+module.exports = { slice, makeCtx, loadInto, runBg, laggyDB, sleep, ok, section, summary, baseGlobals, APP_SRC, DB_SRC };
