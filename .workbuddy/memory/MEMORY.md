@@ -61,6 +61,7 @@
 - 进化阶段在 UI/排序里统一叫「**进化阶段**」（基础 / 一阶 / 二阶，卡牌术语「基础 / 1阶进化 / 2阶进化」）；`stageText(pm)` 只出阶段文字，`evoStageLabel(pm)` 给角标用、闪耀卡加 ✨ 前缀。
 - **代价型按钮一律二次确认**：捕捉（扣球）、买球（扣积分）都先 `askConfirm`，文案里写清"花什么/还剩多少"，`danger:false` 用蓝色主按钮；确认后要再判一次状态（别的设备可能改了数据）。
 - 小卡列表按**获取先后**排序（`caught_at`，同时间按 id）；第一行「属性胶囊 + 名字」，第二行 `🕒 MM-DD HH:mm` 获取时间。改卡片信息时保持这两行结构，别把属性放回第二行。
+- **场景卡分两套**（2026-10-23）：`scenePath(no, shiny)` → 普通卡 `assets/scenes/{no}.jpg`（第一套，简体中文卡面）、闪耀卡 `assets/scenes-shiny/{no}.jpg`（第二套，跨系列精选的全图异画/现代卡）。第二套由 `tools/fetch_shiny_scenes.py` 抓取，规则与来源坑写在 HANDOFF「第二套场景卡素材来源」一节；**别把 `sv3pt5` 整段排除**——它的普卡与第一套同图要排除，但它的 Illustration Rare/SIR 是整幅异画、第一套没用过，必须允许。
 
 ## 手机手势约定（踩过的坑）
 - 需要在手机上手势「自己接管」的元素（拖动排序、左滑、长按），`touchstart` 必须是 `{passive:false}` 才能 `preventDefault()` 掉系统长按选字（放大镜/选区手柄）；passive 监听里调 preventDefault 无效，表现为「长按出来个放大镜但拖不动」。CSS 再补 `touch-action:none` + `user-select:none` + `-webkit-touch-callout:none`。

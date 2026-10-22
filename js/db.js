@@ -22,7 +22,7 @@ const DB = (() => {
   // ==========================================================
   const K = { tasks: P + 'tasks', logs: P + 'logs', pms: P + 'pokemons', pts: P + 'points', items: P + 'items' };
   const K_SEED_VER = P + 'seedver';
-  const SEED_VER = 5;   // 演示数据版本：升版本时会给已有的演示数据补一次测试内容 / 修一次历史数据
+  const SEED_VER = 6;   // 演示数据版本：升版本时会给已有的演示数据补一次测试内容 / 修一次历史数据
 
   // 演示用宝可梦：覆盖「基础 / 一阶 / 最终 / 无进化链 / 闪耀形态 / 临进化」各阶段，方便测试
   const DEMO_PMS = [
@@ -49,6 +49,109 @@ const DB = (() => {
     [150,   0, true ],   // ✨超梦     传说 + 闪耀
     [95,    0, false],   // 大岩蛇    岩石/地面
     [68,   50, false],   // 怪力      格斗
+  ];
+  // 一大批演示宝可梦（2026-10-23 扩充）：图鉴大部分点亮，覆盖 15 种属性、0/1/2 阶、各种经验状态。
+  // 规则：闪耀只给「没有后续进化」的最终形态（给基础形态会让整条进化链被判定成闪耀血统，
+  //       兄弟形态的普通卡就变成「已拥有闪耀形态」不可点亮），大约一半最终形态带 ✨；
+  //       火伊布(136) 故意留空，用来测「伊布分支没集齐 → 重新回到捕捉池」；
+  //       捕捉池刻意留一批可抓，别把 79 个基础形态全塞满。
+  const DEMO_PMS_MORE = [
+    [ 10, 165, false],   // 绿毛虫    虫   0阶  → 铁甲蛹
+    [ 11,   0, false],   // 铁甲蛹    虫   1阶  → 巴大蝶
+    [ 13, 300, false],   // 独角虫    虫   0阶  → 铁壳蛹
+    [ 14, 275, false],   // 铁壳蛹    虫   1阶  → 大针蜂
+    [ 15,   0, false],   // 大针蜂    虫   2阶  最终形态
+    [ 16,   0, false],   // 波波      普通 0阶  → 比比鸟
+    [ 17, 275, false],   // 比比鸟    普通 1阶  → 大比鸟
+    [ 18,   0, true ],   // 大比鸟    普通 2阶  ✨闪耀  最终形态
+    [ 19, 300, false],   // 小拉达    普通 0阶  → 拉达
+    [ 20,  60, false],   // 拉达      普通 1阶  最终形态
+    [ 21,   0, false],   // 烈雀      普通 0阶  → 大嘴雀
+    [ 22,   0, true ],   // 大嘴雀    普通 1阶  ✨闪耀  最终形态
+    [ 23, 165, false],   // 阿柏蛇    毒   0阶  → 阿柏怪
+    [ 24,   0, false],   // 阿柏怪    毒   1阶  最终形态
+    [ 26,   0, true ],   // 雷丘      电   1阶  ✨闪耀  最终形态
+    [ 27, 165, false],   // 穿山鼠    地面 0阶  → 穿山王
+    [ 28,   0, false],   // 穿山王    地面 1阶  最终形态
+    [ 29,   0, false],   // 尼多兰    毒   0阶  → 尼多娜
+    [ 30, 275, false],   // 尼多娜    毒   1阶  → 尼多后
+    [ 31,   0, true ],   // 尼多后    毒   2阶  ✨闪耀  最终形态
+    [ 32, 300, false],   // 尼多朗    毒   0阶  → 尼多力诺
+    [ 33, 275, false],   // 尼多力诺  毒   1阶  → 尼多王
+    [ 34,   0, false],   // 尼多王    毒   2阶  最终形态
+    [ 35,   0, false],   // 皮皮      妖精 0阶  → 皮可西
+    [ 36,   0, true ],   // 皮可西    妖精 1阶  ✨闪耀  最终形态
+    [ 37,   0, false],   // 六尾      火   0阶  → 九尾
+    [ 38, 100, false],   // 九尾      火   1阶  最终形态
+    [ 43, 165, false],   // 走路草    草   0阶  → 臭臭花
+    [ 44,   0, false],   // 臭臭花    草   1阶  → 霸王花
+    [ 45,   0, true ],   // 霸王花    草   2阶  ✨闪耀  最终形态
+    [ 46, 165, false],   // 派拉斯    虫   0阶  → 派拉斯特
+    [ 47,   0, false],   // 派拉斯特  虫   1阶  最终形态
+    [ 50, 300, false],   // 地鼠      地面 0阶  → 三地鼠
+    [ 51,   0, true ],   // 三地鼠    地面 1阶  ✨闪耀  最终形态
+    [ 54,   0, false],   // 可达鸭    水   0阶  → 哥达鸭
+    [ 55,   0, false],   // 哥达鸭    水   1阶  最终形态
+    [ 56, 165, false],   // 猴怪      格斗 0阶  → 火爆猴
+    [ 57,   0, true ],   // 火爆猴    格斗 1阶  ✨闪耀  最终形态
+    [ 58, 300, false],   // 卡蒂狗    火   0阶  → 风速狗
+    [ 59,  60, false],   // 风速狗    火   1阶  最终形态
+    [ 60,   0, false],   // 蚊香蝌蚪  水   0阶  → 蚊香君
+    [ 61,   0, false],   // 蚊香君    水   1阶  → 蚊香泳士
+    [ 62,   0, true ],   // 蚊香泳士  水   2阶  ✨闪耀  最终形态
+    [ 63,   0, false],   // 凯西      超能 0阶  → 勇吉拉
+    [ 64, 500, false],   // 勇吉拉    超能 1阶  → 胡地
+    [ 66, 165, false],   // 腕力      格斗 0阶  → 豪力
+    [ 67,   0, false],   // 豪力      格斗 1阶  → 怪力
+    [ 69,   0, false],   // 喇叭芽    草   0阶  → 口呆花
+    [ 70, 275, false],   // 口呆花    草   1阶  → 大食花
+    [ 71,   0, false],   // 大食花    草   2阶  最终形态
+    [ 72, 300, false],   // 玛瑙水母  水   0阶  → 毒刺水母
+    [ 73,   0, true ],   // 毒刺水母  水   1阶  ✨闪耀  最终形态
+    [ 74,   0, false],   // 小拳石    岩石 0阶  → 隆隆石
+    [ 75,   0, false],   // 隆隆石    岩石 1阶  → 隆隆岩
+    [ 76,  60, false],   // 隆隆岩    岩石 2阶  最终形态
+    [ 77,   0, false],   // 小火马    火   0阶  → 烈焰马
+    [ 78,   0, true ],   // 烈焰马    火   1阶  ✨闪耀  最终形态
+    [ 79, 165, false],   // 呆呆兽    水   0阶  → 呆壳兽
+    [ 81,   0, false],   // 小磁怪    电   0阶  → 三合一磁怪
+    [ 82,   0, false],   // 三合一磁怪电   1阶  最终形态
+    [ 85,   0, true ],   // 嘟嘟利    普通 1阶  ✨闪耀  最终形态
+    [ 89,   0, false],   // 臭臭泥    毒   1阶  最终形态
+    [ 92, 300, false],   // 鬼斯      幽灵 0阶  → 鬼斯通
+    [ 93, 275, false],   // 鬼斯通    幽灵 1阶  → 耿鬼
+    [ 96,   0, false],   // 催眠貘    超能 0阶  → 引梦貘人
+    [ 97,   0, true ],   // 引梦貘人  超能 1阶  ✨闪耀  最终形态
+    [100, 165, false],   // 雷电球    电   0阶  → 顽皮雷弹
+    [101,   0, false],   // 顽皮雷弹  电   1阶  最终形态
+    [102, 300, false],   // 蛋蛋      草   0阶  → 椰蛋树
+    [103,   0, true ],   // 椰蛋树    草   1阶  ✨闪耀  最终形态
+    [104,   0, false],   // 卡拉卡拉  地面 0阶  → 嘎啦嘎啦
+    [105,   0, false],   // 嘎啦嘎啦  地面 1阶  最终形态
+    [106,   0, true ],   // 飞腿郎    格斗 0阶  ✨闪耀  最终形态
+    [107,   0, false],   // 快拳郎    格斗 0阶  最终形态
+    [110,   0, true ],   // 双弹瓦斯  毒   1阶  ✨闪耀  最终形态
+    [112,  60, false],   // 铁甲暴龙  地面 1阶  最终形态
+    [114,   0, true ],   // 蔓藤怪    草   0阶  ✨闪耀  最终形态
+    [122,   0, false],   // 魔墙人偶  超能 0阶  最终形态
+    [123,   0, true ],   // 飞天螳螂  虫   0阶  ✨闪耀  最终形态
+    [124,   0, false],   // 迷唇姐    冰   0阶  最终形态
+    [125,   0, true ],   // 电击兽    电   0阶  ✨闪耀  最终形态
+    [127,  60, false],   // 凯罗斯    虫   0阶  最终形态
+    [130,   0, true ],   // 暴鲤龙    水   1阶  ✨闪耀  最终形态
+    [134,   0, false],   // 水伊布    水   1阶  最终形态
+    [135,   0, true ],   // 雷伊布    电   1阶  ✨闪耀  最终形态
+    [138,   0, false],   // 菊石兽    岩石 0阶  → 多刺菊石兽
+    [139, 100, false],   // 多刺菊石兽岩石 1阶  最终形态
+    [140, 165, false],   // 化石盔    岩石 0阶  → 镰刀盔
+    [141,   0, true ],   // 镰刀盔    岩石 1阶  ✨闪耀  最终形态
+    [142,   0, false],   // 化石翼龙  岩石 0阶  最终形态
+    [144,   0, true ],   // 急冻鸟    冰   0阶  ✨闪耀  最终形态
+    [145,   0, false],   // 闪电鸟    电   0阶  最终形态
+    [146,   0, true ],   // 火焰鸟    火   0阶  ✨闪耀  最终形态
+    [147, 165, false],   // 迷你龙    龙   0阶  → 哈克龙
+    [148,   0, false],   // 哈克龙    龙   1阶  → 快龙
+    [151,   0, false],   // 梦幻      超能 0阶  最终形态
   ];
   function demoPmRows(startId = 1, list = DEMO_PMS) {
     return list.map(([no, exp, shiny], i) => ({
@@ -105,15 +208,15 @@ const DB = (() => {
         dSet(K.tasks, rows);
         dSet(K.logs, []);
         // 演示队伍：额外补两张 ✨ 卡（喷火龙 / 快龙），一打开就能看到「普通卡 + 闪耀卡」并存
-        const pmRows = demoPmRows(1, DEMO_PMS.concat(DEMO_PMS_EXTRA));
+        const pmRows = demoPmRows(1, DEMO_PMS.concat(DEMO_PMS_EXTRA, DEMO_PMS_MORE));
         let pnid = pmRows.length + 1;
         [6, 149].forEach(no => pmRows.push({ id: pnid++, name: PK_BY_NO[no].name, pokedex_no: no, shiny: true, level: 1, exp: 0, caught_at: nowISO() }));
         dSet(K.pms, pmRows);
         // 演示初始积分（已确认发放，孩子可直接花）
-        dSet(K.pts, [{ id: 1, log_date: today0, amount: 1200, reason: '演示初始积分', confirmed: true, task_id: null, created_at: nowISO() }]);
+        dSet(K.pts, [{ id: 1, log_date: today0, amount: 2000, reason: '演示初始积分', confirmed: true, task_id: null, created_at: nowISO() }]);
         dSet(K.items, [
-          { id: 1, log_date: today0, item: 'ball', amount: 45, reason: '演示礼包' },
-          { id: 2, log_date: today0, item: 'shiny', amount: 3, reason: '演示闪耀卡' },
+          { id: 1, log_date: today0, item: 'ball', amount: 60, reason: '演示礼包' },
+          { id: 2, log_date: today0, item: 'shiny', amount: 6, reason: '演示闪耀卡' },
         ]);
         lsSet(K_SEED_VER, SEED_VER);
         return;
@@ -191,6 +294,23 @@ const DB = (() => {
           let nid = pms.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1;
           dSet(K.pms, pms.concat(addNos.map(no => ({ id: nid++, name: PK_BY_NO[no].name, pokedex_no: no, shiny: true, level: 1, exp: 0, caught_at: nowISO() }))));
         }
+      }
+      // v5 → v6：演示队伍再扩一批（96 只，图鉴大部分点亮，捕捉池留 22 只可抓）+ 补球和积分
+      if (prevVer < 6) {
+        const d0 = today();
+        const pms = dGet(K.pms);
+        const haveNo = new Set(pms.map(r => Number(r.pokedex_no)));
+        const missing = DEMO_PMS_MORE.filter(([no]) => !haveNo.has(no));
+        if (missing.length) {
+          const nextId = pms.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1;
+          dSet(K.pms, pms.concat(demoPmRows(nextId, missing)));
+        }
+        const its = dGet(K.items);
+        its.push({ id: its.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1, log_date: d0, item: 'ball', amount: 40, reason: '演示补充精灵球' });
+        dSet(K.items, its);
+        const pts = dGet(K.pts);
+        pts.push({ id: pts.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1, log_date: d0, amount: 3000, reason: '演示补充积分', confirmed: true, task_id: null, created_at: nowISO() });
+        dSet(K.pts, pts);
       }
       lsSet(K_SEED_VER, SEED_VER);
     },

@@ -290,7 +290,7 @@ function bindMoveClicks(ov) {
 
 function pmType(no) { return (typeof PK_TYPES !== 'undefined' && PK_TYPES[no]) || 'normal'; }
 function artworkPath(no) { return `assets/artwork/${no}.png`; }
-function scenePath(no) { return `assets/scenes/${no}.jpg`; }
+function scenePath(no, shiny) { return `assets/scenes${shiny ? '-shiny' : ''}/${no}.jpg`; }
 // 卡牌详情造型（点右上角按钮循环切换）：
 //   art   = 立绘（官方高清透明底图，默认）
 //   sprite= 异色像素动图（只有闪耀卡有这一档）
@@ -310,7 +310,7 @@ function currentCardArtMode(pm) {
 function cardArtSrc(pm) {
   const m = currentCardArtMode(pm);
   if (m === 'sprite') return spritePath(pm.pokedex_no, true);
-  if (m === 'scene') return scenePath(pm.pokedex_no);
+  if (m === 'scene') return scenePath(pm.pokedex_no, !!pm.shiny);
   return artworkPath(pm.pokedex_no);
 }
 // 切到下一档，返回新模式

@@ -233,4 +233,4 @@ demo 模式首次打开自动生成 4 个示例任务 + 1 个新手精灵球。
 - 常用任务在 `js/app.js`：`quickTasks / saveQuickList / openQuickEdit / openQuickAddTask / delQuick / bindQuickLongPress / setQuickSort / saveQuickOrderFromDom`（排序模式），标签存 localStorage（`km_quick_tasks`）；图标 key 池在 `js/poke-icons.js`（`POKE_ICON_KEY_MAP / randomPokeIconKey / catIconByKey`）
 - 本地验证：改完直接刷新浏览器即可（demo 模式无后端依赖）
 - 无构建步骤、无 node_modules，纯静态，可整体复制/上传 GitHub
-- 素材体积：sprites 11MB + scenes 8.7MB + artwork 22MB ≈ 41MB；Cloudflare Pages 免费版不限流量、单文件上限 25MiB，无压力
+- 素材体积：sprites 11MB + scenes 8.7MB + scenes-shiny 12MB + artwork 22MB ≈ 53MB；Cloudflare Pages 免费版不限流量、单文件上限 25MiB，无压力

@@ -133,8 +133,9 @@ module.exports = async function run() {
   ok(ctx.cardArtSrc(shinyPm) === 'assets/sprites/shiny/25.gif', '闪耀卡切到异色动图');
   ok(ctx.cardArtSrc(normalPm) === 'assets/artwork/25.png', '普通卡即使存了 sprite 也回退立绘');
   ctx.setCardArtMode('scene');
-  ok(ctx.cardArtSrc(shinyPm) === 'assets/scenes/25.jpg', '场景卡用 assets/scenes/{图鉴编号}.jpg');
-  ok(ctx.cardArtSrc(normalPm) === 'assets/scenes/25.jpg', '普通卡也能用场景卡');
+  ok(ctx.cardArtSrc(shinyPm) === 'assets/scenes-shiny/25.jpg', '闪耀卡的场景卡走第二套（assets/scenes-shiny/）');
+  ok(ctx.cardArtSrc(normalPm) === 'assets/scenes/25.jpg', '普通卡的场景卡走第一套（assets/scenes/）');
+  ok(ctx.scenePath(25, false) === 'assets/scenes/25.jpg' && ctx.scenePath(25, true) === 'assets/scenes-shiny/25.jpg', 'scenePath 按 shiny 切换目录');
   ok(ctx.localStorage.getItem('km_card_art_mode') === JSON.stringify('scene'), '选择存本机 localStorage');
 
   section('造型按钮循环');
