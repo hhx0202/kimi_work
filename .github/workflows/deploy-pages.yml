@@ -22,24 +22,27 @@ jobs:
           echo "文件数: $(find dist -type f | wc -l)"
           echo "体积: $(du -sh dist | cut -f1)"
 
-      # 诊断：确认 secret 真的传进来了、token 真的有效、account id 是什么
+      # 诊断：token 能访问哪些账号（真实 account id 会打印出来；
+      # 如果它显示成 *** 说明 Secret 里的值是对的，显示明文说明 Secret 值填错了）
       - name: 诊断密钥
         env:
           T: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           A: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           echo "API_TOKEN 长度: ${#T}"
-          echo "ACCOUNT_ID 值: [$A]"
-          echo "--- token 自检（Cloudflare 官方 verify 接口）---"
+          echo "--- token 自检 ---"
           curl -s --max-time 15 -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
             -H "Authorization: Bearer $T"
           echo ""
+          echo "--- 该 token 能访问的账号（真实 id）---"
+          curl -s --max-time 15 -X GET "https://api.cloudflare.com/client/v4/accounts" \
+            -H "Authorization: Bearer $T"
+          echo ""
+          echo "--- Secret 里填的 account id 长度: ${#A} ---"
 
-      # 不用 wrangler-action：它内部 npx 失败时只报 "exit code 1"，
-      # 直接跑命令能让 wrangler 的真实报错完整出现在日志里。
-      # wrangler 认环境变量里的 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID，无需 login。
+      # 不传 CLOUDFLARE_ACCOUNT_ID：让 wrangler 自己从 token 能访问的账号里找，
+      # 避免因为 Secret 里那串 id 有一个字符不对而报 Authentication error 10000
       - name: 部署到 Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx --yes wrangler@4 pages deploy dist --project-name kimi-work --branch master
