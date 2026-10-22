@@ -12,7 +12,7 @@
 
 ## 部署与访问（2026-10-22 定稿，重要）
 - **线上地址：`https://kimi-work.pages.dev`（Cloudflare Pages）**。已验证：任务/宝可梦数据走同一个 Supabase 库，图片能正常加载。
-- **为什么弃用 github.io**：实测国内速度只有 **2.7 KB/s**（118KB 立绘 30 秒都下不完 → 表现就是"图片加载不出来"）。Cloudflare Pages 实测立绘 4.7 秒、app.js 2.1 秒（118 KB/s），快 10 倍以上。
+- **两个域名并存，别写成"弃用 GitHub Pages"**（2026-10-23 用户纠正）：`https://kimi-work.pages.dev`（Cloudflare，国内主力）+ `https://hhx0202.github.io/kimi_work/`（GitHub Pages，海外/备用，push 时照样自动更新）。国内走 Cloudflare 的原因：github.io 实测只有 **2.7 KB/s**（118KB 立绘 30 秒都下不完 → "图片加载不出来"），Cloudflare 40 KB/s 以上。两个域名连同一个 Supabase 库，数据互通。
 - **`*.workers.dev` 被 DNS 污染**（解析到 Facebook 的 `face:b00c` / `128.242.240.244`，国内直接打不开）；**`*.pages.dev` 正常**（解析到 Cloudflare `172.66.x.x` / `104.18.x.x`）。**只能用 Pages，不能用 Workers 的 workers.dev 域名。**
 - **EdgeOne Pages 已弃用**：域名是随机子域名（记不住），且原项目后来直接返回 401 打不开。
 - **项目是 Direct Upload 创建的，不能事后绑 Git**（Cloudflare 官方限制，官方原文：Direct Upload projects can't switch to Git integration later）。自动部署用 **GitHub Actions + wrangler**：`.github/workflows/deploy-pages.yml`，push master 触发（2026-10-23 已跑通）。

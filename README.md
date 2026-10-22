@@ -197,7 +197,7 @@ demo 模式首次打开自动生成 4 个示例任务 + 1 个新手精灵球。
 3. **`git push` 即自动部署**：GitHub Actions（`.github/workflows/deploy-pages.yml`）在推送后把 `index.html intro.html css js assets` 复制进 `dist`，再 `wrangler pages deploy` 到 Cloudflare Pages 的 `kimi-work` 项目
 4. 手机/平板收藏 `https://kimi-work.pages.dev/`
 
-> **为什么不用 GitHub Pages**：实测国内下载速度只有 **2.7 KB/s**（一张 118KB 立绘 30 秒都下不完），宝可梦图片基本加载不出来。Cloudflare Pages 实测 40 KB/s 以上，快 10 倍以上。
+> **两套并存**：GitHub Pages（`https://hhx0202.github.io/kimi_work/`）继续保留，海外访问正常、可作备用；但国内实测只有 **2.7 KB/s**（一张 118KB 立绘 30 秒都下不完），宝可梦图片基本加载不出来。国内访问走 Cloudflare Pages（实测 40 KB/s 以上，快 10 倍）。库里 `config.js` 的 `DB_MODE` 对两个域名都判为线上，连的是同一个 Supabase 库，数据互通。
 >
 > **手动部署**（不走 Actions 时）：
 > ```bash
