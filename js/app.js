@@ -1886,20 +1886,51 @@ async function applyShinyCard(pmId) {
   await showShiny(copy, `${PK_BY_NO[copy.pokedex_no].name} 变成了闪耀形态，卡册里多了一张 ✨ 卡！`);
 }
 
-function renderPokemons() {
-  const page = $('page');
-  // 按获取先后排：先抓到的在前（同时间按 id 兜底，演示数据都是同一批种下的）
-  const list = S.pokemons.slice().sort((a, b) => {
+// 宝可梦排序：默认（原来的"获取先后"）/ 按获取时间正序 / 逆序，点按钮循环切换
+function pmSortMode() {
+  const m = sharedGet('pm_sort', 'default');
+  return (m === 'asc' || m === 'desc') ? m : 'default';
+}
+function cyclePmSort() {
+  const cur = pmSortMode();
+  const next = cur === 'default' ? 'asc' : cur === 'asc' ? 'desc' : 'default';
+  sharedSet('pm_sort', next);
+  toast(next === 'default' ? '排序：默认顺序' : next === 'asc' ? '排序：获取时间正序（早→晚）' : '排序：获取时间倒序（晚→早）');
+}
+function pmSortList() {
+  const mode = pmSortMode();
+  const list = S.pokemons.slice();
+  if (mode === 'asc' || mode === 'desc') {
+    const t = p => { const v = Date.parse(p.caught_at); return isNaN(v) ? null : v; };
+    return list.sort((a, b) => {
+      const ta = t(a), tb = t(b);
+      if (ta === null && tb === null) return (a.id || 0) - (b.id || 0);
+      if (ta === null) return 1;      // 没有获取时间的（老数据）永远排最后
+      if (tb === null) return -1;
+      return (mode === 'asc' ? ta - tb : tb - ta) || ((a.id || 0) - (b.id || 0));
+    });
+  }
+  // 默认：按获取先后排（同时间按 id 兜底，演示数据都是同一批种下的）
+  return list.sort((a, b) => {
     const ca = String(a.caught_at || ''), cb = String(b.caught_at || '');
     if (ca !== cb) return ca < cb ? -1 : 1;
     return (a.id || 0) - (b.id || 0);
   });
+}
+function renderPokemons() {
+  const page = $('page');
+  const mode = pmSortMode();
+  const list = pmSortList();
+  const sortLabel = mode === 'default' ? '默认顺序' : mode === 'asc' ? '时间正序' : '时间倒序';
   page.innerHTML = `
     ${shinyBarHTML()}
     <div class="catch-zone">${catchZoneHTML()}</div>
     <div class="catch-hint" style="text-align:center;margin-bottom:12px">⭐ 卡上带 ⭐ 的「出战」宝可梦是你的伙伴，每次完成任务它都会 +${CONFIG.LEAD_EXP_PER_TASK} 经验。</div>
     ${list.length ? `
-      <div class="section-title">我的宝可梦 <small>${list.length} 只 · 按获取先后 · 点卡查看</small></div>
+      <div class="section-title">
+        <span>我的宝可梦 <small>${list.length} 只 · ${sortLabel} · 点卡查看</small></span>
+        <button class="chip" data-action="pm-sort" title="切换排序方式">↕ ${sortLabel}</button>
+      </div>
       <div class="pm-grid">
         ${list.map(pmCardHTML).join('')}
       </div>
@@ -2721,6 +2752,7 @@ function bindActions() {
     else if (act === 'lead') { setLead(Number(pmid)); }
     else if (act === 'catch') catchOne();
     else if (act === 'buyball') buyBall();
+    else if (act === 'pm-sort') { cyclePmSort(); renderPokemons(); }
     else if (act === 'parent-save') saveParentTask(btn);
     else if (act === 'parent-del') {
       const dt = S.tasks.find(x => x.id === Number(tid));
@@ -3548,7 +3580,7 @@ function lsSet(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
 // 内存镜像 SHARED 是真源：refreshAll 时随 settings 一起拉回来，写入走"本地立即生效 + 后台落库"。
 // 刻意留在 localStorage 不共享的：错误日志（跨设备同步会"写失败→记错误→再写失败"自激）、
 // 身份 role、家长免密标记 parent_authed、积分提示已读 seen_pts（都是"这台设备"的语义）。
-const SHARED_LABEL = { notices: '家长消息', quick_tasks: '常用任务', categories: '类别', categories_hidden: '类别', lead: '出战宝可梦', streak_claim: '领奖记录' };
+const SHARED_LABEL = { notices: '家长消息', quick_tasks: '常用任务', categories: '类别', categories_hidden: '类别', lead: '出战宝可梦', streak_claim: '领奖记录', pm_sort: '宝可梦排序' };
 let SHARED = {};
 function sharedGet(key, dflt) {
   const v = SHARED[key];

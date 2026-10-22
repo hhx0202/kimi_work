@@ -294,7 +294,15 @@ const DB = (() => {
   // 模式二：supabase（真实数据库）
   // ==========================================================
   let sb = null;
-  function sClient() { if (!sb) sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY); return sb; }
+  // 本项目不用 Supabase Auth（只走 PostgREST + anon key）：关掉会话持久化/自动刷新/URL 探测。
+  // 否则 supabase-js 会在 visibilitychange（安卓切回前台）时恢复会话、读写 localStorage，
+  // 那部分代码在 CDN 里，一旦抛错浏览器只上报 "Script error."，完全无法定位。
+  function sClient() {
+    if (!sb) sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+    return sb;
+  }
   function sFail(error, op) { console.error(`[DB ${op}]`, error); throw new Error(`${op} 失败: ${error.message}`); }
 
   const sup = {

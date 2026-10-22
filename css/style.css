@@ -289,7 +289,12 @@ body {
 .stat-card b { display: block; font-size: 28px; color: #e53935; }
 .stat-card span { font-size: 12px; color: var(--ink-soft); }
 
-.log-list { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+/* 「我的」页各明细列表：超过一定条数后固定高度、列表内部滚动，别把页面越拉越长 */
+.log-list {
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  max-height: 340px; overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch; scrollbar-width: thin;
+}
 .log-item { display: flex; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f5f5f5; font-size: 14px; }
 .log-item:last-child { border-bottom: 0; }
 .log-item .when { color: var(--ink-soft); font-size: 12px; }
