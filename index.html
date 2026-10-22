@@ -45,10 +45,12 @@
     }, true);
   </script>
 
-  <!-- crossorigin：CDN 脚本报错时浏览器才会给出真实错误信息（否则只有 "Script error."） -->
-  <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
-  <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <!-- 第三方库一律本地自带（js/vendor/）：以前走 cdn.jsdelivr.net，国内网络 / EdgeOne 等国内 CDN
+       经常取不到，页面就会直接报「supabase is not defined」启动失败。
+       升级版本时把新文件覆盖到 js/vendor/，并把这里的 ?v= 一起改掉（破 CDN 缓存），不要改回外链。 -->
+  <script src="js/vendor/supabase.js?v=2.118.0"></script>
+  <script src="js/vendor/confetti.min.js?v=1.9.3"></script>
+  <script src="js/vendor/html2canvas.min.js?v=1.4.1"></script>
   <script src="js/config.js"></script>
   <script src="js/pokemon-data.js"></script>
   <script src="js/pokemon-types.js"></script>
