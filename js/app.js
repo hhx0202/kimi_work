@@ -30,8 +30,8 @@ const S = {
   // 家长端
   pmId: null,           // 正在操作的宝可梦
   calOffset: 0,         // 日历偏移(月)
-  statDim: 'all',       // 完成统计维度（孩子端）：all 全部每日 / req 必做 / opt 选做
   calDim: 'req',        // 打卡日历只看全清：req 必做全清 / opt 选做全清
+  ptFilter: 'all',      // 「我的」页积分记录筛选：all / plus / minus
   parentDate: null,     // 家长端当前查看/布置的日期，默认今天
   // 孩子端查看的日期（历史查看用，默认今天）
   viewDate: null,       // 'YYYY-MM-DD'，启动时置为今天
@@ -574,23 +574,11 @@ function taskStreak(taskId) {
   }
   return n;
 }
-// 维度文案：体现「必做/选做任务全清」；单任务维度显示任务名
-function statDimLabel(dim) {
-  if (dim === 'req') return '必做任务全清';
-  if (dim === 'opt') return '选做任务全清';
-  if (dim && dim !== 'all') { const t = S.tasks.find(x => x.id === Number(dim)); return t ? t.title : '全部每日任务'; }
-  return '全部每日任务';
-}
 // 完成统计：累计 / 近一周 / 近一月（只统计「每日打卡」任务，单次/多日/子任务不算打卡）
-function doneStats(dim = 'all') {
+function doneStats() {
   const today = DB.today();
   const wStart = shiftDate(today, -6), mStart = shiftDate(today, -29);
-  // 维度：all=全部每日 / req=必做全清 / opt=选做全清 / 任务id=单个重复任务
-  let tasks = S.tasks.filter(t => t.schedule === 'daily');
-  if (dim === 'req') tasks = tasks.filter(t => t.required !== false);
-  else if (dim === 'opt') tasks = tasks.filter(t => t.required === false);
-  else if (dim && dim !== 'all') tasks = tasks.filter(t => t.id === Number(dim));
-  const ids = new Set(tasks.map(t => t.id));
+  const ids = new Set(S.tasks.filter(t => t.schedule === 'daily').map(t => t.id));
   let total = 0, week = 0, month = 0;
   for (const d in S.logs) {
     let n = 0;
@@ -601,6 +589,18 @@ function doneStats(dim = 'all') {
     if (d >= mStart) month += n;
   }
   return { total, week, month };
+}
+// 累计获得积分：所有正向流水（含待确认，孩子视角"我挣到了"；扣分不算）
+function earnedPoints() {
+  return S.pointLogs.reduce((s, l) => s + (l.amount > 0 ? l.amount : 0), 0);
+}
+// 累计完成任务数：所有类型的任务（重复/单次/多日子任务）完成过多少条
+function totalDoneCount() {
+  let n = 0;
+  for (const d in S.logs) {
+    for (const tid in S.logs[d]) { const l = S.logs[d][tid]; if (l && (l.done || l.completed)) n++; }
+  }
+  return n;
 }
 
 // ---------- 打卡 ----------
@@ -2442,37 +2442,23 @@ function dexHTML() {
 function renderMe() {
   const page = $('page');
   const streak = calcStreak();
-  const weekDone = weekDoneCount();
   const pendCount = S.pointLogs.filter(l => l.confirmed === false && l.amount > 0).length;
-  const ds = doneStats(S.statDim);
   page.innerHTML = `
-    <div class="stat-grid">
-      <div class="stat-card"><b>${S.balance}</b><span>当前积分</span></div>
-      <div class="stat-card"><b>${streak}</b><span>必做全清连击(天)</span></div>
-      <div class="stat-card"><b>${S.pokemons.length}</b><span>我的宝可梦</span></div>
-      <div class="stat-card"><b>${Object.values(ownDexCount()).length}</b><span>图鉴收集</span></div>
-    </div>
-    <div class="section-title" style="margin-top:16px">完成统计 <small>${statDimLabel(S.statDim)} · 打卡记录数</small></div>
-    <div class="stat-grid">
-      <div class="stat-card"><b>${ds.total}</b><span>累计完成</span></div>
-      <div class="stat-card"><b>${ds.week}</b><span>近一周</span></div>
-      <div class="stat-card"><b>${ds.month}</b><span>近一月</span></div>
+    <div class="me-head">
+      <div class="stat-grid">
+        <div class="stat-card"><b>${S.balance}</b><span>当前积分</span></div>
+        <div class="stat-card"><b>${earnedPoints()}</b><span>累计获得积分</span></div>
+        <div class="stat-card"><b>${totalDoneCount()}</b><span>累计完成任务</span></div>
+        <div class="stat-card"><b>${streak}</b><span>必做全清连击(天)</span></div>
+      </div>
+      <div class="me-actions">
+        <button class="btn-ghost mini" data-action="share">📸 生成成就图</button>
+      </div>
     </div>
     ${pendCount ? `<div class="form-hint" style="text-align:center;margin-top:10px">⏳ 有 ${pendCount} 条积分在等家长确认，确认后才到账哦</div>` : ''}
-    <div class="section-title">本周表现 <small>${weekDone}/7 天全清</small></div>
-    <div class="catch-zone">
-      <button class="btn-big" data-action="share" style="margin-bottom:8px">📸 生成成就图，发朋友圈</button>
-      <button class="btn-big buy" data-action="catch" ${S.balls < 1 ? 'disabled' : ''}>🥚 去捕捉宝可梦</button>
-    </div>
     ${kidCalPanel()}
     ${submissionListHTML()}
-    ${approvedPointsHTML()}
-    ${bonusLogsHTML()}
-    ${minusLogsHTML()}
-    <div class="section-title" style="margin-top:20px">积分记录</div>
-    <div class="log-list">
-      ${S.pointLogs.slice(0, 30).map(logItemHTML).join('') || '<div class="empty-tip">还没有积分记录</div>'}
-    </div>
+    ${kidPointLogPanel()}
   `;
   renderKidCal();
 }
@@ -2495,81 +2481,26 @@ function kidCalPanel() {
     </div>
   `;
 }
-// 每日任务打卡记录面板（孩子「我的」和家长端共用，下拉选任务看历史打卡）
-function checkinLogPanel(title, idPrefix) {
-  const dailyTasks = S.tasks.filter(t => t.schedule === 'daily');
-  if (!dailyTasks.length) return '';
-  const selId = idPrefix + '-log-task', listId = idPrefix + '-log-list';
-  return `
-    <div class="panel" style="margin-top:16px">
-      <h3>${title}</h3>
-      <select id="${selId}" onchange="showTaskLogs('${listId}', this.value)" style="width:100%">
-        <option value="">选择打卡项</option>
-        <option value="__all">全部每日任务</option>
-        <option value="__req">必做任务全清</option>
-        <option value="__opt">选做任务全清</option>
-        ${dailyTasks.map(t => `<option value="${t.id}">${t.title}</option>`).join('')}
-      </select>
-      <div id="${listId}"></div>
-    </div>
-  `;
-}
-// 有打卡的日子（任意一条每日任务完成过，去重）
-function allDoneDates() {
-  const dates = [];
-  for (const d in S.logs) {
-    if (dayTasksForProgress(d).some(t => { const l = S.logs[d][t.id]; return l && (l.done || l.completed); })) dates.push(d);
-  }
-  return dates.sort();
-}
-// 某组每日任务全部完成（全清）的日子。
-// 分母按「那天实际生效的任务」算（calTasksOn），和日历/连击同一口径：
-// 用当前任务列表会把今天才布置的重复任务算进过去的日子，永远凑不齐全清。
-function allClearDates(dim) {
-  const dates = [];
-  for (const d in S.logs) {
-    const st = calDayStat(d, dim);
-    if (st.full) dates.push(d);
-  }
-  return dates.sort();
-}
-// 展示打卡记录（支持全部每日/必做全清/选做全清/单个任务）
-function showTaskLogs(listId, key) {
-  const el = document.getElementById(listId);
-  if (!el) return;
-  if (!key) { el.innerHTML = ''; return; }
-  let dates = [];
-  if (key === '__all' || key === '__req' || key === '__opt') {
-    dates = key === '__all'
-      ? allDoneDates()
-      : allClearDates(key === '__opt' ? 'opt' : 'req');
-  } else {
-    // 单个任务：那天有打卡就算（任务本身没停用的话按日期看，停用后历史也保留）
-    for (const d in S.logs) { const l = S.logs[d][key]; if (l && (l.completed || l.done)) dates.push(d); }
-  }
-  dates.sort();
-  el.innerHTML = dates.length
-    ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${dates.map(d => `<span class="chip" style="font-size:12px">✓ ${d.slice(5)}</span>`).join('')}</div><div class="form-hint" style="margin-top:6px">共 ${dates.length} 次打卡</div>`
-    : '<div class="form-hint" style="margin-top:8px">还没有打卡记录</div>';
-}
 // 一条积分流水（孩子端）
 function logItemHTML(l) {
-  return `<div class="log-item"><span>${l.confirmed === false ? '⏳ ' : ''}${l.reason}</span><span class="when">${l.log_date} ${fmtTime(l.created_at)} <b class="amt ${l.amount >= 0 ? 'plus' : 'minus'}">${l.amount >= 0 ? '+' : ''}${l.amount}</b></span></div>`;
+  return `<div class="log-item"><span>${l.confirmed === false ? '⏳ ' : ''}${escHTML(l.reason)}</span><span class="when">${l.log_date} ${fmtTime(l.created_at)} <b class="amt ${l.amount >= 0 ? 'plus' : 'minus'}">${l.amount >= 0 ? '+' : ''}${l.amount}</b></span></div>`;
 }
-// 额外奖励（全清奖 / 家长奖励等）
-function bonusLogsHTML() {
-  const rows = S.pointLogs.filter(l => l.amount > 0 && /全清|家长奖励|全勤/.test(l.reason)).slice(0, 10);
+// 「我的」页：积分记录（原来拆成"额外奖励 / 扣分 / 积分记录"三块，合并成一块 + 顶部筛选）
+const PT_FILTERS = [['all', '全部'], ['plus', '获得'], ['minus', '扣分']];
+function kidPointLogPanel() {
+  const f = S.ptFilter || 'all';
+  const rows = S.pointLogs.filter(l => f === 'all' || (f === 'plus' ? l.amount > 0 : l.amount < 0));
+  const shown = rows.slice(0, 30);
   return `
-    <div class="section-title" style="margin-top:20px">⭐ 额外奖励</div>
-    <div class="log-list">${rows.map(logItemHTML).join('') || '<div class="empty-tip">还没有额外奖励</div>'}</div>
-  `;
-}
-// 扣分（喂养 / 买球 / 家长扣分等）
-function minusLogsHTML() {
-  const rows = S.pointLogs.filter(l => l.amount < 0).slice(0, 10);
-  return `
-    <div class="section-title" style="margin-top:20px">➖ 扣分</div>
-    <div class="log-list">${rows.map(logItemHTML).join('') || '<div class="empty-tip">还没有扣分</div>'}</div>
+    <div class="section-title" style="margin-top:20px">💰 积分记录 <small>${rows.length ? `共 ${rows.length} 笔` : '暂无'}</small></div>
+    <div class="log-filter">
+      ${PT_FILTERS.map(([k, label]) =>
+        `<button class="log-tab ${f === k ? 'on' : ''}" data-action="pt-filter" data-kind="${k}">${label}</button>`).join('')}
+    </div>
+    <div class="log-list">
+      ${shown.map(logItemHTML).join('') || '<div class="empty-tip">还没有积分记录</div>'}
+      ${rows.length > 30 ? `<div class="form-hint" style="padding:10px 16px">仅显示最近 30 条，共 ${rows.length} 条</div>` : ''}
+    </div>
   `;
 }
 // 轻量 HTML 转义（任务名可能含 < & 等字符）
@@ -2602,45 +2533,6 @@ function submissionListHTML() {
     </div>
   `;
 }
-// 「我的」页②：家长确认后到账的任务积分（显示具体是哪项任务）
-function approvedPointsHTML() {
-  const taskRe = /^(完成|多日完成奖)[:：]/;
-  const all = S.pointLogs.filter(l => l.amount > 0 && l.confirmed !== false && (l.task_id || taskRe.test(l.reason || '')));
-  const rows = all.slice(0, 30);
-  const sum = all.reduce((s, l) => s + l.amount, 0);
-  const nameOf = l => {
-    const t = l.task_id ? S.tasks.find(x => String(x.id) === String(l.task_id)) : null;
-    if (t) return t.title;
-    return String(l.reason || '').replace(/^(完成|多日完成奖)[:：]\s*/, '');
-  };
-  return `
-    <div class="section-title" style="margin-top:20px">🏅 家长确认获得积分 <small>${all.length ? `共 ${all.length} 笔 · 合计 +${sum}` : '暂无'}</small></div>
-    <div class="log-list">
-      ${rows.map(l => `
-        <div class="log-item">
-          <span>🏅 ${escHTML(nameOf(l))}</span>
-          <span class="when">${String(l.log_date || '').slice(5)} <b class="amt plus">+${l.amount}</b></span>
-        </div>`).join('') || '<div class="empty-tip">家长还没有确认过任务积分</div>'}
-    </div>
-  `;
-}
-function ownDexCount() {
-  return dexGot().got;
-}
-function weekDoneCount() {
-  const now = new Date();
-  const day = now.getDay() || 7;
-  const monday = new Date(now); monday.setDate(now.getDate() - (day - 1));
-  let n = 0;
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(monday); d.setDate(monday.getDate() + i);
-    const ds = fmtDate(d);
-    const dayLogs = S.logs[ds];
-    if (dayLogs && Object.keys(dayLogs).length && Object.values(dayLogs).every(l => l && l.done)) n++;
-  }
-  return n;
-}
-
 // ---------- 渲染调度 ----------
 function render() {
   if (S.role === 'parent') { renderParent(); return; }
@@ -2977,6 +2869,7 @@ function bindActions() {
     else if (act === 'kid-logout') { if (window.__fabDragged) return; localStorage.removeItem(LK('parent_authed')); toast('已登出家长身份'); render(); }
     else if (act === 'parent-cal') { S.calOffset += Number(btn.dataset.step || 0); renderKidCal(); }
     else if (act === 'cal-dim') { S.calDim = btn.dataset.dim === 'opt' ? 'opt' : 'req'; renderMe(); }
+    else if (act === 'pt-filter') { S.ptFilter = btn.dataset.kind || 'all'; renderMe(); }
     else if (act === 'parent-date-prev') { S.parentDate = shiftDate(S.parentDate, -1); render(); refreshParentNote(); }
     else if (act === 'parent-date-next') { S.parentDate = shiftDate(S.parentDate, 1); render(); refreshParentNote(); }
     else if (act === 'parent-date-today') { S.parentDate = DB.today(); render(); refreshParentNote(); }
@@ -3170,7 +3063,6 @@ function renderParent() {
       ${parentTaskPanel()}
       ${parentPmPanel()}
       ${parentSettingsPanel()}
-      ${checkinLogPanel('📋 每日任务打卡记录', 'parent')}
       ${pointLogPanel()}
       ${errorLogPanel()}
       ${modePanel()}
@@ -4409,12 +4301,13 @@ function calGridHTML(dim) {
   for (let i = 0; i < startDow; i++) html += '<span class="cal-day empty"></span>';
   for (let d = 1; d <= daysInMonth; d++) {
     const ds = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const st = calDayStat(ds, dim || 'req');
-    // 那天本来就没有这类任务（还没布置 / 已停用）→ 不涂色，也别误标成"没做"
+    const future = ds > todayStr;
+    const st = future ? { total: 0, done: 0, full: false } : calDayStat(ds, dim || 'req');
+    // 未来的日子不判成败：还没到，标红点会像在说孩子没做
     let dot = '<span class="dot na"></span>';
-    if (st.total) dot = st.full ? '<span class="dot full"></span>' : (st.done > 0 ? '<span class="dot part"></span>' : '<span class="dot none"></span>');
-    const tip = st.total ? `${ds} · ${st.done}/${st.total}` : `${ds} · 无任务`;
-    html += `<span class="cal-day ${ds === todayStr ? 'today' : ''}" title="${tip}">${d}${dot}</span>`;
+    if (!future && st.total) dot = st.full ? '<span class="dot full"></span>' : (st.done > 0 ? '<span class="dot part"></span>' : '<span class="dot none"></span>');
+    const tip = future ? `${ds} · 还没到` : (st.total ? `${ds} · ${st.done}/${st.total}` : `${ds} · 无任务`);
+    html += `<span class="cal-day ${ds === todayStr ? 'today' : ''}${future ? ' future' : ''}" title="${tip}">${d}${dot}</span>`;
   }
   html += '</div>';
   return html;

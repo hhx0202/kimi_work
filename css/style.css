@@ -289,6 +289,18 @@ body {
 .stat-card b { display: block; font-size: 28px; color: #e53935; }
 .stat-card span { font-size: 12px; color: var(--ink-soft); }
 
+/* 「我的」页顶部：4 个数字卡片 + 右下角快捷操作（成就图这类"偶尔用一次"的入口，别做成整块大按钮） */
+.me-head { margin-bottom: 4px; }
+.me-actions { display: flex; justify-content: flex-end; margin: -6px 4px 0; }
+.me-actions .btn-ghost.mini { padding: 6px 14px; font-size: 12px; }
+/* 积分记录筛选（全部 / 获得 / 扣分） */
+.log-filter { display: flex; gap: 6px; margin: 0 4px 8px; }
+.log-tab {
+  border: 1.5px solid #e3e8ef; background: #fff; border-radius: 999px;
+  padding: 5px 14px; font-size: 12px; font-weight: 700; color: var(--ink-soft); cursor: pointer;
+}
+.log-tab.on { border-color: var(--blue); background: #e8f6fe; color: #0277bd; }
+
 /* 「我的」页各明细列表：超过一定条数后固定高度、列表内部滚动，别把页面越拉越长 */
 .log-list {
   background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
@@ -657,6 +669,9 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .cal-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .cal-legend .dot { display: inline-block; margin-top: 0; width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 .cal-day.empty { background: transparent; }
+/* 未来的日子：淡一点、不判成败（还没到，标红点会像在说孩子没做） */
+.cal-day.future { background: #fafafa; color: #b0bec5; }
+.cal-day.future .dot { background: transparent; border: 1px dashed #cfd8dc; }
 
 /* 密码弹层 */
 .modal-mask {
