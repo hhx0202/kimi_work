@@ -23,7 +23,7 @@
 
 ```
 kimi_work/
-├── index.html              # 主应用入口（引用 js/vendor 里的第三方库 + 各 JS）
+├── index.html              # 主应用入口（引用 CDN + 各 JS）
 ├── intro.html              # 演示/介绍页（给孩子演示、给别的家长推荐）
 ├── serve.py / start.bat / start.sh   # 一键启动本地服务器（start.bat 双击即可）
 ├── css/
@@ -36,9 +36,7 @@ kimi_work/
 │   ├── pokemon-flavor.js   # 151 只官方中文图鉴介绍（PokeAPI 抓取）
 │   ├── pokemon-moves.js    # 151 只各 4 个官方招式（PokeAPI 抓取，tools/ 里可重生成）
 │   ├── db.js               # 数据层（demo=localStorage 试玩 / supabase=真库 / 演示模式=kmd_ 隔离）
-│   ├── app.js              # 主程序：孩子端 + 家长端 + 动画 + 分享
-│   └── vendor/             # 第三方库本地自带（supabase-js 2.118 / canvas-confetti 1.9.3 / html2canvas 1.4.1）
-│                           # 别再改回外链 CDN：国内网络和 EdgeOne 上取不到会直接「supabase is not defined」
+│   └── app.js              # 主程序：孩子端 + 家长端 + 动画 + 分享
 ├── tools/
 │   └── fetch_moves.js      # 重新抓招式表 → 生成 js/pokemon-moves.js（node tools/fetch_moves.js）
 ├── assets/sprites/

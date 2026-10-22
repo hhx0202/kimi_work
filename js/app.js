@@ -4734,11 +4734,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     startPoll();                  // 跨设备轮询（演示模式 / POLL_SECONDS=0 时不启）
   } catch (err) {
     console.error(err);
-    // 组件没加载出来 / 网络问题别甩锅给 CONFIG；只有真的像是配置错（key、URL）才提示去查
-    const msg = (err && err.message) || String(err);
-    const isLib = /数据库组件|supabase is not defined|is not defined/i.test(msg);
-    const hint = isLib ? '刷新一下页面；还不行说明 js/vendor/supabase.js 没部署成功（或被网络拦了）' : '检查 CONFIG 里的数据库配置';
-    reportError('启动失败', msg, (err && err.stack) || '', '');
-    $('app').innerHTML = `<div class="loading-screen"><p>加载失败：${msg}<br>${hint}</p></div>`;
+    reportError('启动失败', `${err.message}（检查 CONFIG 里的数据库配置）`, err.stack, '');
+    $('app').innerHTML = `<div class="loading-screen"><p>加载失败：${err.message}<br>检查 CONFIG 里的数据库配置</p></div>`;
   }
 });

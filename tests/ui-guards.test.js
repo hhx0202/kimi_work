@@ -14,15 +14,11 @@ module.exports = async function run() {
   ok(/\.log-list\s*\{[^}]*overflow-y:\s*auto/.test(CSS), '.log-list 内部可滚动');
   ok(!/\.log-list\s*\{[^}]*overflow:\s*hidden/.test(CSS), '没有再把滚动裁掉的 overflow:hidden');
 
-  section('第三方库本地自带（外链 CDN 在国内/EdgeOne 上会取不到）');
-  // 教训：2026-10-22 EdgeOne Pages 部署后报「supabase is not defined」——jsdelivr 在中国大陆不可达，
-  // 三个库全挂了。现在一律用仓库里的 js/vendor/，index.html 不许再出现 jsdelivr 外链。
-  for (const f of ['js/vendor/supabase.js', 'js/vendor/confetti.min.js', 'js/vendor/html2canvas.min.js']) {
-    ok(HTML.includes(`src="${f}`), `index.html 引用 ${f}`);   // 允许带 ?v= 版本号（升级时破缓存用）
-    ok(fs.existsSync(path.join(ROOT, f)), `${f} 文件存在`);
+  section('CDN 脚本带 crossorigin（否则报错只有 "Script error."）');
+  for (const u of ['@supabase/supabase-js@2', 'canvas-confetti', 'html2canvas']) {
+    ok(new RegExp(`<script[^>]*crossorigin="anonymous"[^>]*${u.replace(/[/@.]/g, m => '\\' + m)}`).test(HTML)
+      || (HTML.includes('crossorigin="anonymous"') && HTML.includes(u)), `${u} 带 crossorigin`);
   }
-  ok(!/<(script|link)[^>]+jsdelivr/i.test(HTML), 'index.html 不再用 jsdelivr 外链（注释里说明历史可以）');
-  ok(DB_SRC.includes("typeof supabase === 'undefined'"), '组件没加载时给出人话提示（不再只报 supabase is not defined）');
 
   section('Supabase 客户端关掉未使用的 Auth（避免切回前台时恢复会话报错）');
   ok(DB_SRC.includes('persistSession: false'), 'persistSession: false');
@@ -30,9 +26,9 @@ module.exports = async function run() {
   ok(DB_SRC.includes('detectSessionInUrl: false'), 'detectSessionInUrl: false');
 
   section('错误现场信息：只有 "Script error." 时也能定位');
-  // 监听必须排在任何外部脚本之前，否则脚本自己报错时没人接
-  ok(HTML.indexOf('__earlyErrors') > 0 && HTML.indexOf('__earlyErrors') < HTML.indexOf('js/vendor/supabase.js'),
-    '早期错误监听排在第三方库之前');
+  // 监听必须排在任何外部脚本之前，否则 CDN 脚本自己报错时没人接
+  ok(HTML.indexOf('__earlyErrors') > 0 && HTML.indexOf('__earlyErrors') < HTML.indexOf('supabase-js'),
+    '早期错误监听排在 CDN 脚本之前');
   ok(/addEventListener\('error',[\s\S]*?\}\s*,\s*true\s*\)/.test(HTML), '早期监听用 capture 才能收到资源加载失败');
   ok(APP.includes('function envSnapshot('), '有现场信息采集函数');
   for (const k of ['UA=', '页面=', '可见=', '在线=', '脚本标签=', '已加载脚本域=', '早期错误=', '页面更新于=', '就绪=', '加载后=', '导航=']) {
