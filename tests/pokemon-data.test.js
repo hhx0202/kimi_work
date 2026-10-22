@@ -19,6 +19,7 @@ function setup() {
   ctx.LK = k => 'km_' + k;
   ctx.localStorage = { _m: {}, getItem(k) { return k in this._m ? this._m[k] : null; }, setItem(k, v) { this._m[k] = String(v); }, removeItem(k) { delete this._m[k]; } };
   loadInto(ctx, ['lsGet', 'lsSet', 'evoTargets', 'evoAncestors', 'hasNextEvo', 'hasShinyCopy', 'shinyLineageNo', 'willInheritShiny', 'expThreshold', 'canEvolve', 'isMaxed',
+    'branchPending', 'dexGot', 'ownedNumbers',
     'artworkPath', 'scenePath', 'savedCardArtMode', 'setCardArtMode', 'cardArtModes', 'currentCardArtMode', 'cardArtSrc', 'cycleCardArt']);
   return { ctx, ...data };
 }
@@ -92,6 +93,20 @@ module.exports = async function run() {
   section('形态阶数');
   ok(evoStage(1) === 0 && evoStage(2) === 1 && evoStage(3) === 2, '妙蛙种子/草/花 = 基础/一阶/二阶');
   ok(evoStage(133) === 0 && evoStage(134) === 1, '伊布基础、水伊布一阶（分支进化）');
+
+  section('分支进化不会锁死兄弟形态（伊布三选一）');
+  const pmOf = no => ({ id: no, pokedex_no: no, name: PK_BY_NO[no].name, shiny: false, exp: 0 });
+  const before = ctx.S.pokemons.slice();
+  ctx.S.pokemons = [pmOf(134)];
+  ok(ctx.ownedNumbers().has(133), '进化成水伊布后，图鉴仍把伊布算作已收集（祖先点亮）');
+  ok(ctx.branchPending(133) === true, '但伊布要能再次出现，否则雷/火伊布永远拿不到');
+  ctx.S.pokemons = [pmOf(134), pmOf(135)];
+  ok(ctx.branchPending(133) === true, '还差火伊布时仍可能出现');
+  ctx.S.pokemons = [pmOf(134), pmOf(135), pmOf(136)];
+  ok(ctx.branchPending(133) === false, '三条分支集齐后不再回到捕捉池');
+  ctx.S.pokemons = [pmOf(2)];
+  ok(ctx.branchPending(1) === false, '单线进化（妙蛙种子）不受影响，进化后不会再遇到');
+  ctx.S.pokemons = before;
 
   section('卡牌详情造型：立绘 / 异色动图 / 场景卡');
   const shinyPm = { pokedex_no: 25, shiny: true };

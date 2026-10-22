@@ -833,6 +833,14 @@ function evoTargets(no) {
   return info.e ? [info.e] : [];
 }
 function hasNextEvo(no) { return evoTargets(no).length > 0; }
+// 分支进化（伊布这类 ev 数组）：还有分支没集齐时，这只基础形态要重新回到捕捉池。
+// 否则基础形态进化掉之后，dexGot() 会把祖先也点亮 → 被「捕捉必出新」永久剔除，兄弟分支再也拿不到。
+function branchPending(no) {
+  const t = evoTargets(no);
+  if (t.length < 2) return false;
+  const { got } = dexGot();
+  return t.some(x => !got[x]);
+}
 // 祖先链：从最初形态一路到自己（含自己）
 function evoAncestors(no) {
   const list = [no];
@@ -948,7 +956,7 @@ function pickEvoTarget(pm, targets) {
     modal.innerHTML = `
       <div class="modal" style="max-width:420px;width:calc(100% - 40px)">
         <h3>✨ ${pm.name} 要进化成哪一只？</h3>
-        <div class="form-hint" style="margin-top:6px">它有 ${targets.length} 种进化形态，选一只吧（经验已经够了）</div>
+        <div class="form-hint" style="margin-top:6px">${targets.length === 1 ? '还剩 1 种没收集的进化形态' : `还有 ${targets.length} 种没收集的进化形态`}，选一只吧（经验已经够了）</div>
         <div class="evo-pick">
           ${targets.map(no => {
             const t = pmType(no);
@@ -984,7 +992,13 @@ async function evolvePm(pm) {
     return;
   }
   const fromNo = pm.pokedex_no;
-  const targets = evoTargets(fromNo);
+  let targets = evoTargets(fromNo);
+  // 分支进化：优先只列「还没集齐」的分支，避免同一个分支重复进化
+  if (targets.length > 1) {
+    const { got } = dexGot();
+    const rest = targets.filter(t => !got[t]);
+    if (rest.length) targets = rest;
+  }
   if (!targets.length) return;
   let toNo = targets[0];
   if (targets.length > 1) {
@@ -1012,8 +1026,9 @@ function isBaseForm(no) { return PK_EVOLVE_FROM[no] === undefined; }
 async function catchOne() {
   if (S.balls < 1) { toast('没有精灵球啦～攒积分买一个吧'); return; }
   // 从候选池里剔除已经拥有的编号（闪耀家族整链视为已收集）
+  // 例外：分支进化的基础形态只要还有分支没集齐，就允许再次出现（伊布 → 水/雷/火）
   const owned = ownedNumbers();
-  const baseOnly = list => list.filter(no => isBaseForm(no) && !owned.has(no));
+  const baseOnly = list => list.filter(no => isBaseForm(no) && (!owned.has(no) || branchPending(no)));
   const rare = Math.random() < CONFIG.RARITY.rare;
   let pool = baseOnly(CATCH_POOL[rare ? 'rare' : 'common']);
   if (!pool.length) pool = baseOnly(CATCH_POOL.common.concat(CATCH_POOL.rare));

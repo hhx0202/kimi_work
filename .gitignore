@@ -30,3 +30,6 @@ _edge_profile/*
 
 # Cloudflare wrangler 本地缓存（部署用，不要提交）
 .wrangler/
+
+# 临时预览/实验产物
+_preview/
