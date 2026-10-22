@@ -93,4 +93,14 @@ module.exports = async function run() {
   ok(/retuneGlitter\(artEl, mode === 'scene'\)/.test(APP), '切到场景卡时重算星星落点（卡面更高）');
   ok(/\.pm-card-mini\.shiny \.mini-frame::after/.test(CSS), '小卡有全息扫光层');
   ok(/\.pm-card-mini\.shiny \.mini-frame\s*\{/.test(CSS), '小卡有金色呼吸边框');
+
+  section('成就图：点下去必须先有反馈，失败要有原因');
+  // 坑：以前 shareCardHTML() 在 try 外面，老数据（出战宝可梦编号丢了/是脏值）一抛错就"点了没反应"
+  ok(/ov\.innerHTML = `<div class="share-loading">/.test(APP), '点下去立刻显示「正在生成」');
+  ok(/\.share-spin\s*\{[^}]*animation:/.test(CSS), '生成中有转圈动画');
+  ok(/wrap\.innerHTML = shareCardHTML\(\);\s*\/\/[^\n]*try/.test(APP), '拼卡片 HTML 也在 try 里（出错能兜住）');
+  ok(/const leadNo = \(lead && pkNoOf\(lead\)\) \|\| 25/.test(APP), '出战编号走 pkNoOf 兜底（老数据不会抛错）');
+  ok(APP.includes("reportError('生成成就图失败'"), '失败原因写进错误日志，家长端能复制');
+  ok(/Promise\.race\(\[done, timeout\]\)/.test(APP), 'html2canvas 卡住时有超时结论');
+  ok(APP.includes('闪耀吧！✨'), '选卡态小卡的按钮文案');
 };

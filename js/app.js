@@ -2018,7 +2018,7 @@ function shinyBarHTML() {
   }
   return `
     <div class="shiny-bar">
-      <div class="shiny-bar-main"><b>✨ 闪耀卡 ×${S.shinyCards}</b><span>用一张，给一只宝可梦多一张 ✨ 卡（之后进化也一直是 ✨）</span></div>
+      <div class="shiny-bar-main"><b>✨ 闪耀卡 ×${S.shinyCards}</b><span>用一张，这条进化链上的宝可梦都会变成 ✨</span></div>
       <button class="shiny-btn" data-action="shiny-pick">使用</button>
     </div>`;
 }
@@ -2034,7 +2034,7 @@ async function applyShinyCard(pmId) {
   const copy = await addShinyCopy(pm);
   shinyPickOn = false;
   renderTop(); renderPokemons();
-  const extra = hasNextEvo(pm.pokedex_no) ? '，之后它进化出来的形态也会直接是闪耀形态' : '';
+  const extra = hasNextEvo(pm.pokedex_no) ? '，这条进化链都会变成闪耀形态' : '';
   await showShiny(copy, `${PK_BY_NO[copy.pokedex_no].name} 变成了闪耀形态，卡册里多了一张 ✨ 卡${extra}！`);
 }
 
@@ -2185,7 +2185,7 @@ function pmCardHTML(pm) {
       ${pm.shiny ? '<span class="mini-shiny">✨</span>' : ''}
       ${pm.id === S.leadId ? '<span class="mini-lead">⭐</span>' : ''}
       <span class="mini-lv-badge">${evoStageLabel(pm)}</span>
-      ${shinyPickOn && !locked ? '<span class="mini-pick">用它 ✨</span>' : ''}
+      ${shinyPickOn && !locked ? '<span class="mini-pick">闪耀吧！✨</span>' : ''}
     </div>
     <div class="mini-line">
       <span class="mini-no">#${String(pm.pokedex_no || 0).padStart(3, '0')}</span>
@@ -2446,7 +2446,7 @@ function pokeRulesHTML() {
         <li>🥚 1 个精灵球一定抓到 1 只<b>没抓过</b>的宝可梦（${CONFIG.BALL_PRICE} 分/个，只有基础形态能被捕捉）</li>
         <li>🍬 喂糖果攒经验：1 分 = ${CONFIG.POINTS_TO_EXP} exp，经验满一管就<b>进化</b>，越往后要的经验越多</li>
         <li>✨ 最终形态再攒满 ${CONFIG.SHINY_EXP} exp → 进入<b>闪耀形态</b>（普通卡留着，多一张 ✨ 卡）</li>
-        <li>🎁 连续 ${goal} 天必做全清送 ✨ 闪耀卡：选一只用掉，<b>之后它进化出来的形态也直接是闪耀形态</b></li>
+        <li>🎁 连续 ${goal} 天必做全清送 ✨ 闪耀卡：给一只宝可梦用掉，它所在的<b>整条进化链</b>都获得闪耀形态（之后进化出来的形态也直接是 ✨）</li>
         <li>⭐ 出战的伙伴每次完成任务 +${CONFIG.LEAD_EXP_PER_TASK} 经验</li>
       </ul>
     </details>`;
@@ -4639,25 +4639,39 @@ async function undoPoint(id) {
 }
 
 // ---------- 朋友圈成就图 ----------
+let shareBusy = false;   // 生成中：连点不再重复渲染
 async function shareCard() {
-  if (!window.html2canvas) { toast('分享组件未加载（需联网），稍后再试'); return; }
-  const wrap = document.createElement('div');
-  wrap.id = 'share-wrap';
-  wrap.innerHTML = shareCardHTML();
-  document.body.appendChild(wrap);
+  if (shareBusy) return;
+  const ov = $('overlay');
+  // 立刻给反馈：手机上 html2canvas 要一两秒，先亮出「正在生成」，别让人以为点坏了
+  ov.classList.remove('hidden');
+  ov.className = 'overlay share-view';
+  ov.innerHTML = `<div class="share-loading"><span class="share-spin"></span><p>正在生成成就图…</p></div>`;
+  shareBusy = true;
+  let wrap = null;
   try {
-    const canvas = await html2canvas(wrap, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+    if (!window.html2canvas) throw new Error('分享组件没加载出来（需要联网）');
+    wrap = document.createElement('div');
+    wrap.id = 'share-wrap';
+    wrap.innerHTML = shareCardHTML();      // 也在 try 里：老数据缺 pokedex_no 之类要能报出来
+    document.body.appendChild(wrap);
+    // 安卓老机器上 html2canvas 偶尔会卡住，超时就给结论，别让「正在生成」一直转
+    const done = html2canvas(wrap, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('生成超时（手机太忙或图片太大），再点一次试试')), 20000));
+    const canvas = await Promise.race([done, timeout]);
     const dataUrl = canvas.toDataURL('image/png');
-    const ov = $('overlay');
-    ov.classList.remove('hidden');
-    ov.className = 'overlay share-view';
     ov.innerHTML = `<img class="share-img" src="${dataUrl}"><p class="share-tip">💡 长按图片保存到相册，就能发朋友圈啦</p><button class="ov-skip">关闭</button>`;
     ov.querySelector('.ov-skip').onclick = () => ov.classList.add('hidden');
   } catch (err) {
-    console.error(err);
-    toast('生成失败，稍后再试');
+    // 以前这里只有 console/toast，出错时界面上什么都没有 → 这次把原因写进错误日志并明确提示
+    const msg = (err && err.message) || String(err) || '未知错误';
+    ov.classList.add('hidden');
+    ov.innerHTML = '';
+    reportError('生成成就图失败', msg, (err && err.stack) || '', '');
+    toast('成就图没生成出来：' + msg);
   } finally {
-    wrap.remove();
+    if (wrap) wrap.remove();
+    shareBusy = false;
   }
 }
 
@@ -4667,15 +4681,17 @@ function shareCardHTML() {
   const done = ts.filter(t => logToday(t.id)).length;
   const ds = doneStats();
   const lead = S.pokemons.find(p => p.id === S.leadId);
-  const leadNo = lead ? lead.pokedex_no : 25;
+  // 老数据可能丢了 pokedex_no（只有名字）→ 用 pkNoOf 兜底，避免 PK_BY_NO[null] 直接抛错
+  const leadNo = (lead && pkNoOf(lead)) || 25;
+  const leadInfo = PK_BY_NO[leadNo] || PK_BY_NO[25];
   const type = pmType(leadNo);
   const theme = TYPE_THEME[type] || TYPE_THEME.normal;
   return `
     <div class="share-card" style="--tc:${theme.color}; --bg1:${theme.bg1}; --bg2:${theme.bg2}">
       <div class="share-head">🏝️ 佑佑的任务岛</div>
       <div class="share-pm">
-        <img src="${lead ? artworkPath(leadNo) : 'assets/artwork/25.png'}" alt="">
-        <div class="share-pm-name">${lead ? PK_BY_NO[leadNo].name + (lead.shiny ? ' ✨' : '') : '皮卡丘'}<span>${lead ? stageText(lead) : '基础'}</span></div>
+        <img src="${artworkPath(leadNo)}" alt="">
+        <div class="share-pm-name">${lead ? leadInfo.name + (lead.shiny ? ' ✨' : '') : '皮卡丘'}<span>${lead ? stageText(lead) : '基础'}</span></div>
       </div>
       <div class="share-stats">
         <div><b>${done}/${ts.length}</b><span>今日任务</span></div>

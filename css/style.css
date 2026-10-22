@@ -956,7 +956,7 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   background: rgba(255, 179, 0, .95); color: #fff; font-size: 10px; font-weight: 800;
   padding: 2px 8px; border-radius: 999px; white-space: nowrap;
 }
-/* 选卡态下藏掉阶段角标，否则会和「用它 ✨」叠在一起 */
+/* 选卡态下藏掉阶段角标，否则会和「闪耀吧！✨」叠在一起 */
 .pm-card-mini.picking .mini-lv-badge { display: none; }
 
 /* ---------- 连续必做全清（孩子端任务页最下方） ---------- */
@@ -1520,6 +1520,14 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .overlay.share-view { background: rgba(15,15,30,.94); }
 .share-img { max-width: min(420px, 88vw); border-radius: 18px; box-shadow: 0 12px 50px rgba(0,0,0,.6); }
 .share-tip { margin-top: 14px; font-size: 14px; color: #ffd54f; font-weight: 700; }
+/* 生成中：先给反馈，手机上 html2canvas 要一两秒 */
+.share-loading { display: flex; flex-direction: column; align-items: center; gap: 16px; font-size: 14px; font-weight: 700; color: #fff; }
+.share-spin {
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, .22); border-top-color: #ffd54f;
+  animation: share-spin .8s linear infinite;
+}
+@keyframes share-spin { to { transform: rotate(360deg); } }
 
 @media (min-width: 640px) {
   /* 桌面端同样要留出底部导航/fab 的高度，不能缩小，否则滚到底会被挡住 */
