@@ -22,7 +22,7 @@ const DB = (() => {
   // ==========================================================
   const K = { tasks: P + 'tasks', logs: P + 'logs', pms: P + 'pokemons', pts: P + 'points', items: P + 'items' };
   const K_SEED_VER = P + 'seedver';
-  const SEED_VER = 6;   // 演示数据版本：升版本时会给已有的演示数据补一次测试内容 / 修一次历史数据
+  const SEED_VER = 7;   // 演示数据版本：升版本时会给已有的演示数据补一次测试内容 / 修一次历史数据
 
   // 演示用宝可梦：覆盖「基础 / 一阶 / 最终 / 无进化链 / 闪耀形态 / 临进化」各阶段，方便测试
   const DEMO_PMS = [
@@ -153,14 +153,56 @@ const DB = (() => {
     [148,   0, false],   // 哈克龙    龙   1阶  → 快龙
     [151,   0, false],   // 梦幻      超能 0阶  最终形态
   ];
+  // 同一进化家族：先回溯到最上游的根（如伊布 133），再从根把全部分支铺开
+  // （不能只算 no 自己的祖先 + 后代——分支进化时那样会漏掉兄弟分支，比如雷伊布闪耀时漏掉水/火伊布）
+  function evoChainOf(no) {
+    let root = no;
+    let guard = 0;
+    while (PK_EVOLVE_FROM[root] !== undefined && guard++ < 6) root = PK_EVOLVE_FROM[root];
+    const out = new Set([root]);
+    const walk = n => {
+      const p = PK_BY_NO[n];
+      if (!p) return;
+      (p.ev || (p.e ? [p.e] : [])).forEach(k => {
+        if (!out.has(k)) { out.add(k); walk(k); }
+      });
+    };
+    walk(root);
+    out.delete(no);
+    return [...out];
+  }
+
+  // 把 [编号, 经验, 闪耀] 清单规范成自洽的一组卡，两条规则：
+  //   ① 闪耀形态 = 普通卡保留 + 额外多一张 ✨ 卡 → 有 ✨ 就必须有同编号普通卡；
+  //   ② 闪耀按整条进化链生效（与 dexGot 的 shinyOwned 口径一致）→ 链上某形态闪耀时，整链每个形态都补 ✨，
+  //      否则会出现「大嘴雀是 ✨、烈雀还是普通」这种自相矛盾的演示数据。
+  function expandDemoPms(list) {
+    const rows = list.map(([no, exp, shiny]) => ({ no, exp, shiny: !!shiny }));
+    const seen = new Set(rows.map(r => `${r.no}|${r.shiny ? 1 : 0}`));
+    const push = r => {
+      if (!PK_BY_NO[r.no]) return;
+      const k = `${r.no}|${r.shiny ? 1 : 0}`;
+      if (seen.has(k)) return;
+      seen.add(k); rows.push(r);
+    };
+    // ① 先把 ✨ 沿整条进化链铺开（顺序很重要：先铺链路，再补普通卡，
+    //    否则链路里新补进来的基础形态（如嘟嘟 84）又会缺普通卡）
+    const family = new Set();
+    rows.filter(r => r.shiny).forEach(r => evoChainOf(r.no).forEach(n => family.add(n)));
+    family.forEach(no => push({ no, exp: 0, shiny: true }));
+    // ② 再给所有 ✨ 编号补一张普通卡
+    rows.slice().filter(r => r.shiny).forEach(r => push({ no: r.no, exp: 0, shiny: false }));
+    return rows;
+  }
+
   function demoPmRows(startId = 1, list = DEMO_PMS) {
-    return list.map(([no, exp, shiny], i) => ({
+    return expandDemoPms(list).map((r, i) => ({
       id: startId + i,
-      name: PK_BY_NO[no].name,
-      pokedex_no: no,
-      shiny,
+      name: PK_BY_NO[r.no].name,
+      pokedex_no: r.no,
+      shiny: r.shiny,
       level: 1,
-      exp,
+      exp: r.exp,
       caught_at: nowISO(),
     }));
   }
@@ -207,10 +249,8 @@ const DB = (() => {
         }
         dSet(K.tasks, rows);
         dSet(K.logs, []);
-        // 演示队伍：额外补两张 ✨ 卡（喷火龙 / 快龙），一打开就能看到「普通卡 + 闪耀卡」并存
-        const pmRows = demoPmRows(1, DEMO_PMS.concat(DEMO_PMS_EXTRA, DEMO_PMS_MORE));
-        let pnid = pmRows.length + 1;
-        [6, 149].forEach(no => pmRows.push({ id: pnid++, name: PK_BY_NO[no].name, pokedex_no: no, shiny: true, level: 1, exp: 0, caught_at: nowISO() }));
+        // 演示队伍：喷火龙 / 快龙 各带一张 ✨（写进清单里，让 expandDemoPms 一并把整链铺成闪耀）
+        const pmRows = demoPmRows(1, DEMO_PMS.concat(DEMO_PMS_EXTRA, DEMO_PMS_MORE, [[6, 0, true], [149, 0, true]]));
         dSet(K.pms, pmRows);
         // 演示初始积分（已确认发放，孩子可直接花）
         dSet(K.pts, [{ id: 1, log_date: today0, amount: 2000, reason: '演示初始积分', confirmed: true, task_id: null, created_at: nowISO() }]);
@@ -311,6 +351,31 @@ const DB = (() => {
         const pts = dGet(K.pts);
         pts.push({ id: pts.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1, log_date: d0, amount: 3000, reason: '演示补充积分', confirmed: true, task_id: null, created_at: nowISO() });
         dSet(K.pts, pts);
+      }
+      // v6 → v7：修历史数据的闪耀自洽性——早期种子只写了 ✨ 卡、没配普通卡，且闪耀没铺满整条进化链。
+      // 这里一次性补齐：① 每个有 ✨ 的编号补一张普通卡；② 链上某形态闪耀时，整链所有形态都补 ✨。
+      if (prevVer < 7) {
+        const pms = dGet(K.pms);
+        const seen = new Set(pms.map(r => `${Number(r.pokedex_no)}|${r.shiny ? 1 : 0}`));
+        const add = [];
+        const addRow = (no, shiny) => {
+          if (!PK_BY_NO[no]) return;
+          const k = `${no}|${shiny ? 1 : 0}`;
+          if (seen.has(k)) return;
+          seen.add(k); add.push({ no, shiny });
+        };
+        const shinyNos = [...new Set(pms.filter(r => r.shiny).map(r => Number(r.pokedex_no)))];
+        const family = new Set();
+        shinyNos.forEach(no => evoChainOf(no).forEach(n => family.add(n)));
+        family.forEach(no => addRow(no, true));                          // ① 整链补 ✨
+        [...new Set([...shinyNos, ...family])].forEach(no => addRow(no, false));   // ② 每个 ✨ 补普通卡
+        if (add.length) {
+          let nid = pms.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1;
+          dSet(K.pms, pms.concat(add.map(r => ({
+            id: nid++, name: PK_BY_NO[r.no].name, pokedex_no: r.no,
+            shiny: r.shiny, level: 1, exp: 0, caught_at: nowISO(),
+          }))));
+        }
       }
       lsSet(K_SEED_VER, SEED_VER);
     },
