@@ -15,10 +15,15 @@
 - **为什么弃用 github.io**：实测国内速度只有 **2.7 KB/s**（118KB 立绘 30 秒都下不完 → 表现就是"图片加载不出来"）。Cloudflare Pages 实测立绘 4.7 秒、app.js 2.1 秒（118 KB/s），快 10 倍以上。
 - **`*.workers.dev` 被 DNS 污染**（解析到 Facebook 的 `face:b00c` / `128.242.240.244`，国内直接打不开）；**`*.pages.dev` 正常**（解析到 Cloudflare `172.66.x.x` / `104.18.x.x`）。**只能用 Pages，不能用 Workers 的 workers.dev 域名。**
 - **EdgeOne Pages 已弃用**：域名是随机子域名（记不住），且原项目后来直接返回 401 打不开。
-- **项目是 Direct Upload 创建的，不能事后绑 Git**（Cloudflare 官方限制，官方原文：Direct Upload projects can't switch to Git integration later）。自动部署改用 **GitHub Actions + wrangler**：`.github/workflows/deploy-pages.yml`，push master 触发，secrets 用 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`（account id `306aae3e2cbdfa6f127c4604cdf791c1`）。
+- **项目是 Direct Upload 创建的，不能事后绑 Git**（Cloudflare 官方限制，官方原文：Direct Upload projects can't switch to Git integration later）。自动部署用 **GitHub Actions + wrangler**：`.github/workflows/deploy-pages.yml`，push master 触发（2026-10-23 已跑通）。
+- **Cloudflare account id = `306aae3e2cbdaf6a127c4604cf7911c1`**（注意 `af6a`、`cf`，曾把它误读成 `fa6f`/`cd`，导致连续 5 次 `Authentication error 10000`）。
+- **API Token 权限**：`Account → Cloudflare Pages → Edit` + `User → User Details → Read`，Account Resources 必须 Include 到具体账号。**该 token 没有"列账号"权限，`GET /accounts` 返回空数组 `result:[]` 是正常的**，别误判成权限不足；要验证权限得用 `GET /accounts/<id>/pages/projects`（返回里有 `"name":"kimi-work"` 就对了）。
+- **workflow 里必须显式传 `CLOUDFLARE_ACCOUNT_ID`**：不传的话 wrangler 会去自动检索账号（调 `/accounts`），而该 token 无此权限 → 必然报 `Failed to automatically retrieve account IDs`。
 - **发布目录必须是 `dist`**，只含 `index.html intro.html css js assets` 五项。直接发仓库根目录会被 `.git` 里 31.6MB 的 pack 顶掉（Cloudflare 单文件上限 25MiB），而且会把 `.git`/`sql`/`.workbuddy/memory` 全部公开。
 - 手动部署：先 `cp -r index.html intro.html css js assets D:/AI/kimi_dist/`，再 `npx wrangler pages deploy D:/AI/kimi_dist --project-name kimi-work --branch master`（wrangler 已用 device flow 登录过，token 在本机）。
 - **用户家的 DNS 坑**：路由器 `192.168.2.1`（小米）只返回 AAAA、不返回 A，导致 `kimi-work.pages.dev` 在本地解析成 Non-existent domain；阿里 `223.5.5.5` / 腾讯 `119.29.29.29` 正常。排查域名问题先用 `nslookup <域名> 223.5.5.5` 对比，别急着怀疑平台。
+- **Steam++（Watt Toolkit）会改 hosts**：把 `github.com` / `github.io` / `api.github.com` 等 50+ 域名指到 `127.0.0.1`，由它本地 443 端口的代理转发——实测把 github.io 的下载速度从 39 KB/s 压到 2.7 KB/s。**这不是墙**：`nslookup`（不读 hosts）能解析到真实 IP，`ping`（读 hosts）却是 127.0.0.1。删了 hosts 它运行时会写回去。
+- **git remote 已改为 `ssh://git@ssh.github.com:443/hhx0202/kimi_work.git`**：因为 hosts 劫持了 github.com，`git push` 连 22 端口会 `Connection refused`；GitHub 的 443 SSH 入口不在 hosts 里，实测可用。改完 `git push` 直接能推。
 - **jsdelivr 在国内只有 5.9 KB/s**（三个库要半分钟才拉完）。第三方库走 CDN 是用户定的方向，但要知道这个代价；页面对此的缓冲是浏览器缓存。
 
 ## 工程约定

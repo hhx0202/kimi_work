@@ -68,6 +68,8 @@
 
 - **纯静态前端**：无构建、无 node_modules，双击 `start.bat`（或 `python serve.py`）起服务器即可跑
 - **免后端**：前端直连 Supabase（publishable key），所有逻辑在浏览器
+- **部署**：Cloudflare Pages（`kimi-work.pages.dev`）+ GitHub Actions 自动部署（push master 触发）。GitHub Pages 已弃用（国内 2.7 KB/s，图片加载不出来）；EdgeOne Pages 也弃用（域名随机，后返回 401）。**注意 `*.workers.dev` 在国内被 DNS 污染（解析到 Facebook 的 `face:b00c`），只能用 `*.pages.dev`**
+- **发布产物**：只含 `index.html intro.html css js assets` 五项；仓库根目录含 `.git`（31MB pack，超 Cloudflare 25MiB 单文件上限）和 `sql`/`.workbuddy` 等不该公开的内容
 - **关键文件**：
   - `js/config.js` — 全部游戏规则数值（改规则只动这里）
   - `js/pokemon-data.js` — 151 只中文名/进化链/稀有度
@@ -176,7 +178,7 @@
 10. **前端字段 ↔ 数据库列必须对齐**：改 `js/db.js` 的 insert/update/select 字段时，同步核对 `sql/upgrade_all.sql`；改表结构同理要查前端。**踩过的坑（2026-10-20）**：`sup.addTask` 曾往 insert 里塞了 `note: null`，而 tasks 表没这列 → 线上正式模式添加任务全挂（PGRST204「找不到 note 列」）；demo(localStorage) 不校验 schema 所以本地正常，造成「demo 能加、正式不能加」的假象。修复 = SQL `add column if not exists note text` + db.js 入参去掉 note。**教训：demo 模式正常 ≠ 正式模式正常，涉及写库的改动必须用线上同款 payload 验证。**
 11. **测试写进 `tests/`（常驻，别再用临时脚本）**：`node tests/run.js` 一键跑全部用例（2026-10-21 起，130+ 断言）。新增/改动核心逻辑时**先补一个 `tests/*.test.js` 用例再改代码**，用 `tests/harness.js` 的 `makeCtx(函数名数组, 全局覆盖)` 从 `js/app.js` 切真实函数进 vm 沙箱（`laggyDB(lag)` 造带往返延迟的假库、`runBg(ctx)` 手动驱动后台写库以便断言"渲染先于落库"）。临时脚本（`_t.js` / `_smoke.js`）用完仍必须删；`tools/_cache_moves.json.tmp` 已被 `.gitignore` 忽略
 12. **iOS 14 兼容（家里有旧 iPhone）**：Safari 14 不支持 `aspect-ratio`（图鉴格子/小卡框/详情卡大图靠它撑正方形，丢了就高度塌陷、图鉴不全、卡片乱）、`inset` 简写、无前缀 `backdrop-filter`。新加正方形容器时别只用 `aspect-ratio`，要用 `@supports not (aspect-ratio: 1 / 1)` + `padding-bottom` 兜底（style.css 末尾有现成模板）；全屏遮罩用 `inset: 0` 的要补 top/left/right/bottom
-13. 部署：`git push` 到 `origin master` 即自动更新 GitHub Pages（`https://hhx0202.github.io/kimi_work/`）
+13. 部署：`git push` 到 `origin master` → GitHub Actions 自动构建部署到 **Cloudflare Pages**（`https://kimi-work.pages.dev`），workflow 见 `.github/workflows/deploy-pages.yml`。**发布目录必须是只含 `index.html intro.html css js assets` 的子目录**（仓库根会被 `.git` 里 31MB 的 pack 撞上 25MiB 单文件上限，还会公开 `.git`/`sql`/`.workbuddy`）。**GitHub Pages 与 EdgeOne Pages 均已弃用**：前者国内实测 2.7 KB/s（图片加载不出来），后者域名随机且后来直接 401。**本仓库已改为私有仓库（2026-10-23）**：Cloudflare Pages 免费版支持私有仓库自动部署，GitHub Pages 需要付费 Pro（已不使用）。
 
 ## 八、开发验证技巧
 

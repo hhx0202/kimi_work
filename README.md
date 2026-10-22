@@ -188,14 +188,24 @@ demo 模式首次打开自动生成 4 个示例任务 + 1 个新手精灵球。
 
 **建表/升级**：全部在 `sql/upgrade_all.sql` 一个文件里（幂等可重复执行），Supabase 只跑它即可。
 
-## 部署上线（GitHub Pages + Supabase）
+## 部署上线（Cloudflare Pages + Supabase）
+
+**线上地址：https://kimi-work.pages.dev**
 
 1. Supabase SQL Editor 执行 `sql/upgrade_all.sql`（建表 + 全部升级，幂等可重复）——**本项目线上库已于 2026-10-20 执行完毕**，新环境才需要再跑
 2. `config.js` 填 `SUPABASE_URL` + publishable/anon key（`DB_MODE` 已自动判断：localhost/本地打开用演示数据，线上域名用真库）
-3. GitHub Pages：仓库 Settings → Pages → 从 `master` 分支 `/ (root)` 部署；以后推送代码自动更新
-4. 手机/平板收藏 `https://hhx0202.github.io/kimi_work/`
+3. **`git push` 即自动部署**：GitHub Actions（`.github/workflows/deploy-pages.yml`）在推送后把 `index.html intro.html css js assets` 复制进 `dist`，再 `wrangler pages deploy` 到 Cloudflare Pages 的 `kimi-work` 项目
+4. 手机/平板收藏 `https://kimi-work.pages.dev/`
 
-> 想绑定自己的域名：GitHub Pages Settings → Custom domain 设置即可。
+> **为什么不用 GitHub Pages**：实测国内下载速度只有 **2.7 KB/s**（一张 118KB 立绘 30 秒都下不完），宝可梦图片基本加载不出来。Cloudflare Pages 实测 40 KB/s 以上，快 10 倍以上。
+>
+> **手动部署**（不走 Actions 时）：
+> ```bash
+> cp -r index.html intro.html css js assets /d/AI/kimi_dist/
+> npx wrangler pages deploy /d/AI/kimi_dist --project-name kimi-work --branch master
+> ```
+>
+> **发布目录必须是只含那 5 项的子目录**：直接发仓库根目录，`.git` 里 31MB 的 pack 会撞上 Cloudflare 单文件 25MiB 上限，而且会把 `.git`/`sql`/`.workbuddy` 全部公开。
 
 ## 已验证（2026-10-19）
 
@@ -223,4 +233,4 @@ demo 模式首次打开自动生成 4 个示例任务 + 1 个新手精灵球。
 - 常用任务在 `js/app.js`：`quickTasks / saveQuickList / openQuickEdit / openQuickAddTask / delQuick / bindQuickLongPress / setQuickSort / saveQuickOrderFromDom`（排序模式），标签存 localStorage（`km_quick_tasks`）；图标 key 池在 `js/poke-icons.js`（`POKE_ICON_KEY_MAP / randomPokeIconKey / catIconByKey`）
 - 本地验证：改完直接刷新浏览器即可（demo 模式无后端依赖）
 - 无构建步骤、无 node_modules，纯静态，可整体复制/上传 GitHub
-- 素材体积：sprites 11MB + artwork 22MB = 约 33MB，GitHub Pages 托管无压力
+- 素材体积：sprites 11MB + scenes 8.7MB + artwork 22MB ≈ 41MB；Cloudflare Pages 免费版不限流量、单文件上限 25MiB，无压力
