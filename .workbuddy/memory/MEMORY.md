@@ -10,13 +10,26 @@
 - 卡面特效层 `.ptcg-fx` 是叠在立绘 `<img>` **之上**的，任何满屏元素都会遮住宝可梦；水/毒这类效果要么做成低透明度纹理/柔雾，要么只压局部。水系已改成「整卡浪花纹 + 水滴波纹 + 气泡」（波浪是低透明度线纹，可以铺满），改完必须 320px 卡 + 390px 移动视口各截一张确认立绘还清楚。
 - 水系比别的属性多两个子元素（`.wv-ripple` / `.wv-bubble`），由 `cardFxHTML` 只对 `wave` 输出；伪元素只有两个，层数不够就加子元素，别硬塞背景层导致动画互相覆盖。
 
+## 部署与访问（2026-10-22 定稿，重要）
+- **线上地址：`https://kimi-work.pages.dev`（Cloudflare Pages）**。已验证：任务/宝可梦数据走同一个 Supabase 库，图片能正常加载。
+- **为什么弃用 github.io**：实测国内速度只有 **2.7 KB/s**（118KB 立绘 30 秒都下不完 → 表现就是"图片加载不出来"）。Cloudflare Pages 实测立绘 4.7 秒、app.js 2.1 秒（118 KB/s），快 10 倍以上。
+- **`*.workers.dev` 被 DNS 污染**（解析到 Facebook 的 `face:b00c` / `128.242.240.244`，国内直接打不开）；**`*.pages.dev` 正常**（解析到 Cloudflare `172.66.x.x` / `104.18.x.x`）。**只能用 Pages，不能用 Workers 的 workers.dev 域名。**
+- **EdgeOne Pages 已弃用**：域名是随机子域名（记不住），且原项目后来直接返回 401 打不开。
+- **项目是 Direct Upload 创建的，不能事后绑 Git**（Cloudflare 官方限制，官方原文：Direct Upload projects can't switch to Git integration later）。自动部署改用 **GitHub Actions + wrangler**：`.github/workflows/deploy-pages.yml`，push master 触发，secrets 用 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`（account id `306aae3e2cbdfa6f127c4604cdf791c1`）。
+- **发布目录必须是 `dist`**，只含 `index.html intro.html css js assets` 五项。直接发仓库根目录会被 `.git` 里 31.6MB 的 pack 顶掉（Cloudflare 单文件上限 25MiB），而且会把 `.git`/`sql`/`.workbuddy/memory` 全部公开。
+- 手动部署：先 `cp -r index.html intro.html css js assets D:/AI/kimi_dist/`，再 `npx wrangler pages deploy D:/AI/kimi_dist --project-name kimi-work --branch master`（wrangler 已用 device flow 登录过，token 在本机）。
+- **用户家的 DNS 坑**：路由器 `192.168.2.1`（小米）只返回 AAAA、不返回 A，导致 `kimi-work.pages.dev` 在本地解析成 Non-existent domain；阿里 `223.5.5.5` / 腾讯 `119.29.29.29` 正常。排查域名问题先用 `nslookup <域名> 223.5.5.5` 对比，别急着怀疑平台。
+- **jsdelivr 在国内只有 5.9 KB/s**（三个库要半分钟才拉完）。第三方库走 CDN 是用户定的方向，但要知道这个代价；页面对此的缓冲是浏览器缓存。
+
 ## 工程约定
 - **禁用原生 `prompt()/confirm()/alert()`**：预览面板（iframe/webview）没 `allow-modals` 会报 "prompt() is not supported"。统一用 `askConfirm()`（返回 Promise）和自绘弹窗（如 `openParentAuth()`）。
 - 进度条配色在 `js/app.js` 的 `PROG_STOPS`（淡雾蓝 → 淡青绿 → 绿，RGB 插值）；**不要再用红/橙做低进度起始色**（用户觉得像报警），100% 仍走 `.progress-fill.full` 绿色 + 白光。
 - 睡前/叮嘱这类「多行文本」，一律按行拆成 `<li>` 渲染，每行配一个道具图标（哈希稳定，不能用 `Math.random`），样式见 `.note-lines`。
 - CSS 动画位移必须取 `background-size` 的整数倍，循环才无缝；`translateY` 用百分比会按伪元素自身高度算（踩过坑）。
 - 卡片底部 4 列按钮文案控制在 5 字以内（`.ptcg-btns` 四等分，12px）。
-- 发布：`git push origin master` 自动发 GitHub Pages；验证线上文件必须带 `?v=$(date +%s)` 破 CDN 缓存，再比对 md5。
+- **发布铁律（2026-10-22 用户明确要求，优先级最高）：改完可以 `git commit` 留本地，但绝对不要自己 `git push`。必须先把改动交给用户检查、等他亲口说"没问题/可以推"才推。** 背景：EdgeOne 部署后白屏，用户是事后才知道线上变了；他要保留最终控制权。要验证时给他 `kimi-work.pages.dev` 或明确说"还没推"。
+- **第三方库走 CDN，不要搬进仓库**（2026-10-22 用户明确否掉这个方向）：`index.html` 保持 `cdn.jsdelivr.net` 外链 + `crossorigin="anonymous"`。曾把三个库下载进 `js/vendor/`（e41853e），用户判断"完全没有意义、方向就是错的"，已 revert（638a8f4）。**别再自作主张做 vendor 化**；遇到组件加载失败先查网络/缓存/版本号，别动架构。
+- 发布：经用户确认后 `git push origin master` → GitHub Actions 自动部署到 Cloudflare Pages（workflow 见部署一节）；验证线上文件必须带 `?v=$(date +%s)` 破 CDN 缓存，再比对 md5。
 - 临时测试/预览文件用完即删。
 
 ## 数据字段约定（pokemon-data.js）
