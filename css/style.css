@@ -632,9 +632,30 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 }
 .cal-day.today { outline: 2px solid var(--blue); }
 .cal-day .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 2px; }
-.cal-day .dot.full { background: var(--green); }
-.cal-day .dot.part { background: var(--yellow); }
-.cal-day .dot.none { background: #ef9a9a; }
+/* 颜色不限定在 .cal-day 里：下面的图例也用同一套圆点，避免两处各写一遍颜色 */
+.dot.full { background: var(--green); }
+.dot.part { background: var(--yellow); }
+.dot.none { background: #ef9a9a; }
+/* 那天本来就没有这类任务（还没布置/已停用）：灰色，别和"没做"混为一谈 */
+.dot.na { background: #e0e0e0; }
+/* 日历维度切换（必做全清 / 选做全清）
+   刻意不用圆形色块图标：圆点在下面的日历格子里已经表示"完成状态"了，
+   同一块面板里同一种颜色不能有两个意思。这里靠整块底色的红/绿区分必做/选做。 */
+.cal-toggle { display: flex; gap: 8px; margin-bottom: 10px; }
+.cal-tab {
+  flex: 1; border: 1.5px solid #e3e8ef; background: #fff; border-radius: 10px;
+  padding: 8px 4px; font-size: 13px; font-weight: 800; color: var(--ink-soft); cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.cal-tab.req.on { border-color: #ef5350; background: #ffebee; color: #c62828; }
+.cal-tab.opt.on { border-color: #66bb6a; background: #e8f5e9; color: #2e7d32; }
+/* 图例：把圆点颜色的含义集中说明一次（格子里就不再重复解释） */
+.cal-legend {
+  display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 10px;
+  font-size: 11px; color: var(--ink-soft);
+}
+.cal-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.cal-legend .dot { display: inline-block; margin-top: 0; width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 .cal-day.empty { background: transparent; }
 
 /* 密码弹层 */

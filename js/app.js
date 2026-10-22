@@ -30,7 +30,8 @@ const S = {
   // 家长端
   pmId: null,           // 正在操作的宝可梦
   calOffset: 0,         // 日历偏移(月)
-  statDim: 'all',       // 完成统计/打卡日历维度（孩子端）
+  statDim: 'all',       // 完成统计维度（孩子端）：all 全部每日 / req 必做 / opt 选做
+  calDim: 'req',        // 打卡日历只看全清：req 必做全清 / opt 选做全清
   parentDate: null,     // 家长端当前查看/布置的日期，默认今天
   // 孩子端查看的日期（历史查看用，默认今天）
   viewDate: null,       // 'YYYY-MM-DD'，启动时置为今天
@@ -1412,17 +1413,31 @@ function envSnapshot(extra) {
     bits.push('屏幕=' + (window.screen ? `${screen.width}x${screen.height}` : '?'));
   } catch (e) {}
   try {
-    // 这个页面加载过的外部脚本：哪个域挂了、哪个没带 crossorigin
-    const ext = [...document.querySelectorAll('script[src]')]
-      .map(s => s.src).filter(s => /^https?:/.test(s) && s.indexOf(location.origin) !== 0)
-      .map(s => { try { return new URL(s).host; } catch (e) { return s; } });
-    if (ext.length) bits.push('外部脚本=' + [...new Set(ext)].join(','));
+    // 页面里现在还挂着的脚本：外域域名 + 内联脚本数（浏览器/输入法注入的多半是内联或被改过的）
+    const tags = [...document.querySelectorAll('script')];
+    const ext = tags.filter(s => /^https?:/.test(s.src || '') && s.src.indexOf(location.origin) !== 0)
+      .map(s => { try { return new URL(s.src).host; } catch (e) { return s.src; } });
+    const inline = tags.filter(s => !s.src).length;
+    bits.push('脚本标签=' + tags.length + (ext.length ? '(外域:' + [...new Set(ext)].join(',') + ')' : '') + (inline ? `(内联${inline})` : ''));
+    // 实际下载过的脚本资源（含动态插入后又被移除的）：能抓到"页面上看不见但真加载过"的脚本
+    if (window.performance && performance.getEntriesByType) {
+      const loaded = performance.getEntriesByType('resource')
+        .filter(r => r.initiatorType === 'script' || /\.js(\?|$)/.test(r.name))
+        .map(r => { try { return new URL(r.name).host; } catch (e) { return r.name; } });
+      if (loaded.length) bits.push('已加载脚本域=' + [...new Set(loaded)].join(','));
+    }
     // 三个 CDN 依赖到底有没有就绪：缺哪个就是哪个没加载上（网络/CORS/被拦）
     bits.push('就绪=' + [
       'supabase:' + (typeof window.supabase !== 'undefined' ? '是' : '否'),
       'confetti:' + (typeof window.confetti !== 'undefined' ? '是' : '否'),
       'html2canvas:' + (typeof window.html2canvas !== 'undefined' ? '是' : '否'),
     ].join(','));
+  } catch (e) {}
+  try {
+    // 距打开页面多久、是不是从历史恢复的：判断是"刚加载时"还是"放着放着/切回来时"出的
+    if (window.performance && performance.now) bits.push('加载后=' + (performance.now() / 1000).toFixed(1) + 's');
+    const nav = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+    if (nav) bits.push('导航=' + ({ reload: '刷新', back_forward: '前进后退恢复', navigate: '正常打开' }[nav.type] || nav.type));
   } catch (e) {}
   try {
     if (window.__earlyErrors && window.__earlyErrors.length) {
@@ -2461,29 +2476,22 @@ function renderMe() {
   `;
   renderKidCal();
 }
-// 孩子端「我的」页打卡日历（与统计同一维度）
+// 孩子端「我的」页打卡日历：只看全清（必做 / 选做），不再列打卡记录清单
 function kidCalPanel() {
-  const dailyTasks = S.tasks.filter(t => t.schedule === 'daily');
   return `
     <div class="panel" style="margin-top:16px">
-      <h3>📅 打卡日历 <small style="font-weight:400">按每日任务</small></h3>
-      <select id="kid-cal-dim" onchange="S.statDim=this.value;renderMe()" style="width:100%;margin-bottom:8px">
-        <option value="all" ${S.statDim === 'all' ? 'selected' : ''}>全部每日任务</option>
-        <option value="req" ${S.statDim === 'req' ? 'selected' : ''}>必做任务全清</option>
-        <option value="opt" ${S.statDim === 'opt' ? 'selected' : ''}>选做任务全清</option>
-        ${dailyTasks.map(t => `<option value="${t.id}" ${S.statDim === String(t.id) ? 'selected' : ''}>${t.title}</option>`).join('')}
-      </select>
+      <h3>📅 打卡日历</h3>
+      <div class="cal-toggle">
+        <button class="cal-tab req ${S.calDim !== 'opt' ? 'on' : ''}" data-action="cal-dim" data-dim="req">必做全清</button>
+        <button class="cal-tab opt ${S.calDim === 'opt' ? 'on' : ''}" data-action="cal-dim" data-dim="opt">选做全清</button>
+      </div>
       <div id="kid-cal-root"></div>
-      ${dailyTasks.length ? `
-      <h3 style="margin-top:12px;font-size:13px">📋 打卡记录</h3>
-      <select id="kid-log-task" onchange="showTaskLogs('kid-log-list', this.value)" style="width:100%">
-        <option value="">选择打卡项</option>
-        <option value="__all">全部每日任务</option>
-        <option value="__req">必做任务全清</option>
-        <option value="__opt">选做任务全清</option>
-        ${dailyTasks.map(t => `<option value="${t.id}">${t.title}</option>`).join('')}
-      </select>
-      <div id="kid-log-list"></div>` : ''}
+      <div class="cal-legend">
+        <span><i class="dot full"></i>全清</span>
+        <span><i class="dot part"></i>做了一部分</span>
+        <span><i class="dot none"></i>没做</span>
+        <span><i class="dot na"></i>那天没任务</span>
+      </div>
     </div>
   `;
 }
@@ -2506,34 +2514,37 @@ function checkinLogPanel(title, idPrefix) {
     </div>
   `;
 }
-// 某组每日任务全部完成（全清）的日子
-function allClearDates(tasks) {
-  if (!tasks.length) return [];
+// 有打卡的日子（任意一条每日任务完成过，去重）
+function allDoneDates() {
   const dates = [];
   for (const d in S.logs) {
-    let all = true;
-    for (const t of tasks) { const l = S.logs[d][t.id]; if (!(l && (l.completed || l.done))) { all = false; break; } }
-    if (all) dates.push(d);
+    if (dayTasksForProgress(d).some(t => { const l = S.logs[d][t.id]; return l && (l.done || l.completed); })) dates.push(d);
   }
-  return dates;
+  return dates.sort();
+}
+// 某组每日任务全部完成（全清）的日子。
+// 分母按「那天实际生效的任务」算（calTasksOn），和日历/连击同一口径：
+// 用当前任务列表会把今天才布置的重复任务算进过去的日子，永远凑不齐全清。
+function allClearDates(dim) {
+  const dates = [];
+  for (const d in S.logs) {
+    const st = calDayStat(d, dim);
+    if (st.full) dates.push(d);
+  }
+  return dates.sort();
 }
 // 展示打卡记录（支持全部每日/必做全清/选做全清/单个任务）
 function showTaskLogs(listId, key) {
   const el = document.getElementById(listId);
   if (!el) return;
   if (!key) { el.innerHTML = ''; return; }
-  const daily = S.tasks.filter(t => t.schedule === 'daily');
   let dates = [];
-  if (key === '__all') {
-    // 全部每日任务的打卡日（去重）
-    const set = new Set();
-    daily.forEach(t => { for (const d in S.logs) { const l = S.logs[d][t.id]; if (l && (l.completed || l.done)) set.add(d); } });
-    dates = [...set];
-  } else if (key === '__req') {
-    dates = allClearDates(daily.filter(t => t.required !== false));
-  } else if (key === '__opt') {
-    dates = allClearDates(daily.filter(t => t.required === false));
+  if (key === '__all' || key === '__req' || key === '__opt') {
+    dates = key === '__all'
+      ? allDoneDates()
+      : allClearDates(key === '__opt' ? 'opt' : 'req');
   } else {
+    // 单个任务：那天有打卡就算（任务本身没停用的话按日期看，停用后历史也保留）
     for (const d in S.logs) { const l = S.logs[d][key]; if (l && (l.completed || l.done)) dates.push(d); }
   }
   dates.sort();
@@ -2965,6 +2976,7 @@ function bindActions() {
     else if (act === 'parent-lock') { localStorage.removeItem(LK('parent_authed')); S.role = 'kid'; localStorage.setItem(LK('role'), 'kid'); toast('已登出，进家长端需重新输入密码'); render(); }
     else if (act === 'kid-logout') { if (window.__fabDragged) return; localStorage.removeItem(LK('parent_authed')); toast('已登出家长身份'); render(); }
     else if (act === 'parent-cal') { S.calOffset += Number(btn.dataset.step || 0); renderKidCal(); }
+    else if (act === 'cal-dim') { S.calDim = btn.dataset.dim === 'opt' ? 'opt' : 'req'; renderMe(); }
     else if (act === 'parent-date-prev') { S.parentDate = shiftDate(S.parentDate, -1); render(); refreshParentNote(); }
     else if (act === 'parent-date-next') { S.parentDate = shiftDate(S.parentDate, 1); render(); refreshParentNote(); }
     else if (act === 'parent-date-today') { S.parentDate = DB.today(); render(); refreshParentNote(); }
@@ -4362,16 +4374,23 @@ function pointLogPanel() {
   `;
 }
 
-// 按维度过滤每日任务：all 全部每日 / req 必做 / opt 选做
-function filterDailyByDim(dim) {
-  let daily = S.tasks.filter(t => t.schedule === 'daily');
-  if (dim === 'req') daily = daily.filter(t => t.required !== false);
-  else if (dim === 'opt') daily = daily.filter(t => t.required === false);
-  else if (dim && dim !== 'all') daily = daily.filter(t => t.id === Number(dim));  // 单个重复任务
-  return daily;
+// 某天该维度下的任务集合（与连击同一口径：按当天实际生效的任务算，不含未来才布置的）
+// dim: 'req' 必做全清 / 'opt' 选做全清 / 'all' 全部每日任务
+function calTasksOn(date, dim) {
+  const ts = dayTasksForProgress(date).filter(t => dim === 'all' || (dim === 'opt' ? t.required === false : t.required !== false));
+  return ts;
 }
-// 打卡日历网格（含翻月导航），家长端和孩子端共用
-function calGridHTML(daily) {
+// 某天在该维度下的完成情况：{ total, done, full }
+function calDayStat(date, dim) {
+  const ts = calTasksOn(date, dim);
+  let done = 0;
+  ts.forEach(t => { const l = S.logs[date] && S.logs[date][t.id]; if (l && (l.done || l.completed)) done++; });
+  return { total: ts.length, done, full: ts.length > 0 && done === ts.length };
+}
+// 打卡日历网格（含翻月导航），家长端和孩子端共用。
+// 分母必须按「那天有哪些任务」逐天算：用当前任务列表会把今天新加的重复任务
+// 算进昨天/前天的分母，孩子那天明明全做了也永远到不了 100%（一直是黄点、也认不出全清）。
+function calGridHTML(dim) {
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth() + S.calOffset;
   const first = new Date(y, m, 1);
@@ -4390,14 +4409,12 @@ function calGridHTML(daily) {
   for (let i = 0; i < startDow; i++) html += '<span class="cal-day empty"></span>';
   for (let d = 1; d <= daysInMonth; d++) {
     const ds = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const dayLogs = S.logs[ds];
-    let doneN = 0;
-    daily.forEach(t => { const l = dayLogs && dayLogs[t.id]; if (l && (l.done || l.completed)) doneN++; });
-    let dot = '<span class="dot none"></span>';
-    if (daily.length) {
-      dot = doneN === daily.length ? '<span class="dot full"></span>' : (doneN > 0 ? '<span class="dot part"></span>' : '<span class="dot none"></span>');
-    }
-    html += `<span class="cal-day ${ds === todayStr ? 'today' : ''}">${d}${dot}</span>`;
+    const st = calDayStat(ds, dim || 'req');
+    // 那天本来就没有这类任务（还没布置 / 已停用）→ 不涂色，也别误标成"没做"
+    let dot = '<span class="dot na"></span>';
+    if (st.total) dot = st.full ? '<span class="dot full"></span>' : (st.done > 0 ? '<span class="dot part"></span>' : '<span class="dot none"></span>');
+    const tip = st.total ? `${ds} · ${st.done}/${st.total}` : `${ds} · 无任务`;
+    html += `<span class="cal-day ${ds === todayStr ? 'today' : ''}" title="${tip}">${d}${dot}</span>`;
   }
   html += '</div>';
   return html;
@@ -4406,7 +4423,7 @@ function calGridHTML(daily) {
 function renderKidCal() {
   const root = $('kid-cal-root');
   if (!root) return;
-  root.innerHTML = calGridHTML(filterDailyByDim(S.statDim));
+  root.innerHTML = calGridHTML(S.calDim);
 }
 function parentPmPanel() {
   return `
@@ -4725,6 +4742,7 @@ function shareCardHTML() {
 
 // ---------- 启动 ----------
 window.addEventListener('DOMContentLoaded', async () => {
+  window.__kmAppReady = true;   // 之后 index.html 的早期监听就不再往 __earlyErrors 里写（避免重复记录）
   // 先把 index.html 里"在外部脚本之前"记下的早期错误收进来（CDN 脚本加载失败就靠这个）
   try {
     const early = window.__earlyErrors || [];

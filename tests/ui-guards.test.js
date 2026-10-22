@@ -31,9 +31,11 @@ module.exports = async function run() {
     '早期错误监听排在 CDN 脚本之前');
   ok(/addEventListener\('error',[\s\S]*?\}\s*,\s*true\s*\)/.test(HTML), '早期监听用 capture 才能收到资源加载失败');
   ok(APP.includes('function envSnapshot('), '有现场信息采集函数');
-  for (const k of ['UA=', '页面=', '可见=', '在线=', '外部脚本=', '早期错误=', '页面更新于=', '就绪=']) {
+  for (const k of ['UA=', '页面=', '可见=', '在线=', '脚本标签=', '已加载脚本域=', '早期错误=', '页面更新于=', '就绪=', '加载后=', '导航=']) {
     ok(APP.includes(k), `现场信息包含 ${k.slice(0, -1)}`);
   }
+  ok(APP.includes("window.__kmAppReady = true"), 'app 就绪后停用早期监听，避免同一条错误记两次');
+  ok(HTML.includes('window.__kmAppReady'), 'index.html 的早期监听认得就绪标记');
   ok(APP.includes('切回前台后') && APP.includes('visibilityHint'), '记录是否刚从后台切回来');
   ok(APP.includes('脚本错误（跨域，无详情）'), '跨域 Script error 单独归一类，方便统计');
   ok(/extra:\s*String\(extra \|\| ''\)\.slice\(0,\s*900\)/.test(APP), 'extra 容量够放现场信息，不会被截断');

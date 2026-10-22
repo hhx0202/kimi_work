@@ -27,8 +27,11 @@
        useCapture=true 才能收到"资源加载失败"（script/link 的 error 不冒泡）。 -->
   <script>
     window.__earlyErrors = [];
+    // app.js 启动后会接管（并把这里暂存的取走）；之后不再往这里写，
+    // 否则同一条错误既进"早期错误"又进日志，下次看现场信息时会误以为是两次。
     window.addEventListener('error', function (e) {
       try {
+        if (window.__kmAppReady) return;
         var t = e && e.target;
         var isRes = t && t !== window && (t.tagName === 'SCRIPT' || t.tagName === 'LINK');
         if (!e.message && !isRes) return;
