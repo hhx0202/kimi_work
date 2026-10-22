@@ -10,7 +10,7 @@ const DATA_SRC = fs.readFileSync(path.join(__dirname, '../js/pokemon-data.js'), 
 function setup() {
   const ctx = {
     console,
-    CONFIG: { EVO_EXP_1: 300, EVO_EXP_2: 500, SHINY_EXP: 100 },
+    CONFIG: { EVO_EXP_1: 300, EVO_EXP_2: 500, SHINY_EXP: 100, BRANCH_REPEAT_RATE: 0.3 },
     S: { pokemons: [] },
   };
   vm.createContext(ctx);
@@ -19,7 +19,7 @@ function setup() {
   ctx.LK = k => 'km_' + k;
   ctx.localStorage = { _m: {}, getItem(k) { return k in this._m ? this._m[k] : null; }, setItem(k, v) { this._m[k] = String(v); }, removeItem(k) { delete this._m[k]; } };
   loadInto(ctx, ['lsGet', 'lsSet', 'evoTargets', 'evoAncestors', 'hasNextEvo', 'hasShinyCopy', 'shinyLineageNo', 'willInheritShiny', 'expThreshold', 'canEvolve', 'isMaxed',
-    'branchPending', 'dexGot', 'ownedNumbers',
+    'branchPending', 'dexGot', 'ownedNumbers', 'evoNeedExp',
     'artworkPath', 'scenePath', 'savedCardArtMode', 'setCardArtMode', 'cardArtModes', 'currentCardArtMode', 'cardArtSrc', 'cycleCardArt']);
   return { ctx, ...data };
 }
@@ -106,6 +106,20 @@ module.exports = async function run() {
   ok(ctx.branchPending(133) === false, '三条分支集齐后不再回到捕捉池');
   ctx.S.pokemons = [pmOf(2)];
   ok(ctx.branchPending(1) === false, '单线进化（妙蛙种子）不受影响，进化后不会再遇到');
+
+  section('分支重复培养打三折');
+  ctx.S.pokemons = [];
+  ok(ctx.evoNeedExp(133) === 300, '第一次养伊布：300（全额）');
+  ctx.S.pokemons = [pmOf(134)];
+  ok(ctx.evoNeedExp(133) === 90, '已经养出过水伊布后，伊布只要 90（三折）');
+  ok(ctx.evoNeedExp(1) === 300, '单线基础形态不打折（妙蛙种子仍是 300）');
+  ok(ctx.evoNeedExp(134) === 100, '水伊布没有后续进化，进闪耀仍是 100');
+  ok(ctx.evoNeedExp(2) === 500, '一阶形态仍是 500（妙蛙草）');
+  const eve = { id: 9001, pokedex_no: 133, name: '伊布', shiny: false, exp: 89 };
+  ok(ctx.canEvolve(eve).ok === false, '三折后 89 经验还不够');
+  eve.exp = 90;
+  ok(ctx.canEvolve(eve).ok === true, '90 经验即可进化（canEvolve 与 expThreshold 一致）');
+  ok(ctx.expThreshold(eve) === 90, '进度条阈值同样是 90，不会出现「满了却进化不了」');
   ctx.S.pokemons = before;
 
   section('卡牌详情造型：立绘 / 异色动图 / 场景卡');

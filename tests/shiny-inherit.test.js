@@ -4,7 +4,7 @@
 //   目标形态已经有 ✨ 卡 → 不再重复生成（保持普通卡，同族只留一张 ✨）
 const { makeCtx, ok, section } = require('./harness');
 
-const FNS = ['evoAncestors', 'evoTargets', 'hasNextEvo', 'evoStage', 'hasShinyCopy',
+const FNS = ['evoAncestors', 'evoTargets', 'hasNextEvo', 'evoStage', 'hasShinyCopy', 'evoNeedExp',
   'shinyLineageNo', 'willInheritShiny', 'canEvolve', 'addShinyCopy', 'evolvePm'];
 
 const PK = {

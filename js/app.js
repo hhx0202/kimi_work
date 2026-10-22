@@ -855,13 +855,26 @@ function evoDescendants(no) {
   walk(no);
   return out;
 }
-function expThreshold(pm) {
-  if (!hasNextEvo(pm.pokedex_no)) return CONFIG.SHINY_EXP;   // 没有后续进化：攒满即进入闪耀形态
-  const stage = evoStage(pm.pokedex_no);
-  if (stage === 0) return CONFIG.EVO_EXP_1;       // 基础形态
+// 进化/进闪耀所需经验：expThreshold 和 canEvolve 共用，避免两处阈值写歪
+// 分支进化（伊布）已经养出过至少一只 → 再次培养打三折：图鉴已经点亮过，不必从头再养一遍
+function evoNeedExp(no) {
+  if (!hasNextEvo(no)) return CONFIG.SHINY_EXP;   // 没有后续进化：攒满即进入闪耀形态
+  const stage = evoStage(no);
+  if (stage === 0) {
+    const t = evoTargets(no);
+    if (t.length > 1) {
+      const { got } = dexGot();
+      if (t.some(x => got[x])) {
+        const rate = CONFIG.BRANCH_REPEAT_RATE == null ? 0.3 : CONFIG.BRANCH_REPEAT_RATE;
+        return Math.max(1, Math.round(CONFIG.EVO_EXP_1 * rate));
+      }
+    }
+    return CONFIG.EVO_EXP_1;                      // 基础形态
+  }
   if (stage === 1) return CONFIG.EVO_EXP_2;       // 一阶形态
   return CONFIG.SHINY_EXP;                        // 二阶（最终）形态：再攒满即进入闪耀形态
 }
+function expThreshold(pm) { return evoNeedExp(pm.pokedex_no); }
 // 是否已经有这只（同名编号）的闪耀卡
 function hasShinyCopy(no) { return S.pokemons.some(p => p.pokedex_no === no && p.shiny); }
 // 闪耀血统：这条进化链里「更早的形态」已经有 ✨ 卡（比如闪耀卡用在基础形态上）
@@ -935,14 +948,14 @@ function evoStage(no) { // 0基础 1一段 2二段（祖先有几个就是第几
   return Math.max(0, evoAncestors(no).length - 1);
 }
 function canEvolve(pm) {
+  const needExp = evoNeedExp(pm.pokedex_no);
   // 没有后续进化的宝可梦：经验满 SHINY_EXP 即进入闪耀形态
   if (!hasNextEvo(pm.pokedex_no)) {
     if (pm.shiny) return { ok: false };
     if (hasShinyCopy(pm.pokedex_no)) return { ok: false, why: '已拥有闪耀形态' };  // 别再重复生成闪耀卡
-    return pm.exp >= CONFIG.SHINY_EXP ? { ok: true, shiny: true } : { ok: false, why: `经验 ${pm.exp}/${CONFIG.SHINY_EXP}` };
+    return pm.exp >= needExp ? { ok: true, shiny: true } : { ok: false, why: `经验 ${pm.exp}/${needExp}` };
   }
   const stage = evoStage(pm.pokedex_no);
-  const needExp = stage === 0 ? CONFIG.EVO_EXP_1 : CONFIG.EVO_EXP_2;  // 各段进化所需经验
   if (pm.exp < needExp) return { ok: false, why: `经验 ${pm.exp}/${needExp}` };
   // 这条链已经有 ✨ 卡（闪耀卡用在了更早的形态上）→ 进化出来的形态也直接是闪耀形态
   const inherit = evoTargets(pm.pokedex_no).some(t => willInheritShiny(pm, t));
