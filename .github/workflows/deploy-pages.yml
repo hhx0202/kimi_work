@@ -40,9 +40,11 @@ jobs:
           echo ""
           echo "--- Secret 里填的 account id 长度: ${#A} ---"
 
-      # 不传 CLOUDFLARE_ACCOUNT_ID：让 wrangler 自己从 token 能访问的账号里找，
-      # 避免因为 Secret 里那串 id 有一个字符不对而报 Authentication error 10000
+      # 必须显式传 CLOUDFLARE_ACCOUNT_ID：
+      # 该 token 只有 Pages 操作权限、没有"列账号"权限，wrangler 自动检测账号会失败
+      # （/accounts 返回空数组）。直传 account id 就绕开了那一步。
       - name: 部署到 Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx --yes wrangler@4 pages deploy dist --project-name kimi-work --branch master
