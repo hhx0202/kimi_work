@@ -18,7 +18,7 @@ function setup() {
   const data = vm.runInContext('({ POKEMON, PK_BY_NO, PK_EVOLVE_FROM, CATCH_POOL, evoStage })', ctx);
   ctx.LK = k => 'km_' + k;
   ctx.localStorage = { _m: {}, getItem(k) { return k in this._m ? this._m[k] : null; }, setItem(k, v) { this._m[k] = String(v); }, removeItem(k) { delete this._m[k]; } };
-  loadInto(ctx, ['lsGet', 'lsSet', 'evoTargets', 'hasNextEvo', 'hasShinyCopy', 'expThreshold', 'canEvolve', 'isMaxed',
+  loadInto(ctx, ['lsGet', 'lsSet', 'evoTargets', 'evoAncestors', 'hasNextEvo', 'hasShinyCopy', 'shinyLineageNo', 'willInheritShiny', 'expThreshold', 'canEvolve', 'isMaxed',
     'artworkPath', 'scenePath', 'savedCardArtMode', 'setCardArtMode', 'cardArtModes', 'currentCardArtMode', 'cardArtSrc', 'cycleCardArt']);
   return { ctx, ...data };
 }

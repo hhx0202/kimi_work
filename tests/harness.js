@@ -10,8 +10,10 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
-const APP_SRC = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
-const DB_SRC = fs.readFileSync(path.join(ROOT, 'js/db.js'), 'utf8');
+// 统一成 LF：Windows 上 checkout 出来的是 CRLF，源码断言里写的是 \n，不归一化会误报失败
+const readSrc = f => fs.readFileSync(path.join(ROOT, f), 'utf8').replace(/\r\n/g, '\n');
+const APP_SRC = readSrc('js/app.js');
+const DB_SRC = readSrc('js/db.js');
 
 // 按函数名从 app.js 源码里切出完整函数（花括号配平），支持 async
 function slice(name) {

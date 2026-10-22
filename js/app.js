@@ -856,6 +856,15 @@ function expThreshold(pm) {
 }
 // 是否已经有这只（同名编号）的闪耀卡
 function hasShinyCopy(no) { return S.pokemons.some(p => p.pokedex_no === no && p.shiny); }
+// 闪耀血统：这条进化链里「更早的形态」已经有 ✨ 卡（比如闪耀卡用在基础形态上）
+// → 之后进化出来的形态也直接继承闪耀形态，不用再喂一只 ✨ 卡
+function shinyLineageNo(no) {
+  return evoAncestors(no).slice(0, -1).some(a => hasShinyCopy(a));
+}
+// 进化到 toNo 时会不会自动变成闪耀形态（目标已经有 ✨ 卡就不再重复生成）
+function willInheritShiny(pm, toNo) {
+  return !pm.shiny && !hasShinyCopy(toNo) && shinyLineageNo(toNo);
+}
 // 闪耀形态统一「额外多一张卡」：原来的普通卡留着，另建一张 ✨ 卡（和演示数据里 ‹皮卡丘 + ✨皮卡丘› 一致）
 async function addShinyCopy(pm) {
   const copy = await DB.addPokemon({ pokedex_no: pm.pokedex_no, shiny: true });
@@ -872,14 +881,14 @@ function isMaxed(pm) {
   if (!hasNextEvo(pm.pokedex_no)) return true;      // 没有后续进化：闪耀形态即最终形态
   return evoStage(pm.pokedex_no) >= 2;              // 二阶（最终形态）闪耀形态即封顶
 }
-// 进化阶段标签：✨ / 基础 / 一阶 / 二阶
-function evoStageLabel(pm) {
-  if (pm.shiny) return '✨';
+// 进化阶段文字：基础 / 一阶 / 二阶（按阶段排序时也能一眼看出处在第几阶）
+function stageText(pm) {
   const no = pkNoOf(pm);                 // 旧数据 pokedex_no 缺失时按名字找回，避免误标「基础」
-  if (no === null) return '基础';
-  const s = evoStage(no);
+  const s = no === null ? 0 : evoStage(no);
   return s === 0 ? '基础' : (s === 1 ? '一阶' : '二阶');
 }
+// 角标用：闪耀卡前面加 ✨（详情卡里已经有「✨闪耀形态」标签，那里直接用 stageText，不用重复 ✨）
+function evoStageLabel(pm) { return (pm.shiny ? '✨' : '') + stageText(pm); }
 // 下一管经验满时会怎样：进化 / 进入闪耀形态
 function nextStageWord(pm) {
   if (!hasNextEvo(pm.pokedex_no)) return '闪耀';
@@ -927,7 +936,9 @@ function canEvolve(pm) {
   const stage = evoStage(pm.pokedex_no);
   const needExp = stage === 0 ? CONFIG.EVO_EXP_1 : CONFIG.EVO_EXP_2;  // 各段进化所需经验
   if (pm.exp < needExp) return { ok: false, why: `经验 ${pm.exp}/${needExp}` };
-  return { ok: true, needExp, stage };
+  // 这条链已经有 ✨ 卡（闪耀卡用在了更早的形态上）→ 进化出来的形态也直接是闪耀形态
+  const inherit = evoTargets(pm.pokedex_no).some(t => willInheritShiny(pm, t));
+  return { ok: true, needExp, stage, inherit };
 }
 // 分支进化：让玩家选要进成哪一只（伊布）
 function pickEvoTarget(pm, targets) {
@@ -983,12 +994,14 @@ async function evolvePm(pm) {
   }
   // 进化消耗掉这管经验（不再花积分，越往后进化需要越多经验）
   const leftExp = pm.exp - c.needExp;
-  await DB.updatePokemon(pm.id, { pokedex_no: toNo, name: (pm.shiny ? '✨' : '') + PK_BY_NO[toNo].name, exp: leftExp });
-  pm.pokedex_no = toNo; pm.name = (pm.shiny ? '✨' : '') + PK_BY_NO[toNo].name; pm.exp = leftExp;
-  await showEvolve(fromNo, toNo, pm.shiny);
+  // 闪耀继承：更早的形态已经有 ✨ 卡（闪耀卡用在基础形态上）→ 进化出来的形态直接是闪耀形态
+  const willShiny = pm.shiny || willInheritShiny(pm, toNo);
+  await DB.updatePokemon(pm.id, { pokedex_no: toNo, name: (willShiny ? '✨' : '') + PK_BY_NO[toNo].name, exp: leftExp, shiny: willShiny });
+  pm.pokedex_no = toNo; pm.name = (willShiny ? '✨' : '') + PK_BY_NO[toNo].name; pm.exp = leftExp; pm.shiny = willShiny;
+  await showEvolve(fromNo, toNo, willShiny);
   renderTop();
   render();
-  if (!pm.shiny && S.pokemons.filter(p => p.pokedex_no === toNo && !p.shiny).length === 1) {
+  if (!willShiny && S.pokemons.filter(p => p.pokedex_no === toNo && !p.shiny).length === 1) {
     confetti({ particleCount: 120, spread: 100, origin: { y: .4 } });
   }
 }
@@ -1005,6 +1018,10 @@ async function catchOne() {
   let pool = baseOnly(CATCH_POOL[rare ? 'rare' : 'common']);
   if (!pool.length) pool = baseOnly(CATCH_POOL.common.concat(CATCH_POOL.rare));
   if (!pool.length) { toast('🏆 基础形态都抓齐啦，剩下的要靠进化获得！'); return; }  // 集满不扣球
+  // 防误点：真的要用掉一个球时才问（球不够 / 抓齐了都不问）
+  const yes = await askConfirm(`要花 1 个精灵球捕捉吗？\n现在有 ${S.balls} 个球，抓到的一定是一只没抓过的宝可梦。`, { title: '🎈 捕捉宝可梦', okText: '用 1 个球', danger: false });
+  if (!yes) return;
+  if (S.balls < 1) { toast('球已经用完啦'); return; }   // 确认弹窗停留期间可能被别处改掉
   await DB.addItemLog('ball', -1, '捕捉消耗', DB.today());
   S.balls--;
   const no = pool[Math.floor(Math.random() * pool.length)];
@@ -1058,6 +1075,11 @@ function showShiny(pm, sub = null) {
 // ---------- 买球 ----------
 async function buyBall() {
   if (S.balance < CONFIG.BALL_PRICE) { toast('积分不够（球要 ' + CONFIG.BALL_PRICE + ' 分）'); return; }
+  // 防误点：先确认要花多少分，剩下的积分也写清楚
+  const left = S.balance - CONFIG.BALL_PRICE;
+  const yes = await askConfirm(`要花 ${CONFIG.BALL_PRICE} 积分买 1 个精灵球吗？\n现在有 ${S.balance} 分，买完剩 ${left} 分。`, { title: '🔴 买精灵球', okText: `花 ${CONFIG.BALL_PRICE} 分`, danger: false });
+  if (!yes) return;
+  if (S.balance < CONFIG.BALL_PRICE) { toast('积分不够啦'); return; }   // 确认期间可能被别处改掉
   // 乐观更新：扣分/加球先反映到界面，落库后台
   S.balance -= CONFIG.BALL_PRICE;
   S.balls++;
@@ -1141,7 +1163,7 @@ function showEvolve(fromNo, toNo, shiny) {
       mon.src = spritePath(toNo, shiny);
       sparkleBurst(ov.querySelector('.ov-stage'), 18);
       confetti({ particleCount: 140, spread: 110, origin: { y: .4 } });
-      sub.textContent = `进化成 ${PK_BY_NO[toNo].name} 了！`;
+      sub.textContent = shiny ? `进化成 ✨${PK_BY_NO[toNo].name}（闪耀形态）了！` : `进化成 ${PK_BY_NO[toNo].name} 了！`;
       setTimeout(finish, 2200);
     }, 2000);
   });
@@ -1996,7 +2018,7 @@ function shinyBarHTML() {
   }
   return `
     <div class="shiny-bar">
-      <div class="shiny-bar-main"><b>✨ 闪耀卡 ×${S.shinyCards}</b><span>用一张，给一只宝可梦多一张 ✨ 卡</span></div>
+      <div class="shiny-bar-main"><b>✨ 闪耀卡 ×${S.shinyCards}</b><span>用一张，给一只宝可梦多一张 ✨ 卡（之后进化也一直是 ✨）</span></div>
       <button class="shiny-btn" data-action="shiny-pick">使用</button>
     </div>`;
 }
@@ -2012,16 +2034,20 @@ async function applyShinyCard(pmId) {
   const copy = await addShinyCopy(pm);
   shinyPickOn = false;
   renderTop(); renderPokemons();
-  await showShiny(copy, `${PK_BY_NO[copy.pokedex_no].name} 变成了闪耀形态，卡册里多了一张 ✨ 卡！`);
+  const extra = hasNextEvo(pm.pokedex_no) ? '，之后它进化出来的形态也会直接是闪耀形态' : '';
+  await showShiny(copy, `${PK_BY_NO[copy.pokedex_no].name} 变成了闪耀形态，卡册里多了一张 ✨ 卡${extra}！`);
 }
 
-// 宝可梦排序：捕获顺序（默认）/ 捕获倒序 / 编号顺序 / 属性。
+// 宝可梦排序：捕获顺序（默认）/ 捕获倒序 / 编号顺序 / 属性 / 进化阶段（升·降）。
 // 这是"这台设备上的浏览偏好"，存 localStorage（不跨设备同步）。
+// 进化阶段 = 基础 → 一阶 → 二阶（卡牌里也叫「基础 / 1阶进化 / 2阶进化」）
 const PM_SORT_OPTS = [
   ['capture', '捕获顺序', '最早抓到的在前'],
   ['capture_desc', '捕获倒序', '最近抓到的在前'],
   ['dex', '编号顺序', '按图鉴编号从小到大'],
   ['type', '属性', '同属性放在一起'],
+  ['stage', '阶段升序', '基础 → 一阶 → 二阶'],
+  ['stage_desc', '阶段降序', '二阶 → 一阶 → 基础'],
 ];
 function pmSortMode() {
   const v = lsGet(LK('pm_sort'), 'capture');
@@ -2050,6 +2076,18 @@ function pmSortList() {
   }
   if (mode === 'dex') {
     return list.sort((a, b) => (Number(a.pokedex_no) || 0) - (Number(b.pokedex_no) || 0) || byId(a, b));
+  }
+  // 进化阶段：基础(0) / 一阶(1) / 二阶(2)，同一阶段内按图鉴编号；编号查不到的（老数据）永远排最后
+  if (mode === 'stage' || mode === 'stage_desc') {
+    const stageOf = p => { const no = pkNoOf(p); return no === null ? null : evoStage(no); };
+    const byDex = (a, b) => (Number(a.pokedex_no) || 0) - (Number(b.pokedex_no) || 0) || byId(a, b);
+    return list.sort((a, b) => {
+      const sa = stageOf(a), sb = stageOf(b);
+      if (sa === null && sb === null) return byDex(a, b);
+      if (sa === null) return 1;
+      if (sb === null) return -1;
+      return (mode === 'stage' ? sa - sb : sb - sa) || byDex(a, b);
+    });
   }
   // 属性：按 TYPE_THEME 的键顺序（一般/火/水/电/草…），同属性内按编号
   const order = Object.keys(TYPE_THEME);
@@ -2090,7 +2128,7 @@ function renderPokemons() {
   page.innerHTML = `
     ${shinyBarHTML()}
     <div class="catch-zone">${catchZoneHTML()}</div>
-    <div class="catch-hint" style="text-align:center;margin-bottom:12px">⭐ 卡上带 ⭐ 的「出战」宝可梦是你的伙伴，每次完成任务它都会 +${CONFIG.LEAD_EXP_PER_TASK} 经验。</div>
+    ${pokeRulesHTML()}
     ${list.length ? `
       <div class="section-title">
         <span>我的宝可梦 <small>${list.length} 只</small></span>
@@ -2176,7 +2214,7 @@ function showCardDetail(pm) {
       <div class="ptcg-top">
         <span class="ptcg-name">${info.name}</span>
         ${pm.shiny ? '<span class="ptcg-shiny">✨ 闪耀形态</span>' : ''}
-        <span class="ptcg-lv">${evoStageLabel(pm)}</span>
+        <span class="ptcg-lv">${stageText(pm)}</span>
       </div>
       <div class="ptcg-art${pm.shiny ? ' shiny-art' : ''}${artMode === 'sprite' ? ' sprite-art' : ''}${artMode === 'scene' ? ' scene-art' : ''}">
         <img src="${cardArtSrc(pm)}" alt="${info.name}">
@@ -2194,12 +2232,12 @@ function showCardDetail(pm) {
         <div class="exp-track"><div class="exp-fill" style="width:${expPct}%"></div></div>
         ${evoChainLine(pm.pokedex_no)}
         ${evoFamily(pm.pokedex_no).length > 1 ? '<div class="chain-tip">👆 点上面的名字，可以看每个形态的详情</div>' : ''}
-        ${((hasNextEvo(pm.pokedex_no) || !pm.shiny)) ? `<div class="ptcg-evo ${evo.ok ? 'ok' : ''}">${evo.ok ? (evo.shiny ? '✨ 可以进入闪耀形态啦！' : '✨ 可以进化啦！') : (evo.why ? '『' + evo.why + '』' : '')}</div>` : ''}
+        ${((hasNextEvo(pm.pokedex_no) || !pm.shiny)) ? `<div class="ptcg-evo ${evo.ok ? 'ok' : ''}">${evo.ok ? (evo.shiny ? '✨ 可以进入闪耀形态啦！' : (evo.inherit ? '✨ 可以进化啦（进化出来直接是闪耀形态）！' : '✨ 可以进化啦！')) : (evo.why ? '『' + evo.why + '』' : '')}</div>` : ''}
       </div>
       <div class="ptcg-btns">
         <button class="btn-lead" ${isLead ? 'disabled' : ''}>${isLead ? '⭐ 出战' : '出战'}</button>
         <button class="btn-feed" ${maxed ? 'disabled' : ''}>${maxed ? '✨ 已满级' : '🍬 喂糖果'}</button>
-        ${(hasNextEvo(pm.pokedex_no) || evo.ok) ? `<button class="btn-evo" ${evo.ok ? '' : 'disabled'}>${evo.shiny ? '✨ 闪耀' : '进化'}</button>` : ''}
+        ${(hasNextEvo(pm.pokedex_no) || evo.ok) ? `<button class="btn-evo" ${evo.ok ? '' : 'disabled'}>${evo.shiny ? '✨ 闪耀' : (evo.inherit ? '✨ 进化' : '进化')}</button>` : ''}
         <button class="btn-close">✕ 关闭</button>
       </div>
     </div>
@@ -2381,15 +2419,37 @@ function stageLabelByNo(no) {
 }
 
 function catchZoneHTML() {
-  const ballIcons = Array.from({ length: Math.min(S.balls, 24) }).map(() => '<span class="mini-ball"></span>').join('');
+  // 顶部只留一行「球数 + 小球图标」和两个并排按钮，文案尽量短（手机上不占屏）
+  const n = S.balls;
+  const shown = Math.min(n, 10);
+  const ballIcons = Array.from({ length: shown }).map(() => '<span class="mini-ball"></span>').join('');
+  const more = n > shown ? `<span class="ball-more">+${n - shown}</span>` : '';
   return `
-    <div class="ball-row">${ballIcons || '<span style="font-size:12px;color:#8d6e63">0 个球</span>'}</div>
-    <div class="catch-actions">
-      <button class="btn-big" data-action="catch" ${S.balls < 1 ? 'disabled' : ''}>${POKE_ICON.ball('#e53935')} 捕捉宝可梦（1 个球）</button>
-      <button class="btn-big buy" data-action="buyball" ${S.balance < CONFIG.BALL_PRICE ? 'disabled' : ''}>${POKE_ICON.master()} 买精灵球（${CONFIG.BALL_PRICE} 分）</button>
+    <div class="ball-row">
+      <span class="ball-count">精灵球 <b>×${n}</b></span>
+      <span class="ball-icons">${ballIcons || '<span class="ball-empty">没有球了</span>'}${more}</span>
     </div>
-    <div class="catch-hint">每次必抓到「没抓过的基础形态」（不重复）· 进化后的形态要靠喂养进化获得 · 连续 ${CONFIG.STREAK_DAYS_FOR_BALL} 天必做全清送 ✨ 闪耀卡，选一只宝可梦用掉就能多一张闪耀形态卡</div>
+    <div class="catch-actions">
+      <button class="btn-big" data-action="catch" ${n < 1 ? 'disabled' : ''}>${POKE_ICON.ball('#e53935')} 捕捉</button>
+      <button class="btn-big buy" data-action="buyball" ${S.balance < CONFIG.BALL_PRICE ? 'disabled' : ''}>${POKE_ICON.master()} 买球 <small>${CONFIG.BALL_PRICE} 分</small></button>
+    </div>
   `;
+}
+
+// 宝可梦页的「小抄」：和任务页规则说明同一套折叠样式，默认收起，不占屏
+function pokeRulesHTML() {
+  const goal = CONFIG.STREAK_DAYS_FOR_BALL;
+  return `
+    <details class="rules-hint">
+      <summary>${POKE_ICON.dex()} 宝可梦小抄 <small style="font-weight:400">点开看怎么抓、怎么进化</small></summary>
+      <ul>
+        <li>🥚 1 个精灵球一定抓到 1 只<b>没抓过</b>的宝可梦（${CONFIG.BALL_PRICE} 分/个，只有基础形态能被捕捉）</li>
+        <li>🍬 喂糖果攒经验：1 分 = ${CONFIG.POINTS_TO_EXP} exp，经验满一管就<b>进化</b>，越往后要的经验越多</li>
+        <li>✨ 最终形态再攒满 ${CONFIG.SHINY_EXP} exp → 进入<b>闪耀形态</b>（普通卡留着，多一张 ✨ 卡）</li>
+        <li>🎁 连续 ${goal} 天必做全清送 ✨ 闪耀卡：选一只用掉，<b>之后它进化出来的形态也直接是闪耀形态</b></li>
+        <li>⭐ 出战的伙伴每次完成任务 +${CONFIG.LEAD_EXP_PER_TASK} 经验</li>
+      </ul>
+    </details>`;
 }
 
 // ---------- 图鉴 ----------
@@ -4615,7 +4675,7 @@ function shareCardHTML() {
       <div class="share-head">🏝️ 佑佑的任务岛</div>
       <div class="share-pm">
         <img src="${lead ? artworkPath(leadNo) : 'assets/artwork/25.png'}" alt="">
-        <div class="share-pm-name">${lead ? PK_BY_NO[leadNo].name + (lead.shiny ? ' ✨' : '') : '皮卡丘'}<span>${lead ? evoStageLabel(lead) : '基础'}</span></div>
+        <div class="share-pm-name">${lead ? PK_BY_NO[leadNo].name + (lead.shiny ? ' ✨' : '') : '皮卡丘'}<span>${lead ? stageText(lead) : '基础'}</span></div>
       </div>
       <div class="share-stats">
         <div><b>${done}/${ts.length}</b><span>今日任务</span></div>

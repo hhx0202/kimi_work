@@ -224,33 +224,45 @@ body {
 .btn-lead { background: linear-gradient(135deg, #ef5350, #e53935); box-shadow: 0 3px 0 #b71c1c; }
 .lead-star { position: absolute; top: 8px; right: 10px; font-size: 18px; }
 
-/* 捕捉区 */
+/* 捕捉区：顶部只留一行球数 + 两个并排按钮，规则说明收到折叠小抄里 */
 .catch-zone {
   background: linear-gradient(135deg, #ffe0b2, #ffcc80);
   border-radius: var(--radius); box-shadow: var(--shadow);
-  padding: 16px; margin-bottom: 6px; text-align: center;
+  padding: 12px 14px 14px; margin-bottom: 4px; text-align: center;
 }
-.catch-zone .ball-row { display: flex; justify-content: center; gap: 6px; margin: 10px 0; min-height: 28px; flex-wrap: wrap; }
-.catch-actions { display: flex; flex-direction: column; gap: 14px; }
-.catch-zone > .btn-big:not(:last-child) { margin-bottom: 10px; }
+.catch-zone .ball-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 10px; min-height: 24px; flex-wrap: wrap; }
+.catch-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ball-count { font-size: 12px; color: #8d6e63; font-weight: 700; white-space: nowrap; }
+.ball-count b { font-size: 14px; color: #5d4037; }
+.ball-icons { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.ball-more { font-size: 11px; color: #8d6e63; font-weight: 800; }
+.ball-empty { font-size: 12px; color: #8d6e63; }
 .mini-ball {
-  width: 24px; height: 24px; border-radius: 50%; position: relative;
+  width: 18px; height: 18px; border-radius: 50%; position: relative;
   background: linear-gradient(#e53935 50%, #fff 50%); border: 2px solid #263238;
 }
-.mini-ball::before { content: ''; position: absolute; top: 50%; left: -2px; right: -2px; height: 3px; transform: translateY(-50%); background: #263238; }
-.mini-ball::after { content: ''; position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; border-radius: 50%; transform: translate(-50%, -50%); background: #fff; border: 2px solid #263238; }
+.mini-ball::before { content: ''; position: absolute; top: 50%; left: -2px; right: -2px; height: 2px; transform: translateY(-50%); background: #263238; }
+.mini-ball::after { content: ''; position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; border-radius: 50%; transform: translate(-50%, -50%); background: #fff; border: 1.5px solid #263238; }
 
 .btn-big {
   border: 0; cursor: pointer; width: 100%;
-  padding: 16px; border-radius: 999px;
-  font-size: 18px; font-weight: 800; color: #fff;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 13px 6px; border-radius: 999px;
+  font-size: 17px; font-weight: 800; color: #fff; white-space: nowrap;
   background: linear-gradient(135deg, #ef5350, #e53935);
   box-shadow: 0 5px 0 #b71c1c;
 }
+.btn-big small { font-size: 12px; font-weight: 800; opacity: .9; }
 .btn-big:active { transform: translateY(4px); box-shadow: none; }
 .btn-big.buy { background: linear-gradient(135deg, #ffd54f, #ffb300); color: #6d4c00; box-shadow: 0 5px 0 #b8860b; }
 .btn-big:disabled { filter: grayscale(1); opacity: .55; box-shadow: none; }
-.catch-hint { font-size: 12px; color: #8d6e63; margin-top: 8px; }
+/* 窄屏：两个按钮并排也不能让文字挤成两行 */
+@media (max-width: 360px) {
+  .catch-actions { gap: 8px; }
+  .btn-big { font-size: 15px; padding: 12px 4px; gap: 4px; }
+  .btn-big small { font-size: 11px; }
+  .catch-actions .btn-big svg { width: 18px; height: 18px; }
+}
 
 /* 图鉴 */
 .dex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
