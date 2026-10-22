@@ -22,6 +22,19 @@ jobs:
           echo "文件数: $(find dist -type f | wc -l)"
           echo "体积: $(du -sh dist | cut -f1)"
 
+      # 诊断：确认 secret 真的传进来了、token 真的有效、account id 是什么
+      - name: 诊断密钥
+        env:
+          T: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          A: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "API_TOKEN 长度: ${#T}"
+          echo "ACCOUNT_ID 值: [$A]"
+          echo "--- token 自检（Cloudflare 官方 verify 接口）---"
+          curl -s --max-time 15 -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+            -H "Authorization: Bearer $T"
+          echo ""
+
       # 不用 wrangler-action：它内部 npx 失败时只报 "exit code 1"，
       # 直接跑命令能让 wrangler 的真实报错完整出现在日志里。
       # wrangler 认环境变量里的 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID，无需 login。
