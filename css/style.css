@@ -1871,16 +1871,16 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .share-pk i { position: absolute; top: 1px; right: 4px; font-style: normal; font-size: 10px; }
 .share-pk.on { border-color: #ffd54f; background: rgba(255, 213, 79, .16); }
 
-/* 图片外面套一层 <a download>：手机长按图片时，系统菜单里的「下载图片 / 下载链接文件」
-   都能直接命中这张图（有些安卓浏览器单独长按 blob 图会报「无法从此网址下载」） */
-.share-img-link { display: block; line-height: 0; text-decoration: none; }
-/* 结果图限高：竖长的场景卡图（560×1039）按宽度铺开会有 600+ 高，加上按钮就出屏了。
-   用 dvh（手机浏览器地址栏收起/展开时视口会变），老浏览器忽略这行、回退到上一行 */
+/* 结果图：不包 <a>，长按由浏览器自己的「保存图片」接管（外层套链接会让
+   X 浏览器走「下载链接文件」→ blob 解不出来 → 静默失败）。
+   竖长的场景卡图（560×1039）按宽度铺开会有 600+ 高，加上按钮就出屏了：
+   用 dvh 限高（手机地址栏收起/展开时视口会变），老浏览器忽略这行、回退上一行 */
 .share-img {
   max-width: min(420px, 86vw); max-height: 72vh;
   max-height: min(72dvh, 640px);
   width: auto; height: auto; display: block;
   border-radius: 18px; box-shadow: 0 12px 50px rgba(0, 0, 0, .6);
+  -webkit-touch-callout: default;   /* 祖先若有 none，长按菜单会被吞掉 */
 }
 .share-tip { margin: 0; font-size: 13px; color: #ffd54f; font-weight: 700; text-align: center; }
 /* 生成中：先给反馈，手机上 html2canvas 要一两秒 */

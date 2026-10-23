@@ -5201,8 +5201,12 @@ async function shareCard() {
     const imgSrc = blob ? URL.createObjectURL(blob) : canvas.toDataURL('image/png');
     if (blob) shareBlobUrl = imgSrc;
     const fileName = `任务岛打卡-${DB.today()}.png`;
+    // 图片**不能**包 <a download>：X 浏览器这类国产浏览器长按时会先命中外层链接，
+    // 走「下载链接文件」的流程——它拿 blob: 地址在自己的下载器里解不出来，
+    // 就变成提示「正在准备图片」然后静默消失。让长按直接命中 <img>，交给浏览器
+    // 自己的「保存图片」，成功率最高（实测系统浏览器两种都行，所以只留更保险的那种）。
     ov.innerHTML = `<div class="share-page">
-      <a class="share-img-link" href="${imgSrc}" download="${fileName}"><img class="share-img" src="${imgSrc}" alt="成就图"></a>
+      <img class="share-img" src="${imgSrc}" alt="成就图">
       <p class="share-tip">💡 长按图片存相册，或点「保存图片」</p>
       <div class="share-acts">
         <a class="share-save" href="${imgSrc}" download="${fileName}">⬇️ 保存图片</a>

@@ -144,7 +144,12 @@ module.exports = async function run() {
   // 底部按钮被浏览器工具栏挡住（用户报「页面撑满了，不能上下滑动」）
   ok(/\.overlay\.share-view\s*\{[^}]*overflow-y:\s*auto/.test(CSS), '预览/结果层自己能上下滚动');
   ok(/\.share-img\s*\{[^}]*max-height:\s*(66|72)(d)?vh/.test(CSS), '结果图限高（不把整页顶出去）');
-  ok(/class="share-img-link""?/.test(APP) || APP.includes('share-img-link'), '结果图外面套了 <a download>（长按也能存）');
+  // 用户报：X 浏览器长按结果图「正在准备图片」然后静默消失（点保存按钮能下载）。
+  // 原因是图片外面套了 <a download>，长按先命中外层链接 → 走「下载链接文件」→
+  // 它的下载器解析不了 blob: → 失败。现在让长按直接命中 <img>
+  ok(!APP.includes('share-img-link'), '结果图不包 <a>（长按直接命中图片本身）');
+  ok(/<img class="share-img" src="\$\{imgSrc\}"/.test(APP), '结果图是裸 <img>，交给浏览器「保存图片」');
+  ok(/\.share-img\s*\{[^}]*-webkit-touch-callout:\s*default/.test(CSS), '结果图显式允许长按菜单');
   // 跨域脚本抛的 "Script error." 没有文件名/堆栈，弹横幅只会吓人 → 只进日志
   ok(/crossNoDetail/.test(APP) && /if \(!crossNoDetail\) showErrBanner/.test(APP), '跨域无详情错误不弹横幅');
   // 用户明确要求标题里别出现具体天数（"第 N 天"会随时间变得奇怪）
