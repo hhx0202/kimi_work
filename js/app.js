@@ -5201,19 +5201,35 @@ async function shareCard() {
     const imgSrc = blob ? URL.createObjectURL(blob) : canvas.toDataURL('image/png');
     if (blob) shareBlobUrl = imgSrc;
     const fileName = `任务岛打卡-${DB.today()}.png`;
+    // 安卓上有些浏览器（实测 X 浏览器）长按图片存不进相册，a[download] 只会落到「下载」目录。
+    // 支持文件分享的浏览器多给一条路：走系统分享面板，可以直接「保存到相册」或发微信。
+    // 不支持就完全不出现（不占位、不啰嗦）
+    let shareFile = null;
+    if (blob && typeof File === 'function') {
+      try { shareFile = new File([blob], fileName, { type: 'image/png', lastModified: Date.now() }); } catch (e) {}
+    }
+    const canShareFile = !!(shareFile && navigator.canShare && navigator.canShare({ files: [shareFile] }));
     // 图片**不能**包 <a download>：X 浏览器这类国产浏览器长按时会先命中外层链接，
     // 走「下载链接文件」的流程——它拿 blob: 地址在自己的下载器里解不出来，
     // 就变成提示「正在准备图片」然后静默消失。让长按直接命中 <img>，交给浏览器
     // 自己的「保存图片」，成功率最高（实测系统浏览器两种都行，所以只留更保险的那种）。
     ov.innerHTML = `<div class="share-page">
       <img class="share-img" src="${imgSrc}" alt="成就图">
-      <p class="share-tip">💡 长按图片存相册，或点「保存图片」</p>
+      <p class="share-tip">💡 点下面的「保存图片」存到相册</p>
       <div class="share-acts">
         <a class="share-save" href="${imgSrc}" download="${fileName}">⬇️ 保存图片</a>
+        ${canShareFile ? '<button class="share-ghost" data-share>📤 分享存相册</button>' : ''}
         <button class="share-ghost" data-back="again">🔁 再做一张</button>
         <button class="share-close" data-back="close">关闭</button>
       </div>
     </div>`;
+    const shareBtn = ov.querySelector('[data-share]');
+    if (shareBtn) {
+      shareBtn.onclick = async () => {
+        try { await navigator.share({ files: [shareFile], title: fileName }); }
+        catch (e) { if (!e || e.name !== 'AbortError') toast('这台手机不支持分享，用「保存图片」'); }
+      };
+    }
     ov.querySelector('[data-back="again"]').onclick = () => { renderSharePreview(); };
     ov.querySelector('[data-back="close"]').onclick = () => { closeShareResult(); };
   } catch (err) {

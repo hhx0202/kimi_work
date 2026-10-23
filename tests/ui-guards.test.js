@@ -150,6 +150,14 @@ module.exports = async function run() {
   ok(!APP.includes('share-img-link'), '结果图不包 <a>（长按直接命中图片本身）');
   ok(/<img class="share-img" src="\$\{imgSrc\}"/.test(APP), '结果图是裸 <img>，交给浏览器「保存图片」');
   ok(/\.share-img\s*\{[^}]*-webkit-touch-callout:\s*default/.test(CSS), '结果图显式允许长按菜单');
+  // 用户实测：X 浏览器长按 blob / data / 链接包 blob 三种都存不了（浏览器自身的保存通道不支持）
+  // → 提示文案主推「保存图片」按钮（这个已验证可用），别再教人长按
+  ok(/class="share-tip">[^<]*「保存图片」/.test(APP), '结果页提示主推保存按钮，不教长按');
+  // 长按彻底不行时的另一条路：支持文件分享的浏览器给「📤 分享存相册」（能进相册/发微信），
+  // 不支持就完全不出现，别塞一个点了没反应的按钮
+  ok(/navigator\.canShare\(\{ files: \[shareFile\] \}\)/.test(APP) && /data-share/.test(APP), '支持文件分享时才出「分享存相册」');
+  ok(/navigator\.share\(\{ files: \[shareFile\]/.test(APP), '分享按钮走系统分享面板');
+  ok(/\.share-acts > \*\s*\{[^}]*line-height:\s*20px/.test(CSS), '结果页按钮等高（a 与 button 的行高基线不同）');
   // 跨域脚本抛的 "Script error." 没有文件名/堆栈，弹横幅只会吓人 → 只进日志
   ok(/crossNoDetail/.test(APP) && /if \(!crossNoDetail\) showErrBanner/.test(APP), '跨域无详情错误不弹横幅');
   // 用户明确要求标题里别出现具体天数（"第 N 天"会随时间变得奇怪）
