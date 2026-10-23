@@ -645,6 +645,15 @@ function earnedPoints() {
   return S.pointLogs.reduce((s, l) => s + (l.amount > 0 ? l.amount : 0), 0);
 }
 // 累计完成任务数：所有类型的任务（重复/单次/多日子任务）完成过多少条
+// 累计打卡天数：有「完成记录」的天数（成就图上「第 N 天」用的就是这个）
+function checkinDays() {
+  let n = 0;
+  for (const d in S.logs) {
+    const day = S.logs[d] || {};
+    if (Object.keys(day).some(tid => day[tid] && (day[tid].done || day[tid].completed))) n++;
+  }
+  return n;
+}
 function totalDoneCount() {
   let n = 0;
   for (const d in S.logs) {
@@ -2239,6 +2248,7 @@ const PM_SORT_OPTS = [
   ['type', '属性', '同属性放在一起'],
   ['stage', '阶段升序', '基础 → 一阶 → 二阶'],
   ['stage_desc', '阶段降序', '二阶 → 一阶 → 基础'],
+  ['shiny', '闪耀优先', '✨ 在前，同状态按编号'],
 ];
 function pmSortMode() {
   const v = lsGet(LK('pm_sort'), 'capture');
@@ -2279,6 +2289,11 @@ function pmSortList() {
       if (sb === null) return -1;
       return (mode === 'stage' ? sa - sb : sb - sa) || byDex(a, b);
     });
+  }
+  // 闪耀形态：✨ 在前、普通的在后，同一状态内按图鉴编号
+  if (mode === 'shiny') {
+    const byDex = (a, b) => (Number(a.pokedex_no) || 0) - (Number(b.pokedex_no) || 0) || byId(a, b);
+    return list.sort((a, b) => (b.shiny ? 1 : 0) - (a.shiny ? 1 : 0) || byDex(a, b));
   }
   // 属性：按 TYPE_THEME 的键顺序（一般/火/水/电/草…），同属性内按编号
   const order = Object.keys(TYPE_THEME);
@@ -2417,6 +2432,8 @@ function showCardDetail(pm) {
   const expPct = maxed ? 100 : Math.min(100, pm.exp / expThreshold(pm) * 100);
   const evo = canEvolve(pm);
   const isLead = pm.id === S.leadId;
+  // 同一编号可能同时有普通卡和 ✨ 卡 → 右上角徽章点一下就能切过去
+  const altPm = S.pokemons.find(p => p.id !== pm.id && pkNoOf(p) === pkNoOf(pm) && !!p.shiny !== !!pm.shiny) || null;
   const artMode = currentCardArtMode(pm);   // art 立绘 / sprite 异色动图 / scene 场景卡
   const ov = $('overlay');
   ov.classList.remove('hidden');
@@ -2425,7 +2442,7 @@ function showCardDetail(pm) {
     <div class="ptcg${pm.shiny ? ' shiny-card' : ''}${artMode === 'scene' ? ' scene-mode' : ''}" style="--tc:${theme.color}; --bg1:${theme.bg1}; --bg2:${theme.bg2}">
       <div class="ptcg-top">
         <span class="ptcg-name">${info.name}</span>
-        ${pm.shiny ? '<span class="ptcg-shiny">✨ 闪耀形态</span>' : ''}
+        ${(pm.shiny || altPm) ? `<button class="ptcg-shiny${altPm ? ' swap' : ''}${pm.shiny ? '' : ' plain'}"${altPm ? ` data-alt="${altPm.id}"` : ' disabled'}>${pm.shiny ? '✨ 闪耀形态' : '🖼 普通形态'}${altPm ? ' ⇄' : ''}</button>` : ''}
         <span class="ptcg-lv">${stageText(pm)}</span>
       </div>
       <div class="ptcg-art${pm.shiny ? ' shiny-art' : ''}${artMode === 'sprite' ? ' sprite-art' : ''}${artMode === 'scene' ? ' scene-art' : ''}">
@@ -2456,6 +2473,8 @@ function showCardDetail(pm) {
     </div>
   `;
   ov.querySelector('.btn-close').onclick = () => ov.classList.add('hidden');
+  const swapBtn = ov.querySelector('.ptcg-shiny.swap');
+  if (swapBtn && altPm) swapBtn.onclick = () => showCardDetail(altPm);   // 切到另一版（普通 ↔ 闪耀）
   ov.querySelector('.btn-lead').onclick = () => { setLead(pm.id); ov.classList.add('hidden'); };
   ov.querySelector('.btn-feed').onclick = () => { if (maxed) return; ov.classList.add('hidden'); openFeed(pm.id); };
   const evoBtn = ov.querySelector('.btn-evo');
@@ -2611,13 +2630,6 @@ function evoChainLine(no, cur) {
   };
   const parts = evoAncestors(no).filter(c => c !== no).map(c => node(c, false));
   parts.push(node(no, true));
-  // 当前这张如果同一编号还有另一版（普通 ↔ 闪耀），给一个直接切过去的按钮。
-  // 放在链尾、用 ⇄ 连接（不是 →，否则看着像又一次进化）
-  let variant = '';
-  if (cur) {
-    const alt = S.pokemons.find(p => pkNoOf(p) === no && !!p.shiny !== !!cur.shiny);
-    if (alt) variant = `<span class="tap variant ${alt.shiny ? 'shiny' : 'plain'}" data-pmid="${alt.id}" title="看${alt.shiny ? '闪耀' : '普通'}版这张卡">${alt.shiny ? '✨ 闪耀版' : '🖼 普通版'}</span>`;
-  }
   // 往下走：单线继续延伸，遇到分支则把几个分支并列显示后停止
   // 注意：这里不能用 cur 当游标，cur 是入参（当前看的那张卡）
   let walk = no;
@@ -2634,8 +2646,7 @@ function evoChainLine(no, cur) {
     const sibs = parent !== undefined ? evoTargets(parent).filter(c => c !== no) : [];
     if (sibs.length) parts.push(sibs.map(c => node(c, false)).join('<i>/</i>'));
   }
-  // ⇄ 和切换按钮包成一组：窄屏换行时不会出现「⇄ 在一行、按钮在下一行」
-  return `<div class="ptcg-chain">${parts.join('<i>→</i>')}${variant ? `<span class="chain-alt"><i>⇄</i>${variant}</span>` : ''}</div>`;
+  return `<div class="ptcg-chain">${parts.join('<i>→</i>')}</div>`;
 }
 // 把详情卡里的进化链做成可点（点某一形态 → 打开它的详情）
 function bindChainClicks(ov) {
@@ -2644,13 +2655,6 @@ function bindChainClicks(ov) {
       e.stopPropagation();
       const sh = el.dataset.shiny;
       showDexDetail(Number(el.dataset.evo), sh === '1' ? { shiny: true } : (sh === '0' ? { shiny: false } : {}));
-    };
-  });
-  ov.querySelectorAll('.ptcg-chain span[data-pmid]').forEach(el => {
-    el.onclick = e => {
-      e.stopPropagation();
-      const pm = S.pokemons.find(p => p.id === Number(el.dataset.pmid));
-      if (pm) showCardDetail(pm);
     };
   });
 }
@@ -5193,6 +5197,10 @@ function shareCardHTML() {
         <div class="sc-rays">${Array.from({ length: 12 }, (_, i) => `<i style="transform:rotate(${i * 30}deg)"></i>`).join('')}</div>
         ${SHARE_SPARKS.map(([x, y, s]) => `<i class="sc-spark" style="left:${x}%;top:${y}%;font-size:${s}px">✦</i>`).join('')}
         <div class="sc-body">
+          <div class="sc-head">
+            <div class="sc-title">每日打卡</div>
+            <div class="sc-sub">第 ${Math.max(1, checkinDays())} 天 · 和 ${escHTML(name)} 一起</div>
+          </div>
           <div class="sc-stage">
             <img class="sc-art${scene ? ' scene' : ''}" src="${src}" alt="">
           </div>

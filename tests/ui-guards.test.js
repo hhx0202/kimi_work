@@ -55,6 +55,8 @@ module.exports = async function run() {
   ok(!APP.includes("sharedSet('pm_sort'"), '排序不写共享存储');
   ok(/PM_SORT_OPTS\s*=\s*\[/.test(APP) && APP.includes("'捕获顺序'") && APP.includes("'捕获倒序'") && APP.includes("'编号顺序'") && APP.includes("'属性'"), '四个排序选项齐全');
   ok(APP.includes('class="mini-no-badge"'), '小卡显示了图鉴编号（挪到图片左下角）');
+  ok(APP.includes("'闪耀优先'"), '排序里有「闪耀优先」');
+  ok(/mode === 'shiny'/.test(APP) && /\(b\.shiny \? 1 : 0\) - \(a\.shiny \? 1 : 0\)/.test(APP), '闪耀在前、同状态按编号');
   ok(/\.mini-no-badge\s*\{/.test(CSS), '编号有对应的角标样式');
   ok(/class="mini-exp/.test(APP), '小卡显示当前经验/总经验');
   ok(/\.mini-expbar\s*\{/.test(CSS), '小卡图片底部有经验进度条');
@@ -121,6 +123,13 @@ module.exports = async function run() {
   ok(/Promise\.race\(\[done, timeout\]\)/.test(APP), 'html2canvas 卡住时有超时结论');
   ok(APP.includes('闪耀吧！✨'), '选卡态小卡的按钮文案');
 
+  ok(APP.includes('class="sc-head"') && APP.includes('每日打卡'), '顶部有「每日打卡」标题（打卡记录，不是炫卡）');
+  ok(/第 \$\{Math\.max\(1, checkinDays\(\)\)\} 天/.test(APP), '副标带累计打卡天数');
+  ok(/function checkinDays\(/.test(APP), '有累计打卡天数函数');
+  ok(/\.share-card\s*\{[^}]*width:\s*560px/.test(CSS), '卡片改窄到 560（原 640，太扁）');
+  ok(/\.sc-art\s*\{[^}]*height:\s*412px/.test(CSS), '立绘放大到 412，宝可梦当主角');
+  ok(/\.share-scaler\s*\{[^}]*width:\s*560px/.test(CSS), '预览缩放框与卡片同宽（否则会盖住底部按钮）');
+
   section('成就图：去标题、去连击框、底部换宝可梦台词');
   // 只看 shareCardHTML 内部：页面标题 / 任务页的连击统计里本来就有这些字，不能全文件否定
   const SHARE = (APP.match(/function shareCardHTML\(\)[\s\S]*?\n}/) || [''])[0];
@@ -150,7 +159,9 @@ module.exports = async function run() {
   ok(/function evoChainLine\(no, cur\)/.test(APP), '链渲染知道当前是哪张卡（普通还是闪耀）');
   ok(/data-shiny="\$\{pv\}"/.test(APP), '每个阶段带上该跳哪种形态');
   ok(/showDexDetail\(Number\(el\.dataset\.evo\), sh === '1'/.test(APP), '按形态挑个体，不会掉回普通卡');
-  ok(/span class="tap variant/.test(APP) && APP.includes('✨ 闪耀版') && APP.includes('🖼 普通版'), '链尾能一键切换普通/闪耀版');
+  ok(/class="ptcg-shiny\$\{altPm \? ' swap'/.test(APP) && APP.includes('🖼 普通形态'), '右上角徽章就是普通/闪耀切换按钮');
+  ok(/swapBtn\.onclick = \(\) => showCardDetail\(altPm\)/.test(APP), '点徽章切到另一版那张卡');
+  ok(!APP.includes('chain-alt') && !APP.includes('tap variant'), '链尾不再另放切换按钮（已并入徽章）');
   ok(APP.includes("'✅ 已满级（封顶）'"), '普通卡满级只讲满级');
   ok(!APP.includes("'✅ 已成为闪耀形态'"), '不再和经验行下面的「已拥有闪耀形态」重复提闪耀');
 };

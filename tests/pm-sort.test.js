@@ -1,4 +1,4 @@
-// 宝可梦排序：捕获顺序（默认）/ 捕获倒序 / 编号顺序 / 属性 / 进化阶段升降序；选择存本机（不跨设备）
+// 宝可梦排序：捕获顺序（默认）/ 捕获倒序 / 编号顺序 / 属性 / 进化阶段升降序 / 闪耀优先；选择存本机（不跨设备）
 const { makeCtx, ok, section } = require('./harness');
 
 const FNS = ['lsGet', 'lsSet', 'pmSortMode', 'setPmSort', 'pmSortList'];
@@ -12,7 +12,7 @@ function setup(stored) {
     pkNoOf: pm => (STAGE[pm.pokedex_no] === undefined ? null : Number(pm.pokedex_no)),
     evoStage: no => STAGE[no] || 0,
     PM_SORT_OPTS: [['capture', '捕获顺序', ''], ['capture_desc', '捕获倒序', ''], ['dex', '编号顺序', ''], ['type', '属性', ''],
-      ['stage', '阶段升序', ''], ['stage_desc', '阶段降序', '']],
+      ['stage', '阶段升序', ''], ['stage_desc', '阶段降序', ''], ['shiny', '闪耀优先', '']],
   });
   if (stored !== undefined) c.localStorage.setItem(c.LK('pm_sort'), JSON.stringify(stored));
   c.S.pokemons = [
@@ -32,6 +32,18 @@ function setupStage(stored) {
     { id: 22, pokedex_no: 1, caught_at: '2026-10-03T10:00:00Z' },   // 基础 #001
     { id: 23, pokedex_no: 7, caught_at: '2026-10-04T10:00:00Z' },   // 基础 #007
     { id: 24, pokedex_no: null, name: '名字也查不到', caught_at: '2026-10-05T10:00:00Z' },
+  ];
+  return c;
+}
+// 闪耀排序专用：闪 + 普通混排，同编号还会出现「普通卡 + ✨ 卡」两张
+function setupShiny(stored) {
+  const c = setup(stored);
+  c.S.pokemons = [
+    { id: 30, pokedex_no: 25, caught_at: '2026-10-01T10:00:00Z' },                 // 普通 #025
+    { id: 31, pokedex_no: 4, caught_at: '2026-10-01T10:00:00Z', shiny: true },     // ✨ #004
+    { id: 32, pokedex_no: 1, caught_at: '2026-10-01T10:00:00Z' },                  // 普通 #001
+    { id: 33, pokedex_no: 25, caught_at: '2026-10-01T10:00:00Z', shiny: true },    // ✨ #025
+    { id: 34, pokedex_no: 7, caught_at: '2026-10-01T10:00:00Z', shiny: true },     // ✨ #007
   ];
   return c;
 }
@@ -56,6 +68,11 @@ module.exports = async function run() {
   ok(ids(c.pmSortList()).join() === '20,21,22,23,24', '阶段降序：二阶→一阶→基础，同阶段内按编号，查不到编号的排最后');
   c = setup('stage_desc');
   ok(c.pmSortMode() === 'stage_desc', 'stage_desc 是合法值（不回退）');
+
+  section('闪耀优先：✨ 在前，同状态按编号');
+  c = setupShiny('shiny');
+  ok(c.pmSortMode() === 'shiny', 'shiny 是合法值（不回退）');
+  ok(ids(c.pmSortList()).join() === '31,34,33,32,30', '✨ 按编号在前，普通按编号在后（同编号两张不会挨着乱）');
 
   section('存储与兼容');
   c = setup();
