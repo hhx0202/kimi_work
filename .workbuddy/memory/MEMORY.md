@@ -53,6 +53,9 @@
 - 三个函数别混用：`reqDayDone(date)` 单天判定、`reqStreakDays()` 真实连击（零点不归零，今天没做完从昨天数）、`streakCycleDays()` **本轮**（上次领奖之后）连了几天——进度条和领奖门槛都用它。
 - 领奖走「动画 → 用户自己点领取」两步：`checkin()` 达标时只 `showStreakReady()`（不 await），`claimStreak()` 才发奖；球用 `DB.hasItemReason('必做全清N天_'+today)` 去重，同一天不能刷。
 - 文案不要用「全勤」（有歧义，用户会以为是「任意任务打卡」），统一写「必做全清」。
+- **全清奖只在 `checkin()` 那一刻判定发放**，所以「任务集合变了导致突然全清」必须自己补：家长改必做⇄选做、删任务后要调 `fixTodayAllClear()`（`openTaskEditor` / `delTask` / `parent-del` 三处已接）。规则是**只补不扣、只处理今天、靠流水 reason 幂等**——家长善意的调整不追回已发的奖；历史日期按任务快照保持原样，不追溯；反复改来改去靠 `必选全清_日期` 判重不会多发。反向的「孩子撤销提交 → 不再全清 → 回收未确认的奖」走 `dropAllClearPending()`，两条路径不要混。
+- 调 `fixTodayAllClear()` 之前**必须先把本地 `S.tasks` 改好**（`Object.assign(t, patch)` / 过滤掉已删的），否则 `dayTasksForProgress` 读的还是旧任务集合，会发现「还是不全清」而漏发。
+- 已确认（`confirmed: true`）的全清奖永不退回、也不再重发，这是防刷分的关键：撤销→重做只能把「未确认」的那条删掉重发一条，余额净变化为 0。
 
 ## 宝可梦卡面/卡片约定
 - 闪耀形态一律「**普通卡保留 + 额外多一张 ✨ 卡**」，`addShinyCopy` 生成、`hasShinyCopy(no)` 防重复；非 shiny 的卡一旦有同编号闪耀卡，`isMaxed` 即为 true、`canEvolve` 返回「已拥有闪耀形态」，不能再点亮。

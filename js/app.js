@@ -824,6 +824,48 @@ function dropAllClearPending(date) {
   return pend.map(l => l.id);
 }
 
+// ---------- 家长调整任务后，补发今天的「全清奖」 ----------
+// 场景：必做还差 1 个没完成时，家长把那个必做改成选做（或删掉）→ 必做就全清了、连击也算了，
+//      但全清奖只在孩子点打卡（checkin）那一刻判定，这里没有机会补 → 分就丢了。
+// 规则：
+//  · 只补不扣 —— 家长善意的调整不追回已发的奖，避免"改个任务孩子分变少"；
+//    （"孩子自己撤销提交 → 不再全清"的回收仍走 dropAllClearPending，那是另一码事）
+//  · 只处理今天 —— 编辑本来就"只对今天及之后生效"，历史日期按任务快照保持原样，不追溯补分；
+//  · 幂等 —— 靠流水 reason（必选全清_日期 / 可选全清_日期）判重，反复改来改去不会重复发。
+// 返回本次补发的分组（供调用方拼提示文案）。
+async function fixTodayAllClear() {
+  const date = DB.today();
+  const dayTasks = dayTasksForProgress(date);
+  const isDayDone = arr => arr.length > 0 && arr.every(t => S.logs[date]?.[t.id]?.done === true);
+  const groups = [
+    { key: `必选全清_${date}`, label: '必做', bonus: CONFIG.REQUIRED_DONE_BONUS, done: isDayDone(dayTasks.filter(t => t.required !== false)) },
+    { key: `可选全清_${date}`, label: '选做', bonus: CONFIG.OPTIONAL_DONE_BONUS, done: isDayDone(dayTasks.filter(t => t.required === false)) },
+  ];
+  const todo = groups.filter(g => g.done && g.bonus > 0 && !S.pointLogs.some(l => l.reason === g.key));
+  if (!todo.length) return [];
+  try {
+    const ids = await Promise.all(todo.map(g => DB.addPointLog(g.bonus, g.key, date, { confirmed: false })));
+    const added = [];
+    todo.forEach((g, i) => {
+      if (ids[i] == null) return;
+      S.pointLogs.push({ id: ids[i], log_date: date, amount: g.bonus, reason: g.key, confirmed: false });
+      awardLocked.add(g.key);
+      added.push(g);
+    });
+    return added;
+  } catch (err) {
+    console.error('[fixTodayAllClear]', err);
+    toast('⚠️ 补发全清奖失败，请刷新后重试');
+    return [];
+  }
+}
+// 提示后缀：拼接在「已保存 / 已删除」后面，避免第二条 toast 把它顶掉
+function allClearFixText(list) {
+  if (!list || !list.length) return '';
+  const pts = list.reduce((s, g) => s + g.bonus, 0);
+  return `；今天${list.map(g => g.label).join(' + ')}已全清，补发 +${pts} 分（待确认）`;
+}
+
 // ---------- 经验 / 进化（不再有等级，经验满一管即进化） ----------
 // 下一阶进化目标：单线用 e，分支（伊布）用 ev 数组
 function evoTargets(no) {
@@ -1959,14 +2001,18 @@ async function delTask(id) {
   if (t.schedule === 'daily') {
     if (!await askConfirm('删除后从今天起不再布置这个任务，之前日期的完成记录和积分原样保留。确定删除？', { okText: '删除' })) return;
     await DB.updateTask(id, { end_date: shiftDate(DB.today(), -1) });
+    Object.assign(t, { end_date: shiftDate(DB.today(), -1) });   // 本地先同步，下面的全清重算才看不到它
+    const fixedClear = await fixTodayAllClear();
     await refreshAll(); render();
-    toast('已删除，之前的记录保留');
+    toast('已删除，之前的记录保留' + allClearFixText(fixedClear));
     return;
   }
   if (!await askConfirm('确定删除这个任务？', { okText: '删除' })) return;
   await DB.deleteTask(id);
+  S.tasks = S.tasks.filter(x => x.id !== id);   // 本地先移除，下面的全清重算才看不到它
+  const fixedClear = await fixTodayAllClear();
   await refreshAll(); render();
-  toast('已删除');
+  toast('已删除' + allClearFixText(fixedClear));
 }
 
 // ---------- 多日任务进度条（统一风格，挨着每日进度条增加） ----------
@@ -2937,8 +2983,10 @@ function bindActions() {
     else if (act === 'parent-del') {
       const dt = S.tasks.find(x => x.id === Number(tid));
       await DB.deleteTask(Number(tid));
+      S.tasks = S.tasks.filter(x => x.id !== Number(tid));   // 本地先移除，下面的全清重算才看不到它
+      const fixedClear = await fixTodayAllClear();
       await refreshAll(); render();
-      toast(dt ? `已删除「${dt.title}」` : '已删除');
+      toast((dt ? `已删除「${dt.title}」` : '已删除') + allClearFixText(fixedClear));
     }
     else if (act === 'parent-del-cat') { deleteCat(btn.dataset.cat); render(); }
     else if (act === 'parent-add-cat') { const c = ($('pt-newcat').value || '').trim(); if (c) { saveCat(c); $('pt-newcat').value = ''; render(); } }
@@ -3747,8 +3795,10 @@ function openTaskEditor(id) {
     if (oldParent && oldParent !== newParent) await syncParentPoints(oldParent);
     if (newParent) await syncParentPoints(newParent);
     modal.remove();
+    // 改必做⇄选做、改关联都可能让今天"突然全清"（家长把没做完的必做改成选做）→ 补发缺的全清奖
+    const fixedClear = await fixTodayAllClear();
     await refreshAll(); render();
-    toast(versioned ? '已保存，改动从今天起生效（之前的日期保持原样）' : '已保存');
+    toast((versioned ? '已保存，改动从今天起生效（之前的日期保持原样）' : '已保存') + allClearFixText(fixedClear));
   };
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
