@@ -5,7 +5,7 @@ const { makeCtx, runBg, laggyDB, ok, section } = require('./harness');
 
 const FNS = ['shiftDate', 'makeupDays', 'isMakeupDate', 'logOn', 'logToday', 'isSubmitted', 'isApprovedDone',
   'isTaskDoneEver', 'inEffect', 'taskAttrFor', 'tasksOnDate', 'dayTasksForProgress', 'taskTypeLabel',
-  'taskStartText', 'taskCardHTML', 'checkin', 'cancelSubmission', 'dropAllClearPending', 'confirmPending',
+  'taskStartText', 'taskCardHTML', 'checkin', 'cancelSubmission', 'dropAllClearPending', 'confirmPending', 'pointReasonLabel',
   'fixTodayAllClear', 'allClearFixText'];
 
 const D = '2026-10-21';

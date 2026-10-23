@@ -5,7 +5,7 @@ const { makeCtx, runBg, laggyDB, ok, section } = require('./harness');
 const LAG = 25;
 const FNS = ['shiftDate', 'makeupDays', 'isMakeupDate', 'logOn', 'logToday', 'isSubmitted', 'isApprovedDone',
   'isTaskDoneEver', 'inEffect', 'taskAttrFor', 'tasksOnDate', 'dayTasksForProgress', 'taskTypeLabel',
-  'taskStartText', 'taskCardHTML', 'checkin', 'cancelSubmission', 'dropAllClearPending', 'confirmPending'];
+  'taskStartText', 'taskCardHTML', 'checkin', 'cancelSubmission', 'dropAllClearPending', 'confirmPending', 'pointReasonLabel'];
 
 function setup(over = {}) {
   const db = laggyDB(LAG);
@@ -78,4 +78,20 @@ module.exports = async function run() {
   ok(Date.now() - t0 < LAG * 2.5, `耗时 ${Date.now() - t0}ms（1 次确认 + 2 次状态写同一波）`);
   ok(c.S.balance === 10, '余额累加正确');
   ok(c.DB.calls.filter(x => x.name === 'setLog').length === 2 && c.DB.calls.some(x => x.name === 'confirmPointLogs'), '确认与状态写都发出');
+
+  section('审批通知带明细：逐条列出任务名和分数（含不挂任务的全清奖）');
+  c = setup();
+  c.S.logs['2026-10-21'] = { 1: { done: true, approved: false }, 2: { done: true, approved: false } };
+  c.S.pointLogs = [
+    { id: 401, task_id: 1, log_date: '2026-10-21', amount: 5, reason: '完成:跳绳100个', confirmed: false },
+    { id: 402, task_id: 2, log_date: '2026-10-21', amount: 5, reason: '完成:晨读英语', confirmed: false },
+    { id: 403, task_id: null, log_date: '2026-10-21', amount: 5, reason: '必选全清_2026-10-21', confirmed: false },
+  ];
+  c.__boxes = [401, 402, 403].map(id => ({ dataset: { plid: String(id) } }));
+  await c.confirmPending();
+  const n = (c.__noticeArgs || [])[0] || {};
+  ok(String(n.text).includes('3 项'), '正文说「确认了 3 项」');
+  ok(Array.isArray(n.items) && n.items.length === 3, '明细 3 行');
+  ok(n.items.some(it => it.title === '跳绳100个' && it.pts === 5), '任务行带名字和分数');
+  ok(n.items.some(it => it.title === '必做全清' && it.pts === 5), '全清奖也列进明细（以前只挑带 task_id 的，会漏）');
 };

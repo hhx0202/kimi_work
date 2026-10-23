@@ -5,7 +5,7 @@ const LAG = 40;
 const FNS = ['shiftDate', 'makeupDays', 'isMakeupDate', 'logOn', 'logToday', 'isSubmitted', 'isApprovedDone',
   'isTaskDoneEver', 'inEffect', 'taskAttrFor', 'tasksOnDate', 'dayTasksForProgress',
   'checkin', 'cancelSubmission', 'dropAllClearPending', 'confirmPending', 'undoPoint',
-  'givePts', 'minusPts', 'giveBall', 'buyBall'];
+  'pointReasonLabel', 'givePts', 'minusPts', 'giveBall', 'buyBall'];
 
 function setup(over = {}) {
   const c = makeCtx(FNS, Object.assign({ DB: laggyDB(LAG) }, over));

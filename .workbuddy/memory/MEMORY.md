@@ -43,6 +43,12 @@
 - 判断"还能不能进化"一律用 `hasNextEvo(no)`，不要用 `!info.e`（伊布无 `e`，会被误判成无进化链）。
 - 老数据可能丢 `pokedex_no` → 阶段角标误标「基础」。统一用 `pkNoOf(pm)`（按名字兜底），`refreshAll` 会自动回写修数据。
 
+## 家长消息（孩子端通知）
+- `pushNotice(type, text, sub, items)` 第 4 个参数是**明细行** `[{title, pts}]`：最多存 8 行，超出记 `more = 剩余条数`，`noticesHTML` 渲染成「任务名 …… +5」右对齐列表。**一次确认多笔必须传明细**，否则孩子只看到总分、跟任务列表对不上。
+- 明细要包含**不挂 task_id 的流水**（全清奖 `必选全清_日期`、多日完成奖），以前 `confirmPending` 只挑带 task_id 的，会漏掉这两类、加起来对不上总数。
+- **内部 reason 一律先过 `pointReasonLabel()` 再展示**：`完成:xxx`→任务名、`必选全清_日期`→「必做全清」、`多日完成奖:xxx`→「多日任务完成 · xxx」。孩子端积分记录、家长端待确认面板/流水、撤销确认弹窗都已接。别直接把 `l.reason` 打到界面上。
+- 通知卡 `align-items: flex-start`（有明细时会变高，图标要贴标题顶），`.notice-ok` 单独 `align-self: center`。
+
 ## 任务/进度约定
 - 多日任务进度 = 子任务权重完成率：`childWeightMode` 依次尝试 points → percent → 条数均分（历史 0 分数据兜底）；不要再写死按 points 求和。
 - 新建多日任务时子任务必须有分数（`parseSubtasks` 默认 10），父任务总分 = 子任务之和；演示种子也要按占比给分，否则进度永远 0。

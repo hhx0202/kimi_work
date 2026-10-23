@@ -513,7 +513,7 @@ async function applyOverduePenalty() {
     }
   }
   S.balance = S.pointLogs.reduce((s, l) => s + (l.confirmed === false ? 0 : l.amount), 0);
-  if (late) pushNotice('minus', `多日任务超期，自动扣了 ${latePts} 积分`, '请在截止日期前完成任务哦');
+  if (late) pushNotice('minus', `多日任务超期，自动扣了 ${latePts} 积分`, `现在还剩 ${S.balance} 分 · 请在截止日期前完成任务哦`);
 }
 
 // ---------- 计算：全清 / 连击 ----------
@@ -1359,14 +1359,33 @@ function loadNotices() {
 function saveNotices(list) {
   try { sharedSet('notices', list.slice(-NOTICE_MAX)); } catch (e) {}
 }
+// 把内部记分流水 reason 转成孩子看得懂的一行名字（通知明细用）
+function pointReasonLabel(reason) {
+  const r = String(reason || '');
+  let m;
+  if (/^必选全清_/.test(r)) return '必做全清';
+  if (/^可选全清_/.test(r)) return '选做全清';
+  if ((m = r.match(/^多日完成奖[:：]\s*(.+)$/))) return `多日任务完成 · ${m[1]}`;
+  if ((m = r.match(/^完成[:：]\s*(.+)$/))) return m[1];
+  return r.slice(0, 40) || '积分';
+}
 // 记一条家长消息（孩子下次打开任务页会在顶端看到，点「知道啦」才消失）
-function pushNotice(type, text, sub) {
+// items：明细行 [{ title, pts }]，用于「一次确认了一堆积分」这种需要逐条交代的场景
+function pushNotice(type, text, sub, items) {
   try {
     const list = loadNotices();
-    list.push({
+    const rec = {
       id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       type, text: String(text || '').slice(0, 120), sub: String(sub || '').slice(0, 120), at: Date.now(),
-    });
+    };
+    const lines = (Array.isArray(items) ? items : [])
+      .filter(it => it && String(it.title || '').trim())
+      .map(it => ({ title: String(it.title).trim().slice(0, 40), pts: Math.round(Number(it.pts) || 0) }));
+    if (lines.length) {
+      rec.items = lines.slice(0, 8);            // 最多列 8 行，再多会把通知卡撑到要滑半天
+      if (lines.length > 8) rec.more = lines.length - 8;
+    }
+    list.push(rec);
     saveNotices(list);
   } catch (e) {}
   if (S.role === 'kid' && S.tab === 'tasks' && $('page')) renderTasks();
@@ -1385,11 +1404,21 @@ function noticesHTML() {
       <div class="notice-head">🔔 家长消息<small>${list.length} 条待确认</small></div>
       ${list.map(n => {
         const m = NOTICE_META[n.type] || NOTICE_META.points;
+        const rows = Array.isArray(n.items) ? n.items.filter(it => it && it.title) : [];
+        const itemsHTML = rows.length ? `
+            <ul class="notice-items">
+              ${rows.map(it => {
+                const pts = Math.round(Number(it.pts) || 0);
+                return `<li><span>${escHTML(it.title)}</span><b class="${pts < 0 ? 'minus' : ''}">${pts > 0 ? '+' : ''}${pts}</b></li>`;
+              }).join('')}
+              ${Number(n.more) > 0 ? `<li class="more">…还有 ${Number(n.more)} 项</li>` : ''}
+            </ul>` : '';
         return `
         <div class="notice-card ${m.cls}" data-action="notice-ack" data-nid="${n.id}" role="button" tabindex="0">
           <span class="notice-ic">${m.ic}</span>
           <div class="notice-body">
             <div class="notice-title">${escHTML(n.text)}</div>
+            ${itemsHTML}
             <div class="notice-meta">${m.tag} · ${noticeTime(n)}${n.sub ? ' · ' + escHTML(n.sub) : ''}</div>
           </div>
           <span class="notice-ok">知道啦</span>
@@ -2617,7 +2646,7 @@ function kidCalPanel() {
 }
 // 一条积分流水（孩子端）
 function logItemHTML(l) {
-  return `<div class="log-item"><span>${l.confirmed === false ? '⏳ ' : ''}${escHTML(l.reason)}</span><span class="when">${l.log_date} ${fmtTime(l.created_at)} <b class="amt ${l.amount >= 0 ? 'plus' : 'minus'}">${l.amount >= 0 ? '+' : ''}${l.amount}</b></span></div>`;
+  return `<div class="log-item"><span>${l.confirmed === false ? '⏳ ' : ''}${escHTML(pointReasonLabel(l.reason))}</span><span class="when">${l.log_date} ${fmtTime(l.created_at)} <b class="amt ${l.amount >= 0 ? 'plus' : 'minus'}">${l.amount >= 0 ? '+' : ''}${l.amount}</b></span></div>`;
 }
 // 「我的」页：积分记录（原来拆成"额外奖励 / 扣分 / 积分记录"三块，合并成一块 + 顶部筛选）
 const PT_FILTERS = [['all', '全部'], ['plus', '获得'], ['minus', '扣分']];
@@ -4365,7 +4394,7 @@ function pendingPointsPanel() {
         <div class="pend-date">${date}</div>
         ${byDate[date].map(l => `
           <div class="prow pend-row">
-            <label class="pend-check"><input type="checkbox" data-plid="${l.id}" checked> <span>${l.reason}</span></label>
+            <label class="pend-check"><input type="checkbox" data-plid="${l.id}" checked> <span>${pointReasonLabel(l.reason)}</span></label>
             <span class="amt plus">+${l.amount}</span>
             <button class="btn-icon" data-action="parent-undo" data-plid="${l.id}" title="放弃这条并恢复该任务未完成">✖</button>
           </div>
@@ -4393,7 +4422,7 @@ function pointLogPanel() {
       <div style="margin-top:8px">
       ${rows.map(l => `
         <div class="prow">
-          <span class="grow">${l.confirmed === false ? '⏳ ' : ''}${l.reason}</span>
+          <span class="grow">${l.confirmed === false ? '⏳ ' : ''}${escHTML(pointReasonLabel(l.reason))}</span>
           <span class="when">${l.log_date} ${fmtTime(l.created_at)}</span>
           <span class="amt ${l.amount >= 0 ? 'plus' : 'minus'}">${l.amount >= 0 ? '+' : ''}${l.amount}</span>
           ${l.amount > 0 ? `<button class="btn-danger" data-action="parent-undo" data-plid="${l.id}">↩</button>` : ''}
@@ -4629,7 +4658,7 @@ async function givePts() {
   // 乐观更新：余额和提示先给，流水的 id 要等库返回，到了再补进列表
   S.balance += n;
   toast(`⭐ 已发 ${n} 积分`);
-  pushNotice('bonus', `家长额外奖励你 ${n} 积分！`, why ? `原因：${why}` : `现在一共有 ${S.balance} 分`);
+  pushNotice('bonus', `家长额外奖励你 ${n} 积分！`, `现在一共有 ${S.balance} 分${why ? ` · 原因：${why}` : ''}`);
   render();
   bgWrite('发积分', async () => {
     const pid = await DB.addPointLog(n, reason, DB.today());
@@ -4645,7 +4674,7 @@ async function minusPts() {
   // 乐观更新：余额和提示先给，落库后台
   S.balance -= n;
   toast(`➖ 已扣 ${n} 积分`);
-  pushNotice('minus', `家长扣了你 ${n} 积分`, why ? `原因：${why}` : `现在还剩 ${S.balance} 分`);
+  pushNotice('minus', `家长扣了你 ${n} 积分`, `现在还剩 ${S.balance} 分${why ? ` · 原因：${why}` : ''}`);
   render();
   bgWrite('扣积分', async () => {
     const pid = await DB.addPointLog(-n, reason, DB.today());
@@ -4663,29 +4692,31 @@ async function confirmPending() {
   S.pointLogs.forEach(l => { if (ids.includes(l.id)) l.confirmed = true; });
   S.balance += sum;
   // 家长审批通过：把对应任务标记为"已完成"（不下架，任务保留在列表里展示完成状态）
-  const approved = [];
+  const items = [];       // 通知明细：这次到底确认了哪几笔，逐条列给孩子看
   const logWrites = [];   // [{task_id, log_date}]，落库时并发发出
   for (const id of ids) {
     const l = S.pointLogs.find(x => x.id === id);
-    if (l && l.task_id) {
+    if (!l) continue;
+    if (l.task_id) {
       logWrites.push({ task_id: l.task_id, log_date: l.log_date });
       if (S.logs[l.log_date]?.[l.task_id]) S.logs[l.log_date][l.task_id].approved = true;
       const raw = S.tasks.find(x => x.id === l.task_id);
       const t = raw ? taskAttrFor(raw, l.log_date) : null;   // 用那天的名称（编辑只对今天及之后生效）
-      approved.push({
-        title: (t && t.title) || String(l.reason || '').replace(/^完成[:：]\s*/, '') || '任务',
-        pts: l.amount,
-      });
+      // 任务被删了也要能交代清楚，退回流水里记的名字
+      items.push({ title: (t && t.title) || pointReasonLabel(l.reason) || '任务', pts: l.amount });
+    } else {
+      // 全清奖这类不挂任务的流水也要列出来，否则明细加起来对不上总数
+      items.push({ title: pointReasonLabel(l.reason), pts: l.amount });
     }
   }
   // 乐观更新：余额/流水/打卡状态本地都已改好 → 先提示并渲染，落库放后台
   toast(`✅ 已发放 ${sum} 积分`);
   // 孩子任务页顶端留一条家长消息，点「知道啦」才消失
-  if (approved.length === 1) {
-    pushNotice('points', `家长确认了「${approved[0].title}」+${approved[0].pts} 积分！`, `现在一共有 ${S.balance} 分`);
-  } else if (approved.length > 1) {
-    const names = approved.map(a => a.title);
-    pushNotice('points', `家长确认了 ${approved.length} 项任务，共 +${sum} 积分！`, `含：${names.slice(0, 3).join('、')}${names.length > 3 ? ' 等' : ''}`);
+  const signed = n => `${n >= 0 ? '+' : ''}${n}`;
+  if (items.length === 1) {
+    pushNotice('points', `家长确认了「${items[0].title}」${signed(items[0].pts)} 积分！`, `现在一共有 ${S.balance} 分`);
+  } else if (items.length > 1) {
+    pushNotice('points', `家长确认了 ${items.length} 项，共 ${signed(sum)} 积分！`, `现在一共有 ${S.balance} 分`, items);
   }
   render();
   bgWrite('审批积分', async () => {
@@ -4699,12 +4730,21 @@ async function confirmPending() {
 async function undoPoint(id) {
   const l = S.pointLogs.find(x => x.id === id);
   if (!l) return;
-  const kind = l.confirmed === false ? '这条待确认积分' : `这笔已发放的 +${l.amount} 积分`;
-  if (!await askConfirm(`撤销${kind}「${l.reason}」？对应任务会恢复为未完成。`, { okText: '撤销' })) return;
+  const kind = l.confirmed === false
+    ? '这条待确认积分'
+    : `这笔已发放的 ${l.amount >= 0 ? '+' : ''}${l.amount} 积分`;
+  if (!await askConfirm(`撤销${kind}「${pointReasonLabel(l.reason)}」？对应任务会恢复为未完成。`, { okText: '撤销' })) return;
   // 乐观更新：本地先改 + 立即渲染，落库放后台
   S.pointLogs = S.pointLogs.filter(x => x.id !== id);
-  if (l.confirmed !== false && l.amount > 0) S.balance -= l.amount;
+  // 已确认的流水才进过余额：正数扣回、负数（扣分）补回，别只处理正数
+  if (l.confirmed !== false) S.balance -= l.amount;
   if (l.task_id && S.logs[l.log_date]) delete S.logs[l.log_date][l.task_id];
+  // 家长动了孩子的分 → 孩子端要能看到，别让分数凭空少掉或多出来
+  if (l.confirmed !== false && l.amount !== 0) {
+    const label = pointReasonLabel(l.reason);
+    if (l.amount > 0) pushNotice('minus', `家长撤销了「${label}」+${l.amount} 积分`, `现在还剩 ${S.balance} 分`);
+    else pushNotice('bonus', `家长撤销了「${label}」的 ${l.amount} 分扣分`, `现在一共有 ${S.balance} 分`);
+  }
   // 任务不再因完成而下架，撤销积分后它自然恢复为未完成状态，无需处理 active
   toast('已撤销');
   render();

@@ -1620,7 +1620,7 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 }
 .notice-head small { font-weight: 600; opacity: .9; font-size: 11px; }
 .notice-card {
-  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  display: flex; align-items: flex-start; gap: 10px; cursor: pointer;
   background: var(--card); border-radius: 16px; box-shadow: var(--shadow);
   padding: 12px; border-left: 6px solid #90a4ae;
   transition: transform .15s ease;
@@ -1630,14 +1630,26 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .notice-card.minus { border-left-color: #8e24aa; background: linear-gradient(180deg, #fff, #faf5ff); }
 .notice-card.points { border-left-color: #43a047; background: linear-gradient(180deg, #fff, #f4fbf4); }
 .notice-card.bonus { border-left-color: #fb8c00; background: linear-gradient(180deg, #fff, #fffaf2); }
-.notice-ic { font-size: 22px; line-height: 1; flex: none; }
+.notice-ic { font-size: 22px; line-height: 1; flex: none; margin-top: 1px; }
 .notice-body { flex: 1; min-width: 0; }
 .notice-title { font-size: 14px; font-weight: 800; line-height: 1.35; }
 .notice-meta { font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+/* 通知明细：一次确认了多笔积分时逐条列出（任务名 + 分数），别让孩子只看总分对不上 */
+.notice-items {
+  list-style: none; margin: 7px 0 2px; padding: 7px 9px;
+  background: rgba(38, 50, 56, .045); border-radius: 10px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.notice-items li { display: flex; align-items: baseline; gap: 10px; font-size: 12px; line-height: 1.4; }
+.notice-items li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notice-items li b { flex: none; color: #2e7d32; font-variant-numeric: tabular-nums; }
+.notice-items li b.minus { color: #8e24aa; }
+.notice-items li.more { color: var(--ink-soft); font-size: 11px; }
 .notice-ok {
   flex: none; font-size: 12px; font-weight: 800; color: #fff; white-space: nowrap;
   background: linear-gradient(135deg, #66bb6a, #43a047); box-shadow: 0 3px 0 #2e7d32;
   border-radius: 999px; padding: 7px 12px;
+  align-self: center;   /* 卡里有明细变高时，按钮仍居中，不跟标题挤在顶上 */
 }
 .notice-card.ball .notice-ok { background: linear-gradient(135deg, #ef5350, #e53935); box-shadow: 0 3px 0 #b71c1c; }
 .notice-card.minus .notice-ok { background: linear-gradient(135deg, #ab47bc, #8e24aa); box-shadow: 0 3px 0 #6a1b9a; }

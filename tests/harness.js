@@ -59,7 +59,11 @@ function baseGlobals(over = {}) {
     renderTop: () => { g.__renders = (g.__renders || 0) + 1; },
     renderProgress: () => {}, renderTasks: () => { g.__renders = (g.__renders || 0) + 1; },
     renderPokemons: () => {}, renderParent: () => {},
-    pushNotice: (t, x) => (g.__notices || (g.__notices = [])).push(x),
+    // __notices 只存副标题（历史断言在用）；__noticeArgs 存完整参数，便于断言明细行
+    pushNotice: (t, x, sub, items) => {
+      (g.__notices || (g.__notices = [])).push(x);
+      (g.__noticeArgs || (g.__noticeArgs = [])).push({ type: t, text: x, sub, items });
+    },
     askConfirm: async () => true,
     pmReason: () => '',
     $: () => ({ value: '' }),
