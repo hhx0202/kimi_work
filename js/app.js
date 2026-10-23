@@ -2540,7 +2540,7 @@ function showDexMissing(no) {
         <span class="ptcg-lv">#${no}</span>
       </div>
       <div class="ptcg-art">
-        <img src="${artworkPath(no)}" alt="">
+        <img src="${artworkPath(no)}" alt="" loading="lazy">
         <span class="ptcg-type">未收集</span>
       </div>
       <div class="ptcg-moves">
@@ -3143,7 +3143,7 @@ function bindActions() {
     // 家长端已移除「放生」入口（防误点），deletePokemon 保留给未来扩展
     else if (act === 'parent-confirm') confirmPending();
     else if (act === 'parent-undo') await undoPoint(Number(btn.dataset.plid));
-    else if (act === 'share') shareCard();
+    else if (act === 'share') openShare();
   };
 }
 function setLead(id) {
@@ -4940,7 +4940,107 @@ async function undoPoint(id) {
 }
 
 // ---------- 朋友圈成就图 ----------
+// 做成就图之前先给一个预览：右上角能换伙伴、换立绘/场景卡，满意再截图
+let sharePick = { pmId: null, art: 'art' };
 let shareBusy = false;   // 生成中：连点不再重复渲染
+
+function sharePmList() { return S.pokemons.slice().sort((a, b) => a.id - b.id); }
+// #rrggbb + 透明度 → rgba()：html2canvas 对 8 位 hex 支持不稳，统一转成 rgba
+function hexA(hex, a) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+  if (!m) return `rgba(255,255,255,${a})`;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+function openShare() {
+  const list = sharePmList();
+  if (!list.length) { toast('先捕捉一只宝可梦，再来做成就图吧'); return; }
+  const saved = lsGet(LK('share_pick'), null);
+  const pickId = saved && list.some(p => p.id === saved.pmId) ? saved.pmId
+    : (list.some(p => p.id === S.leadId) ? S.leadId : list[0].id);
+  sharePick = { pmId: pickId, art: saved && saved.art === 'scene' ? 'scene' : 'art' };
+  renderSharePreview();
+}
+function saveSharePick() { try { lsSet(LK('share_pick'), sharePick); } catch (e) {} }
+
+function renderSharePreview() {
+  const ov = $('overlay');
+  ov.classList.remove('hidden');
+  ov.className = 'overlay share-view';
+  ov.innerHTML = `
+    <div class="share-tools">
+      <button class="share-tool" data-shtool="pick">🔁 换伙伴</button>
+      <button class="share-tool" data-shtool="art">${sharePick.art === 'scene' ? '🎴 场景卡' : '🖼 立绘'}</button>
+    </div>
+    <div class="share-fit"><div class="share-scaler">${shareCardHTML()}</div></div>
+    <div class="share-acts">
+      <button class="share-close" data-shtool="close">关闭</button>
+      <button class="share-gen" data-shtool="gen">📸 生成图片</button>
+    </div>
+  `;
+  ov.querySelectorAll('[data-shtool]').forEach(b => { b.onclick = () => onShareTool(b.dataset.shtool); });
+  fitShareScale();
+}
+// 预览缩放到屏幕里（截图用的 #share-wrap 始终是 640 原尺寸，不受影响）
+function fitShareScale() {
+  const fit = document.querySelector('.share-fit');
+  const card = document.querySelector('.share-scaler .share-card');
+  if (!fit || !card) return;
+  card.style.transform = 'none';
+  const cw = card.offsetWidth || 640, ch = card.offsetHeight || 900;
+  const availW = Math.min(window.innerWidth - 24, 520);
+  const availH = Math.max(260, window.innerHeight - 190);
+  const s = Math.min(availW / cw, availH / ch, 1);
+  card.style.transformOrigin = 'top left';
+  card.style.transform = `scale(${s})`;
+  fit.style.width = Math.round(cw * s) + 'px';
+  fit.style.height = Math.round(ch * s) + 'px';
+}
+function onShareTool(act) {
+  if (act === 'close') { $('overlay').classList.add('hidden'); $('overlay').innerHTML = ''; return; }
+  if (act === 'art') {
+    sharePick.art = sharePick.art === 'scene' ? 'art' : 'scene';
+    saveSharePick();
+    renderSharePreview();
+    return;
+  }
+  if (act === 'pick') { openSharePicker(); return; }
+  if (act === 'gen') { shareCard(); return; }
+}
+// 选伙伴：把手上有的宝可梦列成网格，点一只就换（预览实时跟着变）
+function openSharePicker() {
+  const ov = $('overlay');
+  const box = document.createElement('div');
+  box.className = 'share-pick-layer';
+  box.innerHTML = `
+    <div class="share-pick-box">
+      <div class="share-pick-head"><b>选一只上成就图</b><button type="button" data-close>✕</button></div>
+      <div class="share-pick-grid">
+        ${sharePmList().map(p => {
+          const no = pkNoOf(p) || 25;
+          return `<button type="button" class="share-pk${p.id === sharePick.pmId ? ' on' : ''}" data-pm="${p.id}">
+            <img src="${artworkPath(no)}" alt="" loading="lazy">
+            <span>${escHTML(p.name || (PK_BY_NO[no] || {}).name || '')}</span>
+            ${p.shiny ? '<i>✨</i>' : ''}
+          </button>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+  box.querySelector('[data-close]').onclick = () => box.remove();
+  box.addEventListener('click', e => {
+    if (e.target === box) { box.remove(); return; }
+    const b = e.target.closest('.share-pk');
+    if (!b) return;
+    sharePick.pmId = Number(b.dataset.pm);
+    saveSharePick();
+    box.remove();
+    renderSharePreview();
+  });
+  ov.appendChild(box);
+}
+
 async function shareCard() {
   if (shareBusy) return;
   const ov = $('overlay');
@@ -4957,12 +5057,15 @@ async function shareCard() {
     wrap.innerHTML = shareCardHTML();      // 也在 try 里：老数据缺 pokedex_no 之类要能报出来
     document.body.appendChild(wrap);
     // 安卓老机器上 html2canvas 偶尔会卡住，超时就给结论，别让「正在生成」一直转
-    const done = html2canvas(wrap, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+    // 底色取卡面同色系：卡是圆角的，四角露出来的部分才不会突兀（透明底在相册里会变黑）
+    const done = html2canvas(wrap, { backgroundColor: '#0e0a20', scale: 2, useCORS: true });
     const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('生成超时（手机太忙或图片太大），再点一次试试')), 20000));
     const canvas = await Promise.race([done, timeout]);
     const dataUrl = canvas.toDataURL('image/png');
-    ov.innerHTML = `<img class="share-img" src="${dataUrl}"><p class="share-tip">💡 长按图片保存到相册，就能发朋友圈啦</p><button class="ov-skip">关闭</button>`;
-    ov.querySelector('.ov-skip').onclick = () => ov.classList.add('hidden');
+    ov.innerHTML = `<img class="share-img" src="${dataUrl}"><p class="share-tip">💡 长按图片保存到相册，就能发朋友圈啦</p>
+      <div class="share-acts"><button class="share-gen" data-back="again">🔁 再做一张</button><button class="share-close" data-back="close">关闭</button></div>`;
+    ov.querySelector('[data-back="again"]').onclick = () => { renderSharePreview(); };
+    ov.querySelector('[data-back="close"]').onclick = () => { ov.classList.add('hidden'); ov.innerHTML = ''; };
   } catch (err) {
     // 以前这里只有 console/toast，出错时界面上什么都没有 → 这次把原因写进错误日志并明确提示
     const msg = (err && err.message) || String(err) || '未知错误';
@@ -4976,36 +5079,49 @@ async function shareCard() {
   }
 }
 
+// 固定装饰点（不用随机：每次预览和截图必须长得一模一样）
+const SHARE_SPARKS = [
+  [7, 9, 20], [24, 4, 12], [43, 7, 9], [77, 5, 16], [93, 12, 22],
+  [4, 34, 11], [96, 32, 13], [9, 62, 15], [91, 58, 10], [16, 86, 12],
+  [84, 90, 16], [50, 94, 8],
+];
+
 function shareCardHTML() {
-  const streak = calcStreak();
-  const ts = todayTasks().filter(t => t.required !== false);
-  const done = ts.filter(t => logToday(t.id)).length;
-  const ds = doneStats();
-  const lead = S.pokemons.find(p => p.id === S.leadId);
+  const list = sharePmList();
+  const pm = S.pokemons.find(p => p.id === sharePick.pmId) || S.pokemons.find(p => p.id === S.leadId) || list[0] || null;
   // 老数据可能丢了 pokedex_no（只有名字）→ 用 pkNoOf 兜底，避免 PK_BY_NO[null] 直接抛错
-  const leadNo = (lead && pkNoOf(lead)) || 25;
-  const leadInfo = PK_BY_NO[leadNo] || PK_BY_NO[25];
-  const type = pmType(leadNo);
-  const theme = TYPE_THEME[type] || TYPE_THEME.normal;
+  const no = (pm && pkNoOf(pm)) || 25;
+  const info = PK_BY_NO[no] || PK_BY_NO[25];
+  const theme = TYPE_THEME[pmType(no)] || TYPE_THEME.normal;
+  const shiny = !!(pm && pm.shiny);
+  const scene = sharePick.art === 'scene';
+  const src = scene ? scenePath(no, shiny) : artworkPath(no);
+  const name = (pm && (pm.name || info.name)) || '皮卡丘';
+  const doneTotal = totalDoneCount();
+  const streak = calcStreak();
+  const dexN = dexGotCount();
   return `
-    <div class="share-card" style="--tc:${theme.color}; --bg1:${theme.bg1}; --bg2:${theme.bg2}">
-      <div class="share-head">🏝️ 佑佑的任务岛</div>
-      <div class="share-pm">
-        <img src="${artworkPath(leadNo)}" alt="">
-        <div class="share-pm-name">${lead ? leadInfo.name + (lead.shiny ? ' ✨' : '') : '皮卡丘'}<span>${lead ? stageText(lead) : '基础'}</span></div>
+    <div class="share-card">
+      <div class="sc-in">
+        <i class="sc-glow" style="background:radial-gradient(circle at 50% 50%, ${hexA(theme.color, .55)} 0%, ${hexA(theme.color, .18)} 38%, rgba(0,0,0,0) 66%)"></i>
+        <div class="sc-rays">${Array.from({ length: 12 }, (_, i) => `<i style="transform:rotate(${i * 30}deg)"></i>`).join('')}</div>
+        ${SHARE_SPARKS.map(([x, y, s]) => `<i class="sc-spark" style="left:${x}%;top:${y}%;font-size:${s}px">✦</i>`).join('')}
+        <div class="sc-body">
+          <div class="sc-brand">🏝️ 佑佑的任务岛</div>
+          <div class="sc-brand-sub">ADVENTURE LOG</div>
+          <div class="sc-stage">
+            <img class="sc-art${scene ? ' scene' : ''}" src="${src}" alt="">
+          </div>
+          <div class="sc-name">${escHTML(name)}${shiny ? ' <em>✨</em>' : ''}</div>
+          <div class="sc-tag">${stageText(pm || {})} · ${theme.name}属性</div>
+          <div class="share-stats">
+            <div class="sc-stat"><b>${doneTotal}</b><span>累计完成任务</span></div>
+            <div class="sc-stat"><b>${streak}</b><span>必做全清连击</span></div>
+            <div class="sc-stat"><b>${dexN}<em>/151</em></b><span>图鉴收集</span></div>
+          </div>
+          <div class="sc-foot"><i></i>${DB.today()} · 快乐打卡每一天<i></i></div>
+        </div>
       </div>
-      <div class="share-stats">
-        <div><b>${done}/${ts.length}</b><span>今日任务</span></div>
-        <div><b>${streak}</b><span>必做全清连击</span></div>
-        <div><b>${dexGotCount()}/151</b><span>图鉴收集</span></div>
-        <div><b>${S.balance}</b><span>积分</span></div>
-      </div>
-      <div class="share-line" style="margin-top:14px;display:flex;justify-content:space-around;font-size:13px;font-weight:700;color:rgba(255,255,255,.92)">
-        <span>累计完成 <b style="font-size:16px">${ds.total}</b></span>
-        <span>近一周 <b style="font-size:16px">${ds.week}</b></span>
-        <span>近一月 <b style="font-size:16px">${ds.month}</b></span>
-      </div>
-      <div class="share-date">${DB.today()} · 快乐打卡每一天</div>
     </div>
   `;
 }

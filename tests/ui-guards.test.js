@@ -99,7 +99,16 @@ module.exports = async function run() {
   ok(/ov\.innerHTML = `<div class="share-loading">/.test(APP), '点下去立刻显示「正在生成」');
   ok(/\.share-spin\s*\{[^}]*animation:/.test(CSS), '生成中有转圈动画');
   ok(/wrap\.innerHTML = shareCardHTML\(\);\s*\/\/[^\n]*try/.test(APP), '拼卡片 HTML 也在 try 里（出错能兜住）');
-  ok(/const leadNo = \(lead && pkNoOf\(lead\)\) \|\| 25/.test(APP), '出战编号走 pkNoOf 兜底（老数据不会抛错）');
+  ok(/const no = \(pm && pkNoOf\(pm\)\) \|\| 25/.test(APP), '上图的宝可梦编号走 pkNoOf 兜底（老数据不会抛错）');
+  // 成就图的目的是"展示积累"：去掉今日任务/当前积分/近一周近一月，只留累计
+  ok(APP.includes('累计完成任务') && !/今日任务<\/span>/.test(APP), '成就图展示累计完成任务，不再显示今日任务');
+  ok(!/share-stats[\s\S]{0,600}?<\/div>\s*<div><b>\$\{S\.balance\}/.test(APP), '成就图不再显示当前积分框');
+  ok(!/<span>近一周/.test(APP), '删掉了近一周/近一月那行小字');
+  // 成就图右上角能换伙伴 / 换卡面，选完记在本机
+  ok(/function openShare\(/.test(APP) && APP.includes('data-shtool="pick"'), '预览右上角能换伙伴');
+  ok(APP.includes('data-shtool="art"') && APP.includes("art === 'scene'"), '能切换立绘 / 场景卡');
+  ok(/lsSet\(LK\('share_pick'\)/.test(APP), '选择记在本机，下次打开还是这套');
+  ok(/scenePath\(no, shiny\)/.test(APP), '场景卡按闪耀与否取对应一套素材');
   ok(APP.includes("reportError('生成成就图失败'"), '失败原因写进错误日志，家长端能复制');
   ok(/Promise\.race\(\[done, timeout\]\)/.test(APP), 'html2canvas 卡住时有超时结论');
   ok(APP.includes('闪耀吧！✨'), '选卡态小卡的按钮文案');

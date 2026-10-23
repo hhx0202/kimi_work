@@ -22,7 +22,7 @@ const DB = (() => {
   // ==========================================================
   const K = { tasks: P + 'tasks', logs: P + 'logs', pms: P + 'pokemons', pts: P + 'points', items: P + 'items' };
   const K_SEED_VER = P + 'seedver';
-  const SEED_VER = 7;   // 演示数据版本：升版本时会给已有的演示数据补一次测试内容 / 修一次历史数据
+  const SEED_VER = 8;   // 演示数据版本：升版本时会给已有的演示数据补一次测试内容 / 修一次历史数据
 
   // 演示用宝可梦：覆盖「基础 / 一阶 / 最终 / 无进化链 / 闪耀形态 / 临进化」各阶段，方便测试
   const DEMO_PMS = [
@@ -195,8 +195,31 @@ const DB = (() => {
     return rows;
   }
 
-  function demoPmRows(startId = 1, list = DEMO_PMS) {
-    return expandDemoPms(list).map((r, i) => ({
+  // 演示用的历史打卡：给「重复任务 / 子任务 / 没绑日期的一次性任务」造——这三类每天都会出现在必做清单里
+  // （`dayTasksForProgress` 的口径），只有它们都勾上，演示的「必做全清连击」才不是 0。
+  // 最近 5 天做满 → 连击有 5 天；更早 16 天每天做掉大部分 → 成就图的「累计完成」看着像真攒了很久。
+  // 用 (i + back) % 4 这种确定性规则，不用 Math.random：同一份演示数据每次生成都一样，便于排查。
+  function demoHistoryLogs(tasks, todayStr) {
+    const pool = tasks.filter(t => t.schedule === 'daily' || t.schedule === 'child' || (t.schedule === 'once' && !t.start_date));
+    const out = [];
+    let id = 1;
+    for (let back = 20; back >= 1; back--) {
+      const d = new Date(todayStr + 'T00:00:00');
+      d.setDate(d.getDate() - back);
+      const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const allDone = back <= 5;                       // 最近 5 天全清
+      pool.forEach((t, i) => {
+        if (!allDone && (i + back) % 4 === 0) return;  // 早些的日子偶尔漏一条
+        out.push({
+          id: id++, task_id: t.id, log_date: date, completed: true,
+          completed_at: date + 'T12:00:00Z', note: null, progress: null, approved: true,
+        });
+      });
+    }
+    return out;
+  }
+
+  function demoPmRows(startId = 1, list = DEMO_PMS) {    return expandDemoPms(list).map((r, i) => ({
       id: startId + i,
       name: PK_BY_NO[r.no].name,
       pokedex_no: r.no,
@@ -248,7 +271,7 @@ const DB = (() => {
           }
         }
         dSet(K.tasks, rows);
-        dSet(K.logs, []);
+        dSet(K.logs, demoHistoryLogs(rows, today0));
         // 演示队伍：喷火龙 / 快龙 各带一张 ✨（写进清单里，让 expandDemoPms 一并把整链铺成闪耀）
         const pmRows = demoPmRows(1, DEMO_PMS.concat(DEMO_PMS_EXTRA, DEMO_PMS_MORE, [[6, 0, true], [149, 0, true]]));
         dSet(K.pms, pmRows);
@@ -377,6 +400,8 @@ const DB = (() => {
           }))));
         }
       }
+      // v7 → v8：给还没打过卡的演示数据补一批历史打卡，成就图/日历才看得出"积累"
+      if (prevVer < 8 && dGet(K.logs).length === 0) dSet(K.logs, demoHistoryLogs(dGet(K.tasks), today()));
       lsSet(K_SEED_VER, SEED_VER);
     },
     async getTasks() { return [...dGet(K.tasks)]; },

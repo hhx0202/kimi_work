@@ -1566,25 +1566,146 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .child-item .child-name { flex: 1; font-weight: 700; min-width: 0; }
 .child-item .child-pct { font-weight: 800; color: #fb8c00; font-size: 12px; background: #fff3e0; border-radius: 999px; padding: 2px 8px; flex: none; }
 
-/* ---------- 朋友圈成就卡 ---------- */
+/* ---------- 朋友圈成就卡（深色星空 + 金边，展示"积累"） ---------- */
 #share-wrap { position: fixed; top: 0; left: -9999px; width: 640px; }
 .share-card {
-  width: 640px; padding: 40px; text-align: center;
-  background: linear-gradient(160deg, var(--bg1), var(--bg2));
-  border: 6px solid var(--tc, #a8a878); border-radius: 32px;
+  position: relative; width: 640px; box-sizing: border-box;
+  padding: 3px; border-radius: 36px;
+  background: linear-gradient(135deg, #fff3c4 0%, #f6b93b 24%, #fffbe8 46%, #d9930a 72%, #ffe9a8 100%);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, .55);
 }
-.share-head { font-size: 40px; font-weight: 900; color: #fff; text-shadow: 0 3px 0 rgba(0,0,0,.3); }
-.share-pm img { width: 220px; height: 220px; object-fit: contain; margin: 20px 0 8px; filter: drop-shadow(0 6px 18px rgba(0,0,0,.3)); }
-.share-pm-name { font-size: 34px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.35); }
-.share-pm-name span { display: block; font-size: 20px; font-weight: 800; margin-top: 4px; opacity: .9; }
-.share-stats { display: flex; gap: 12px; margin-top: 28px; }
-.share-stats div { flex: 1; background: rgba(255,255,255,.82); border-radius: 20px; padding: 18px 8px; }
-.share-stats b { display: block; font-size: 34px; color: var(--ink); }
-.share-stats span { font-size: 14px; color: #546e7a; }
-.share-date { margin-top: 26px; font-size: 18px; font-weight: 800; color: rgba(255,255,255,.95); }
+/* 内层：深空底 + 裁掉溢出的光线 */
+.share-card .sc-in {
+  position: relative; overflow: hidden; border-radius: 33px;
+  padding: 32px 30px 28px; text-align: center;
+  background: linear-gradient(168deg, #241a55 0%, #2e1e66 40%, #151030 72%, #0e0a20 100%);
+}
+.sc-glow {
+  position: absolute; left: 50%; top: 34%; width: 660px; height: 660px;
+  margin: -330px 0 0 -330px; border-radius: 50%; display: block;
+}
+/* 放射星芒：12 根细光从中心散开（rotate 由内联样式给） */
+.sc-rays { position: absolute; left: 50%; top: 34%; width: 0; height: 0; }
+.sc-rays i {
+  position: absolute; left: -3px; top: 0; width: 6px; height: 560px;
+  transform-origin: 50% 0; border-radius: 3px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, .22), rgba(255, 255, 255, .04) 45%, rgba(255, 255, 255, 0) 78%);
+}
+.sc-spark {
+  position: absolute; color: #fff3c4; font-style: normal; line-height: 1;
+  text-shadow: 0 0 10px rgba(255, 214, 102, .95), 0 0 22px rgba(255, 176, 32, .6);
+}
+.sc-body { position: relative; }
+.sc-brand {
+  font-size: 31px; font-weight: 900; letter-spacing: 3px; color: #fff3c4;
+  text-shadow: 0 0 12px rgba(255, 200, 60, .8), 0 2px 0 rgba(0, 0, 0, .4);
+}
+.sc-brand-sub {
+  margin-top: 7px; font-size: 11px; font-weight: 800; letter-spacing: 7px;
+  color: rgba(255, 214, 102, .6); text-indent: 7px;
+}
+/* 宝可梦站台：立绘 / 场景卡都按底边对齐，脚下有一圈光台 */
+.sc-stage {
+  position: relative; height: 344px; margin: 10px auto 0;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.sc-stage::before {
+  content: ''; position: absolute; bottom: 2px; left: 50%; width: 300px; height: 42px; margin-left: -150px;
+  border-radius: 50%; background: radial-gradient(ellipse at center, rgba(255, 245, 210, .55), rgba(255, 245, 210, 0) 70%);
+}
+.sc-art {
+  position: relative; height: 336px; width: auto; display: block;
+  filter: drop-shadow(0 14px 28px rgba(0, 0, 0, .6));
+}
+.sc-art.scene {
+  height: 344px; border-radius: 16px; border: 2px solid rgba(255, 233, 168, .9);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .55), 0 0 26px rgba(255, 200, 60, .3);
+}
+.sc-name {
+  margin-top: 14px; font-size: 40px; font-weight: 900; color: #fff; line-height: 1.15;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, .45), 0 0 20px rgba(255, 255, 255, .3);
+}
+.sc-name em { font-style: normal; font-size: 30px; }
+.sc-tag {
+  display: inline-block; margin-top: 10px; padding: 5px 16px; border-radius: 999px;
+  font-size: 14px; font-weight: 800; color: #241a55; letter-spacing: 1px;
+  background: linear-gradient(135deg, #ffe9a8, #f6b93b);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
+}
+.share-stats { display: flex; gap: 10px; margin-top: 22px; }
+.sc-stat {
+  flex: 1; padding: 15px 4px 12px; border-radius: 18px;
+  border: 1px solid rgba(255, 233, 168, .34);
+  background: linear-gradient(165deg, rgba(255, 255, 255, .15), rgba(255, 255, 255, .05));
+}
+.sc-stat b {
+  display: block; font-size: 38px; font-weight: 900; line-height: 1.05; color: #ffe9a8;
+  text-shadow: 0 0 14px rgba(255, 200, 60, .6);
+}
+.sc-stat b em { font-size: 15px; font-style: normal; color: rgba(255, 233, 168, .68); }
+.sc-stat span { display: block; margin-top: 7px; font-size: 12px; font-weight: 700; color: rgba(255, 255, 255, .74); }
+.sc-foot {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  margin-top: 22px; font-size: 14px; font-weight: 800; letter-spacing: 1px; color: rgba(255, 233, 168, .88);
+}
+.sc-foot i { display: block; width: 52px; height: 1px; background: linear-gradient(to right, rgba(255, 233, 168, 0), rgba(255, 233, 168, .75)); }
+.sc-foot i:last-child { background: linear-gradient(to left, rgba(255, 233, 168, 0), rgba(255, 233, 168, .75)); }
 
-.overlay.share-view { background: rgba(15,15,30,.94); }
-.share-img { max-width: min(420px, 88vw); border-radius: 18px; box-shadow: 0 12px 50px rgba(0,0,0,.6); }
+/* ---------- 成就图预览层 ---------- */
+.overlay.share-view { background: radial-gradient(circle at 50% 30%, #231a4d, #0b0818 72%); gap: 14px; }
+.share-fit { position: relative; }
+.share-scaler { width: 640px; flex: 0 0 auto; }
+.share-tools { position: fixed; top: calc(12px + env(safe-area-inset-top)); right: 12px; display: flex; gap: 8px; z-index: 5; }
+.share-tool {
+  border: 0; border-radius: 999px; padding: 9px 14px; cursor: pointer;
+  font-size: 13px; font-weight: 800; font-family: inherit; color: #241a55;
+  background: linear-gradient(135deg, #ffe9a8, #f6b93b);
+  box-shadow: 0 5px 16px rgba(0, 0, 0, .45);
+  -webkit-tap-highlight-color: transparent;
+}
+.share-tool:active { transform: scale(.96); }
+.share-acts { display: flex; gap: 10px; }
+.share-gen, .share-close, .ov-skip {
+  border: 0; border-radius: 999px; padding: 12px 22px; cursor: pointer;
+  font-size: 14px; font-weight: 800; font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.share-gen { color: #241a55; background: linear-gradient(135deg, #ffe9a8, #f6b93b); box-shadow: 0 6px 18px rgba(246, 185, 59, .35); }
+.share-close, .ov-skip { color: #fff; background: rgba(255, 255, 255, .14); }
+/* 选伙伴弹层 */
+.share-pick-layer {
+  position: fixed; inset: 0; z-index: 120; padding: 16px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(8, 6, 20, .88);
+}
+.share-pick-box {
+  width: 100%; max-width: 460px; max-height: 78vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: #1b1440; border: 1px solid rgba(255, 233, 168, .3); border-radius: 20px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, .6);
+}
+.share-pick-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 13px 16px; font-size: 14px; color: #ffe9a8;
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+}
+.share-pick-head button { border: 0; background: transparent; color: #ffe9a8; font-size: 17px; cursor: pointer; font-family: inherit; }
+.share-pick-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+  padding: 12px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+}
+.share-pk {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 7px 4px; border: 2px solid transparent; border-radius: 14px;
+  background: rgba(255, 255, 255, .06); cursor: pointer; font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.share-pk img { width: 100%; aspect-ratio: 1 / 1; object-fit: contain; display: block; }
+.share-pk span { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 10px; color: rgba(255, 255, 255, .82); }
+.share-pk i { position: absolute; top: 1px; right: 4px; font-style: normal; font-size: 10px; }
+.share-pk.on { border-color: #ffd54f; background: rgba(255, 213, 79, .16); }
+
+.share-img { max-width: min(420px, 86vw); border-radius: 18px; box-shadow: 0 12px 50px rgba(0, 0, 0, .6); }
 .share-tip { margin-top: 14px; font-size: 14px; color: #ffd54f; font-weight: 700; }
 /* 生成中：先给反馈，手机上 html2canvas 要一两秒 */
 .share-loading { display: flex; flex-direction: column; align-items: center; gap: 16px; font-size: 14px; font-weight: 700; color: #fff; }
