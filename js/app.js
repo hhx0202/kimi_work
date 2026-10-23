@@ -645,15 +645,6 @@ function earnedPoints() {
   return S.pointLogs.reduce((s, l) => s + (l.amount > 0 ? l.amount : 0), 0);
 }
 // 累计完成任务数：所有类型的任务（重复/单次/多日子任务）完成过多少条
-// 累计打卡天数：有「完成记录」的天数（成就图上「第 N 天」用的就是这个）
-function checkinDays() {
-  let n = 0;
-  for (const d in S.logs) {
-    const day = S.logs[d] || {};
-    if (Object.keys(day).some(tid => day[tid] && (day[tid].done || day[tid].completed))) n++;
-  }
-  return n;
-}
 function totalDoneCount() {
   let n = 0;
   for (const d in S.logs) {
@@ -3687,7 +3678,7 @@ function parentTaskPanel() {
       </div>
       <div class="input-row" style="margin-top:8px">
         ${catSelectHTML('pt-cat', '作业', 'flex:1.4')}
-        <input id="pt-pts" type="number" placeholder="积分" value="10" style="width:72px;flex:0 0 auto;min-width:72px">
+        ${stepInputHTML('pt-pts', 10, { min: 1, max: CONFIG.MAX_POINTS_PER_TASK })}
         ${reqToggleHTML('pt-req', true)}
       </div>
       <div class="input-row" id="pt-deadline-row" style="display:none;margin-top:8px">
@@ -3722,8 +3713,8 @@ function parentTaskPanel() {
       <div id="pt-children-wrap" style="display:none;margin-top:8px">
         <textarea id="pt-children" placeholder="拆子任务：每行 名称,分数（分数可省，默认10分）&#10;第1篇课文,10&#10;第2篇课文,10&#10;习作,15,选做"></textarea>
         <div class="input-row" style="margin-top:8px">
-          <span style="font-size:13px;color:var(--ink-soft);white-space:nowrap">完成奖励</span>
-          <input id="pt-bonus" type="number" placeholder="全清额外分（留空=默认${CONFIG.WEEKLY_DONE_BONUS}）" style="flex:2">
+          <span style="font-size:13px;color:var(--ink-soft);white-space:nowrap;align-self:center">完成奖励</span>
+          ${stepInputHTML('pt-bonus', '', { min: 0, max: 999, ph: `默认 ${CONFIG.WEEKLY_DONE_BONUS}` })}
         </div>
         <div class="form-hint">勾满所有子任务才算完成，额外加这笔奖励分。</div>
       </div>
@@ -3841,7 +3832,7 @@ function openWeeklyEditor(id) {
         <input id="we-deadline" type="date" value="${t.deadline || ''}" style="flex:1">
       </div>
       <div class="input-row">
-        <input id="we-bonus" type="number" value="${t.bonus || ''}" placeholder="完成奖励（留空=默认${CONFIG.WEEKLY_DONE_BONUS}分）" style="flex:1">
+        ${stepInputHTML('we-bonus', t.bonus || '', { min: 0, max: 999, ph: `默认 ${CONFIG.WEEKLY_DONE_BONUS}` })}
       </div>
       <div class="form-hint">子任务每行「名称,分数」（分数可省默认10分，可加 {提示}，末尾写「选做」为非必做）。总分自动 = 子任务分之和。改子任务会重置它的进度。</div>
       <textarea id="we-kids" style="min-height:110px" placeholder="第1篇课文,10&#10;第2篇课文,10&#10;习作,15,选做">${kidsText}</textarea>
@@ -4127,6 +4118,19 @@ function uiVal(id) {
   return el ? String(el.dataset.val || '') : '';
 }
 // 必做/选做胶囊：data-req = '1'（必做）/ '0'（选做），点一下切换
+// 数字步进器：中间输入框 + 两侧 −/+（默认步长 5）。家长不用手打，点两下就到
+// 值写在 <input> 里，读取方式跟普通输入框一样（$('pt-pts').value）
+function stepInputHTML(id, val, opt = {}) {
+  const step = opt.step || 5;
+  const min = opt.min != null ? opt.min : 1;
+  const max = opt.max != null ? opt.max : 999;
+  const at = `data-step="${id}" data-amt="${step}" data-min="${min}" data-max="${max}"`;
+  return `<div class="stepper${opt.wide ? ' wide' : ''}">
+    <button type="button" class="step-btn" ${at} data-dir="-1" aria-label="减 ${step}">−</button>
+    <input id="${id}" type="number" inputmode="numeric" value="${val == null ? '' : val}"${opt.ph ? ` placeholder="${opt.ph}"` : ''}>
+    <button type="button" class="step-btn" ${at} data-dir="1" aria-label="加 ${step}">＋</button>
+  </div>`;
+}
 function reqToggleHTML(id, required) {
   const on = required !== false;
   return `<button type="button" class="req-toggle${on ? '' : ' opt'}" id="${id}" data-req="${on ? '1' : '0'}">${on ? '必做' : '选做'}</button>`;
@@ -4204,6 +4208,20 @@ document.addEventListener('click', e => {
   if (btn) {
     const box = btn.closest('.uiselect');
     if (box) { if (box.classList.contains('open')) box.classList.remove('open'); else uiOpen(box); }
+    e.preventDefault(); e.stopPropagation();
+    return;
+  }
+  const stepBtn = tgt.closest('.step-btn');
+  if (stepBtn) {
+    const inp = document.getElementById(stepBtn.dataset.step);
+    if (inp) {
+      const min = Number(stepBtn.dataset.min), max = Number(stepBtn.dataset.max);
+      const amt = Number(stepBtn.dataset.amt) || 5;
+      const cur = parseInt(inp.value, 10) || 0;
+      const next = Math.max(min, Math.min(max, cur + (stepBtn.dataset.dir === '1' ? amt : -amt)));
+      inp.value = next;
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    }
     e.preventDefault(); e.stopPropagation();
     return;
   }
@@ -4730,11 +4748,11 @@ function parentPmPanel() {
         <input id="pt-reason" placeholder="理由（如：帮妈妈洗碗 / 作业拖拉）" style="flex:2">
       </div>
       <div class="input-row">
-        <input id="pt-givepts" type="number" placeholder="积分数量" value="50">
+        ${stepInputHTML('pt-givepts', 50, { min: 1, max: 9999 })}
         <button class="btn-primary btn-pts" data-action="parent-givepts" style="flex:1">奖励积分</button>
       </div>
       <div class="input-row">
-        <input id="pt-minuspts" type="number" placeholder="扣分数量" value="5">
+        ${stepInputHTML('pt-minuspts', 5, { min: 1, max: 9999 })}
         <button class="btn-danger btn-pts" data-action="parent-minuspts" style="flex:1">扣分</button>
       </div>
       <div class="input-row">
@@ -5113,7 +5131,7 @@ async function shareCard() {
     document.body.appendChild(wrap);
     // 安卓老机器上 html2canvas 偶尔会卡住，超时就给结论，别让「正在生成」一直转
     // 底色取卡面同色系：卡是圆角的，四角露出来的部分才不会突兀（透明底在相册里会变黑）
-    const done = html2canvas(wrap, { backgroundColor: '#0e0a20', scale: 2, useCORS: true });
+    const done = html2canvas(wrap, { backgroundColor: sharePalette(sharePmNo())[3], scale: 2, useCORS: true });
     const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('生成超时（手机太忙或图片太大），再点一次试试')), 20000));
     const canvas = await Promise.race([done, timeout]);
     const dataUrl = canvas.toDataURL('image/png');
@@ -5132,6 +5150,31 @@ async function shareCard() {
     if (wrap) wrap.remove();
     shareBusy = false;
   }
+}
+
+// 成就图背景：按属性给 6 套深色系（原来固定紫色），[起始, 中间, 过渡, 最深]
+const SHARE_PALETTES = {
+  night:  ['#241a55', '#2e1e66', '#151030', '#0e0a20'],   // 紫夜（默认）
+  ocean:  ['#0c2a45', '#125074', '#07182a', '#040c14'],   // 深海
+  ember:  ['#3a1220', '#5c1c12', '#23080d', '#100509'],   // 熔岩
+  forest: ['#0f2e1e', '#1d5233', '#08190f', '#030c07'],   // 森林
+  volt:   ['#2a2410', '#5a4a12', '#191507', '#0a0803'],   // 电光
+  bloom:  ['#2d1130', '#4a1a3e', '#190a18', '#0c040a'],   // 花影
+};
+const SHARE_TYPE_PALETTE = {
+  water: 'ocean', ice: 'ocean', flying: 'ocean',
+  fire: 'ember', fighting: 'ember', ground: 'ember', rock: 'ember',
+  grass: 'forest', bug: 'forest',
+  electric: 'volt', steel: 'volt',
+  fairy: 'bloom', poison: 'bloom', normal: 'bloom',
+  // 剩下的（超能/幽灵/龙）走 night
+};
+// 取当前展示那只的属性配色；查不到就用紫夜
+function sharePalette(no) { return SHARE_PALETTES[SHARE_TYPE_PALETTE[pmType(no)]] || SHARE_PALETTES.night; }
+// 当前要上成就图的是哪一只（截图底色要和卡面同色系，圆角外才不会露色差）
+function sharePmNo() {
+  const pm = S.pokemons.find(p => p.id === sharePick.pmId) || S.pokemons.find(p => p.id === S.leadId) || sharePmList()[0] || null;
+  return (pm && pkNoOf(pm)) || 25;
 }
 
 // 成就图底部那句话：按当前宝可梦的属性挑一句，再掺几句通用的
@@ -5190,16 +5233,17 @@ function shareCardHTML() {
   const doneTotal = totalDoneCount();
   const dexN = dexGotCount();
   const quote = shareQuote(no, sharePick.quoteSeed || 0);
+  const pal = sharePalette(no);
   return `
-    <div class="share-card">
-      <div class="sc-in">
+    <div class="share-card${scene ? ' scene-mode' : ''}">
+      <div class="sc-in" style="background:linear-gradient(168deg, ${pal[0]} 0%, ${pal[1]} 40%, ${pal[2]} 72%, ${pal[3]} 100%)">
         <i class="sc-glow" style="background:radial-gradient(circle at 50% 50%, ${hexA(theme.color, .55)} 0%, ${hexA(theme.color, .18)} 38%, rgba(0,0,0,0) 66%)"></i>
         <div class="sc-rays">${Array.from({ length: 12 }, (_, i) => `<i style="transform:rotate(${i * 30}deg)"></i>`).join('')}</div>
         ${SHARE_SPARKS.map(([x, y, s]) => `<i class="sc-spark" style="left:${x}%;top:${y}%;font-size:${s}px">✦</i>`).join('')}
         <div class="sc-body">
           <div class="sc-head">
-            <div class="sc-title">每日打卡</div>
-            <div class="sc-sub">第 ${Math.max(1, checkinDays())} 天 · 和 ${escHTML(name)} 一起</div>
+            <div class="sc-kicker">每日打卡</div>
+            <div class="sc-title">和 ${escHTML(name)} 一起，今天也在努力</div>
           </div>
           <div class="sc-stage">
             <img class="sc-art${scene ? ' scene' : ''}" src="${src}" alt="">

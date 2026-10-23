@@ -124,11 +124,35 @@ module.exports = async function run() {
   ok(APP.includes('闪耀吧！✨'), '选卡态小卡的按钮文案');
 
   ok(APP.includes('class="sc-head"') && APP.includes('每日打卡'), '顶部有「每日打卡」标题（打卡记录，不是炫卡）');
-  ok(/第 \$\{Math\.max\(1, checkinDays\(\)\)\} 天/.test(APP), '副标带累计打卡天数');
-  ok(/function checkinDays\(/.test(APP), '有累计打卡天数函数');
+  ok(APP.includes('sc-kicker') && APP.includes('每日打卡'), '小字定性「每日打卡」');
+  // 用户明确要求标题里别出现具体天数（"第 N 天"会随时间变得奇怪）
+  ok(/和 \$\{escHTML\(name\)\} 一起，今天也在努力/.test(APP), '主标是「和 XX 一起，今天也在努力」');
+  ok(!APP.includes('checkinDays'), '标题不再带天数（checkinDays 已删）');
   ok(/\.share-card\s*\{[^}]*width:\s*560px/.test(CSS), '卡片改窄到 560（原 640，太扁）');
   ok(/\.sc-art\s*\{[^}]*height:\s*412px/.test(CSS), '立绘放大到 412，宝可梦当主角');
   ok(/\.share-scaler\s*\{[^}]*width:\s*560px/.test(CSS), '预览缩放框与卡片同宽（否则会盖住底部按钮）');
+
+  section('成就卡：按属性换底色、场景卡出更高的图');
+  ok(/const SHARE_PALETTES = \{/.test(APP) && /function sharePalette\(no\)/.test(APP), '按属性给了多套深色底');
+  // 底色必须内联成解析好的颜色：html2canvas 不认 CSS 变量，写成 var(--x) 会变透明/黑
+  ok(/background:linear-gradient\(168deg, \$\{pal\[0\]\}/.test(APP), '配色内联到卡面背景');
+  ok(/backgroundColor: sharePalette\(sharePmNo\(\)\)\[3\]/.test(APP), '截图底色跟着配色走（圆角外不露色差）');
+  ok(/share-card\$\{scene \? ' scene-mode' : ''\}/.test(APP), '场景卡给卡面加 scene-mode');
+  ok(/\.share-card\.scene-mode \.sc-art\.scene\s*\{[^}]*width:\s*100%[^}]*height:\s*auto/.test(CSS), '场景卡按内容宽撑满（出更高的图）');
+  ok(/\.share-card\.scene-mode \.sc-stage::before\s*\{[^}]*display:\s*none/.test(CSS), '场景卡不再画站台光（卡面自己有底）');
+
+  section('分值步进器：−5 / +5');
+  ok(/function stepInputHTML\(/.test(APP), '有步进器组件');
+  ok(/closest\('\.step-btn'\)/.test(APP), '加减按钮走一次点击委托（弹窗里不用逐个绑定）');
+  ok(/stepInputHTML\('pt-pts'/.test(APP) && /stepInputHTML\('pt-bonus'/.test(APP), '新建任务分值 / 多日完成奖励用步进器');
+  ok(/stepInputHTML\('pt-givepts'/.test(APP) && /stepInputHTML\('pt-minuspts'/.test(APP), '奖励 / 扣分也用步进器');
+  ok(/\.step-btn\s*\{[^}]*border-radius/.test(CSS), '加减按钮有单独样式');
+  ok(/\.input-row \.req-toggle\s*\{[^}]*flex:\s*0 0 56px/.test(CSS), '必做/选做胶囊收窄，把宽度让给分值');
+  // 等高：下拉 48 / 数字框 53 / 胶囊 53 原来各算各的，一行看着高低不齐
+  ok(/\.input-row \.req-toggle \{ height: 50px/.test(CSS), '一行里的控件统一 50px 高');
+  ok(/\.input-row \.stepper \{[^}]*flex:\s*0 1 120px/.test(CSS), '分值给固定宽度，不再按 number 输入框内容撑开（否则类别被挤没）');
+  // 编辑弹窗：`.modal input` 写在文件后面，同权重会盖掉 .te-fld 的 margin-bottom → 数字框整体差 6px
+  ok(/\.modal \.te-fld input\s*\{[^}]*margin-bottom:\s*0/.test(CSS), '编辑弹窗数字框与下拉/胶囊top 对齐（.modal 前缀不能省）');
 
   section('成就图：去标题、去连击框、底部换宝可梦台词');
   // 只看 shareCardHTML 内部：页面标题 / 任务页的连击统计里本来就有这些字，不能全文件否定

@@ -518,7 +518,28 @@ textarea {
 .uiselect-opt.on { color: var(--blue); background: #e3f2fd; font-weight: 800; }
 /* 表单行里的下拉跟输入框一样高一样粗（家长端内联表单用大号） */
 .input-row .uiselect-btn { height: auto; border-width: 2px; border-radius: 12px; padding: 13px 10px; font-size: 14px; }
-.input-row .req-toggle { flex: 1; height: auto; padding: 13px 6px; border-width: 2px; border-radius: 12px; font-size: 14px; }
+/* 一行里的控件必须等高：下拉（48）/ 数字框（53）/ 必做胶囊（53）原来各算各的，高低不齐 */
+.input-row input,
+.input-row .uiselect-btn,
+.input-row .req-toggle { height: 50px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
+.input-row .req-toggle { flex: 0 0 56px; height: auto; padding: 13px 2px; border-width: 2px; border-radius: 12px; font-size: 14px; }
+
+/* ---------- 分值步进器（−5 / +5） ----------
+   家长端新建任务、多日奖励、奖励/扣分都用这一套，别再各自写 input[type=number] */
+.stepper { display: flex; align-items: stretch; gap: 4px; flex: 1 1 auto; min-width: 0; }
+/* 表单行里：分值给固定宽度（−/输入/＋），剩下的空间留给类别。
+   不能让它按内容撑开 —— number input 的内容宽度很大，会把类别挤没 */
+.input-row .stepper { flex: 0 1 120px; min-width: 104px; }
+.stepper input {
+  flex: 1 1 auto; width: 100%; min-width: 0; text-align: center;
+  font-size: 17px; font-weight: 800; padding: 13px 4px;
+}
+.step-btn {
+  flex: 0 0 32px; border: 2px solid #dfe6ee; border-radius: 12px; background: #fff;
+  color: #37474f; font-size: 19px; font-weight: 800; line-height: 1; font-family: inherit;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.step-btn:active { transform: scale(.93); background: #eef4fb; border-color: #bbdefb; color: #1565c0; }
 /* 编辑弹窗里的紧凑栅格：类别/积分/必做 一行，所属多日任务/任务类型 一行 */
 .te-grid { display: grid; gap: 8px; align-items: end; margin-bottom: 6px; }
 .te-grid3 { grid-template-columns: minmax(0, 1.45fr) minmax(0, .72fr) minmax(0, 1fr); }
@@ -527,6 +548,13 @@ textarea {
 .te-fld > label { display: block; margin: 6px 0 3px; font-size: 11px; color: var(--ink-soft); }
 .te-fld .uiselect { width: 100%; flex: none; }
 .te-fld input, .te-fld .uiselect-btn { margin-bottom: 0; }
+/* 数字框要和下拉按钮、必做胶囊完全等高。
+   注意必须带 .modal 前缀：`.modal input` 那条规则写在文件后面，同权重会把它盖掉，
+   表现就是数字框往下差 6px（margin-bottom）——用户看到的"格子没对齐" */
+.modal .te-fld input {
+  height: 36px; padding: 0 10px; font-size: 13px; line-height: 34px;
+  border-width: 1.5px; border-radius: 9px; text-align: center; margin-bottom: 0;
+}
 /* 必做/选做：只有两个值，做成点一下就切换的胶囊，比下拉少一次点击、也不怕窄屏挤 */
 .req-toggle {
   width: 100%; box-sizing: border-box; height: 36px; padding: 0 6px;
@@ -1658,15 +1686,16 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 }
 .sc-body { position: relative; }
 /* 宝可梦站台：立绘 / 场景卡都按底边对齐，脚下有一圈光台 */
-/* 顶部标题：要让人看出「这是每天打卡的记录」，不是炫卡 */
-.sc-head { position: relative; padding-bottom: 2px; }
-.sc-title {
-  font-size: 34px; font-weight: 900; letter-spacing: 6px; text-indent: 6px; color: #fff3c4;
-  text-shadow: 0 0 14px rgba(255, 200, 60, .75), 0 2px 0 rgba(0, 0, 0, .4);
+/* 顶部标题：要让人看出「这是每天打卡的记录」，不是炫卡。
+   上面一行小字定性（每日打卡），下面一行大字是「和谁一起 + 今天做了什么」 */
+.sc-head { position: relative; padding: 0 4px 2px; }
+.sc-kicker {
+  font-size: 12px; font-weight: 800; letter-spacing: 5px; text-indent: 5px;
+  color: rgba(255, 233, 168, .72);
 }
-.sc-sub {
-  margin-top: 6px; font-size: 13px; font-weight: 700; letter-spacing: 1.5px;
-  color: rgba(255, 233, 168, .82);
+.sc-title {
+  margin-top: 7px; font-size: 27px; font-weight: 900; line-height: 1.32; letter-spacing: .5px;
+  color: #fff3c4; text-shadow: 0 0 14px rgba(255, 200, 60, .7), 0 2px 0 rgba(0, 0, 0, .4);
 }
 .sc-stage {
   position: relative; height: 420px; margin: 8px auto 0;
@@ -1684,6 +1713,11 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   height: 420px; border-radius: 16px; border: 2px solid rgba(255, 233, 168, .9);
   box-shadow: 0 14px 34px rgba(0, 0, 0, .55), 0 0 26px rgba(255, 200, 60, .3);
 }
+/* 场景卡（400×559 竖版整卡）按内容宽撑满：图更高、整张成就图也跟着变高。
+   立绘是方图（412 高），两者故意生成不同高度的图 —— 场景卡本来就更长 */
+.share-card.scene-mode .sc-stage { height: auto; margin-top: 10px; }
+.share-card.scene-mode .sc-stage::before { display: none; }   /* 卡面自己有底，不用再画站台光 */
+.share-card.scene-mode .sc-art.scene { width: 100%; max-width: 470px; height: auto; }
 .sc-name {
   margin-top: 12px; font-size: 38px; font-weight: 900; color: #fff; line-height: 1.15;
   text-shadow: 0 3px 0 rgba(0, 0, 0, .45), 0 0 20px rgba(255, 255, 255, .3);
