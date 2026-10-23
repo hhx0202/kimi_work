@@ -296,9 +296,10 @@ function scenePath(no, shiny) { return `assets/scenes${shiny ? '-shiny' : ''}/${
 //   sprite= 异色像素动图（只有闪耀卡有这一档）
 //   scene = 场景卡（整张中文卡面，不裁切；素材在 assets/scenes/）
 // 选择存本机（浏览偏好，不跨设备）
-const CARD_ART_LABEL = { art: '🖼 立绘', sprite: '✨ 异色动图', scene: '🎴 场景卡' };
+// 文案给小朋友看：「异色」他们不认识，统一叫「动画」（其实就是异色像素动图）
+const CARD_ART_LABEL = { art: '🖼 立绘', sprite: '✨ 动画', scene: '🎴 场景卡' };
 // 名字行里那一小枚切换按钮用短文案（长的那套留给 title / 无障碍朗读）
-const CARD_ART_SHORT = { art: '🖼 立绘', sprite: '✨ 异色', scene: '🎴 场景' };
+const CARD_ART_SHORT = { art: '🖼 立绘', sprite: '✨ 动画', scene: '🎴 场景' };
 function cardArtModes(pm) { return pm.shiny ? ['art', 'sprite', 'scene'] : ['art', 'scene']; }
 function savedCardArtMode() {
   const m = lsGet(LK('card_art_mode'), 'art');
@@ -2437,9 +2438,10 @@ function showCardDetail(pm) {
     <div class="ptcg${pm.shiny ? ' shiny-card' : ''}${artMode === 'scene' ? ' scene-mode' : ''}" style="--tc:${theme.color}; --bg1:${theme.bg1}; --bg2:${theme.bg2}">
       <div class="ptcg-top">
         <span class="ptcg-name">${info.name}</span>
-        ${(pm.shiny || altPm) ? `<button class="ptcg-shiny${altPm ? ' swap' : ''}${pm.shiny ? '' : ' plain'}"${altPm ? ` data-alt="${altPm.id}"` : ' disabled'}>${pm.shiny ? '✨' : '🖼'}<span class="shiny-txt">${pm.shiny ? '闪耀' : '普通'}</span>${altPm ? ' ⇄' : ''}</button>` : ''}
         <span class="ptcg-lv">${stageText(pm)}</span>
-        <button class="art-toggle" type="button" title="切换卡面：立绘 / 场景卡">${CARD_ART_SHORT[artMode]}</button>
+        <i class="ptcg-gap"></i>
+        ${(pm.shiny || altPm) ? `<button class="ptcg-shiny${altPm ? ' swap' : ''}${pm.shiny ? '' : ' plain'}"${altPm ? ` data-alt="${altPm.id}"` : ' disabled'}>${pm.shiny ? '✨' : '◇'}<span class="shiny-txt">${pm.shiny ? '闪耀' : '普通'}</span>${altPm ? ' ⇄' : ''}</button>` : ''}
+        <button class="art-toggle" type="button" title="切换卡面（${cardArtModes(pm).length > 2 ? '立绘 / 动画 / 场景卡' : '立绘 / 场景卡'}）">${CARD_ART_SHORT[artMode]}</button>
       </div>
       <div class="ptcg-art${pm.shiny ? ' shiny-art' : ''}${artMode === 'sprite' ? ' sprite-art' : ''}${artMode === 'scene' ? ' scene-art' : ''}">
         <img src="${cardArtSrc(pm)}" alt="${info.name}">
@@ -5041,6 +5043,7 @@ function openShare() {
 function saveSharePick() { try { lsSet(LK('share_pick'), sharePick); } catch (e) {} }
 
 function renderSharePreview() {
+  releaseShareBlob();
   const ov = $('overlay');
   ov.classList.remove('hidden');
   ov.className = 'overlay share-view';
@@ -5101,8 +5104,7 @@ function watchShareCard() {
 function onShareTool(act) {
   if (act === 'close') {
     if (shareRO) { shareRO.disconnect(); shareRO = null; }
-    $('overlay').classList.add('hidden');
-    $('overlay').innerHTML = '';
+    closeShareResult();
     return;
   }
   if (act === 'art') {
@@ -5148,6 +5150,20 @@ function openSharePicker() {
   ov.appendChild(box);
 }
 
+// 生成结果用的 Blob URL（长按能存相册，data: 不行）。换图/关闭时释放
+let shareBlobUrl = '';
+function releaseShareBlob() {
+  if (!shareBlobUrl) return;
+  try { URL.revokeObjectURL(shareBlobUrl); } catch (e) {}
+  shareBlobUrl = '';
+}
+function closeShareResult() {
+  releaseShareBlob();
+  const ov = $('overlay');
+  ov.classList.add('hidden');
+  ov.innerHTML = '';
+}
+
 async function shareCard() {
   if (shareBusy) return;
   const ov = $('overlay');
@@ -5168,11 +5184,26 @@ async function shareCard() {
     const done = html2canvas(wrap, { backgroundColor: sharePalette(sharePmNo())[3], scale: 2, useCORS: true });
     const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('生成超时（手机太忙或图片太大），再点一次试试')), 20000));
     const canvas = await Promise.race([done, timeout]);
-    const dataUrl = canvas.toDataURL('image/png');
-    ov.innerHTML = `<img class="share-img" src="${dataUrl}"><p class="share-tip">💡 长按图片保存到相册，就能发朋友圈啦</p>
-      <div class="share-acts"><button class="share-gen" data-back="again">🔁 再做一张</button><button class="share-close" data-back="close">关闭</button></div>`;
+    // **不要用 canvas.toDataURL()**：data: URL 在手机上长按会提示
+    // 「not download from this url」，存不进相册（Chrome/Safari 都拦）。
+    // 转成 Blob URL 后长按就能「存储到照片」，同时还能挂 <a download> 当备选
+    const blob = await new Promise(res => {
+      if (typeof canvas.toBlob !== 'function') return res(null);
+      try { canvas.toBlob(res, 'image/png'); } catch (e) { res(null); }
+    });
+    if (shareBlobUrl) { try { URL.revokeObjectURL(shareBlobUrl); } catch (e) {} shareBlobUrl = ''; }
+    const imgSrc = blob ? URL.createObjectURL(blob) : canvas.toDataURL('image/png');
+    if (blob) shareBlobUrl = imgSrc;
+    const fileName = `任务岛打卡-${DB.today()}.png`;
+    ov.innerHTML = `<img class="share-img" src="${imgSrc}" alt="成就图">
+      <p class="share-tip">💡 长按图片 → 存储到相册；长按没反应就点下面的「保存图片」</p>
+      <div class="share-acts">
+        <a class="share-save" href="${imgSrc}" download="${fileName}">⬇️ 保存图片</a>
+        <button class="share-ghost" data-back="again">🔁 再做一张</button>
+        <button class="share-close" data-back="close">关闭</button>
+      </div>`;
     ov.querySelector('[data-back="again"]').onclick = () => { renderSharePreview(); };
-    ov.querySelector('[data-back="close"]').onclick = () => { ov.classList.add('hidden'); ov.innerHTML = ''; };
+    ov.querySelector('[data-back="close"]').onclick = () => { closeShareResult(); };
   } catch (err) {
     // 以前这里只有 console/toast，出错时界面上什么都没有 → 这次把原因写进错误日志并明确提示
     const msg = (err && err.message) || String(err) || '未知错误';

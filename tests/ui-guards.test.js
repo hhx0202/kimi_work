@@ -63,7 +63,9 @@ module.exports = async function run() {
 
   section('闪耀卡：明显视觉 + 详情可切换造型');
   ok(APP.includes('class="art-toggle"'), '详情卡有造型切换按钮');
-  ok(APP.includes("art: '🖼 立绘'") && APP.includes("sprite: '✨ 异色动图'") && APP.includes("scene: '🎴 场景卡'"), '三档造型文案齐全');
+  // 「异色」小朋友不认识 → 按钮上统一写「动画」
+  ok(APP.includes("art: '🖼 立绘'") && APP.includes("sprite: '✨ 动画'") && APP.includes("scene: '🎴 场景卡'"), '三档造型文案齐全');
+  ok(!APP.includes("'✨ 异色'"), '不再对小朋友用「异色」这个词');
   ok(APP.includes('function cardArtSrc('), '造型选择有独立函数');
   ok(APP.includes('spritePath(pm.pokedex_no, true)'), '异色动图用 shiny 精灵');
   ok(APP.includes('assets/scenes/'), '场景卡用 assets/scenes/');
@@ -173,6 +175,10 @@ module.exports = async function run() {
   ok(/const SHARE_TYPE_LINES\s*=/.test(APP) && /function shareQuote\(/.test(APP), '底部那句按属性挑，有台词池');
   ok(/class="sc-foot"><i><\/i>\$\{escHTML\(quote\)\}/.test(SHARE), '底部换成一句宝可梦台词');
   ok(!/sc-foot[\s\S]{0,40}DB\.today\(\)/.test(SHARE), '底部不再打印日期');
+  // data: URL 在手机上长按会提示「not download from this url」，存不进相册 → 必须走 Blob URL
+  ok(/canvas\.toBlob\(/.test(APP) && /URL\.createObjectURL\(blob\)/.test(APP), '生成结果用 Blob URL（长按能存相册）');
+  ok(/class="share-save"[^>]*download=/.test(APP), '结果页有 <a download> 保存按钮兜底');
+  ok(/function releaseShareBlob\(/.test(APP) && /function closeShareResult\(/.test(APP), 'Blob URL 用完会释放');
   // 预览里的卡片是 scale 缩过的，但 .share-scaler 的布局盒仍是 640×900，
   // 不挡住按钮的话手机上「关闭 / 生成图片」点了没反应（实测 elementFromPoint 命中的是 scaler）
   ok(/\.share-scaler\s*\{[^}]*pointer-events:\s*none/.test(CSS), '缩放后的卡面不吃点击');

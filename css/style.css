@@ -1152,11 +1152,14 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   0% { transform: perspective(900px) rotateY(95deg) scale(.55); opacity: 0; }
   100% { transform: perspective(900px) rotateY(0) scale(1); opacity: 1; }
 }
-.ptcg-top { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.ptcg-top { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
 .ptcg-name {
   font-size: 22px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.35);
-  flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  /* 0 1 auto：按内容宽（阶段才能紧跟名字），太长时才收缩出省略号 */
+  flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
+/* 名字后面的弹性空隙：把「形态徽章 / 卡面切换」推到最右边，阶段就不会读成「二阶立绘」 */
+.ptcg-gap { flex: 1 1 0; min-width: 2px; }
 .ptcg-shiny {
   flex: 0 0 auto; font-size: 12px; font-weight: 800; color: #ffd54f; background: rgba(0,0,0,.35);
   padding: 3px 9px; border-radius: 999px; border: 0; font-family: inherit; line-height: 1.5;
@@ -1173,7 +1176,16 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   .ptcg-shiny .shiny-txt { display: none; }
   .ptcg-shiny { padding: 3px 7px; }
 }
-.ptcg-lv { flex: 0 0 auto; font-size: 15px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.3); }
+/* 进化阶段：跟着名字走的小标签。用等宽字体 + 深色底，和名字的白粗体明显不是一回事，
+   不会像以前那样挨着右边的「立绘」被读成一串（用户原话「二阶立绘莫名其妙」） */
+.ptcg-lv {
+  flex: 0 0 auto; margin-left: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; line-height: 1;
+  padding: 2px 5px 3px; border-radius: 5px;
+  background: rgba(0, 0, 0, .3); color: rgba(255, 255, 255, .9);
+  text-shadow: none;
+}
 .ptcg-art {
   position: relative; border-radius: 14px; overflow: hidden;
   border: 2px solid rgba(255,255,255,.5); background: rgba(255,255,255,.25);
@@ -1775,14 +1787,21 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   -webkit-tap-highlight-color: transparent;
 }
 .share-tool:active { transform: scale(.96); }
-.share-acts { display: flex; gap: 10px; position: relative; z-index: 6; }
-.share-gen, .share-close, .ov-skip {
-  border: 0; border-radius: 999px; padding: 12px 22px; cursor: pointer;
+.share-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; position: relative; z-index: 6; }
+.share-gen, .share-close, .ov-skip, .share-save, .share-ghost {
+  border: 0; border-radius: 999px; padding: 12px 18px; cursor: pointer;
   font-size: 14px; font-weight: 800; font-family: inherit;
   -webkit-tap-highlight-color: transparent;
 }
 .share-gen { color: #241a55; background: linear-gradient(135deg, #ffe9a8, #f6b93b); box-shadow: 0 6px 18px rgba(246, 185, 59, .35); }
-.share-close, .ov-skip { color: #fff; background: rgba(255, 255, 255, .14); }
+.share-close, .ov-skip, .share-ghost { color: #fff; background: rgba(255, 255, 255, .14); }
+/* 结果页的「保存图片」是主操作：做成 <a download>，长按存不进相册时还有这条路 */
+.share-save {
+  display: inline-flex; align-items: center; gap: 4px; text-decoration: none;
+  color: #241a55; background: linear-gradient(135deg, #ffe9a8, #f6b93b);
+  box-shadow: 0 6px 18px rgba(246, 185, 59, .38);
+}
+.share-save:active { transform: scale(.96); }
 /* 选伙伴弹层 */
 .share-pick-layer {
   position: fixed; inset: 0; z-index: 120; padding: 16px;
