@@ -375,6 +375,25 @@ body {
 }
 .cat-add-inp:focus { outline: none; border-color: var(--blue); }
 .cat-add .chip { padding: 6px 14px; font-size: 13px; }
+/* 家长端「布置任务」里的折叠块：管理类别 / 批量添加。默认收起，只占一行，点开才展开 */
+.fold-box {
+  margin-top: 8px; border: 1.5px dashed #dbe3ec; border-radius: 14px; background: #fafbfd;
+}
+.fold-box > summary {
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 10px 13px; font-size: 13px; font-weight: 800; color: var(--ink-soft);
+  list-style: none; -webkit-tap-highlight-color: transparent;
+}
+.fold-box > summary::-webkit-details-marker { display: none; }
+.fold-box > summary::after {
+  content: '▾'; margin-left: auto; color: #b0bec5; font-size: 12px;
+  transition: transform .2s;
+}
+.fold-box[open] > summary::after { transform: rotate(180deg); }
+.fold-box[open] > summary { border-bottom: 1px dashed #dbe3ec; color: var(--ink); }
+.fold-box .fold-body { padding: 10px 12px 12px; }
+.fold-box .fold-body textarea { min-height: 110px; background: #fff; }
+
 /* 常用任务标签：图标 + 名称 + 分数 + ✕；单击=添加任务，长按=编辑标签（见 bindQuickLongPress） */
 .quick-chip {
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%;

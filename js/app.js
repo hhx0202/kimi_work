@@ -3140,7 +3140,6 @@ function bindActions() {
     else if (act === 'parent-date-prev') { S.parentDate = shiftDate(S.parentDate, -1); render(); refreshParentNote(); }
     else if (act === 'parent-date-next') { S.parentDate = shiftDate(S.parentDate, 1); render(); refreshParentNote(); }
     else if (act === 'parent-date-today') { S.parentDate = DB.today(); render(); refreshParentNote(); }
-    else if (act === 'parent-multi') openMultiDayAssign();
     else if (act === 'parent-move') moveTask(Number(tid), btn.dataset.dir);
     else if (act === 'parent-edit') openTaskEditor(Number(tid));
     else if (act === 'parent-edit-note') openNoteEditor();
@@ -3650,6 +3649,24 @@ function parentTaskPanel() {
       <div class="input-row" id="pt-deadline-row" style="display:none;margin-top:8px">
         <input id="pt-deadline" type="date" style="flex:1">
       </div>
+      <details class="fold-box cat-manage">
+        <summary>🏷️ 管理类别</summary>
+        <div class="fold-body">
+          <div class="cat-tags">
+            ${allCategories().map(c => `
+              <span class="cat-tag">
+                <span class="cat-tag-ico">${catIcon(c)}</span>
+                <span class="cat-tag-name">${c}</span>
+                <button class="cat-tag-x" data-action="parent-del-cat" data-cat="${escHTML(c)}" title="从下拉里移除">✕</button>
+              </span>
+            `).join('')}
+            <span class="cat-add">
+              <input id="pt-newcat" class="cat-add-inp" placeholder="新增类别">
+              <button class="chip" data-action="parent-add-cat">添加</button>
+            </span>
+          </div>
+        </div>
+      </details>
       <div class="input-row" style="margin-top:8px">
         ${uiSelectHTML('pt-schedule', 'once', [
           { v: 'once', t: '单次 · 做完消失', s: '单次' },
@@ -3659,35 +3676,22 @@ function parentTaskPanel() {
         <button class="btn-primary" data-action="parent-save" style="flex:1">添加</button>
       </div>
       <div id="pt-children-wrap" style="display:none;margin-top:8px">
-        <textarea id="pt-children" placeholder="拆子任务：每行 名称,分数（分数可省，默认10分）&#10;第1篇课文,10&#10;第2篇课文,10&#10;习作,15,选做&#10;&#10;· 每个子任务完成得自己的分数，进度按已得/总分算&#10;· 想标选做：名称,分数,选做"></textarea>
+        <textarea id="pt-children" placeholder="拆子任务：每行 名称,分数（分数可省，默认10分）&#10;第1篇课文,10&#10;第2篇课文,10&#10;习作,15,选做"></textarea>
         <div class="input-row" style="margin-top:8px">
           <span style="font-size:13px;color:var(--ink-soft);white-space:nowrap">完成奖励</span>
           <input id="pt-bonus" type="number" placeholder="全清额外分（留空=默认${CONFIG.WEEKLY_DONE_BONUS}）" style="flex:2">
         </div>
-        <div class="form-hint">孩子逐个勾选子任务独立计分，勾满后多日任务自动完成并额外加分（难的任务可设更高）</div>
+        <div class="form-hint">勾满所有子任务才算完成，额外加这笔奖励分。</div>
       </div>
-      <details style="margin-top:10px">
-        <summary style="font-size:13px;color:var(--ink-soft);cursor:pointer">🏷️ 管理历史类别（${allCategories().length} 个，含任务里用过的；删掉的不再出现在下拉里）</summary>
-        <div class="cat-tags">
-          ${allCategories().map(c => `
-            <span class="cat-tag">
-              <span class="cat-tag-ico">${catIcon(c)}</span>
-              <span class="cat-tag-name">${c}</span>
-              <button class="cat-tag-x" data-action="parent-del-cat" data-cat="${escHTML(c)}" title="从下拉里移除">✕</button>
-            </span>
-          `).join('')}
-          <span class="cat-add">
-            <input id="pt-newcat" class="cat-add-inp" placeholder="新增类别">
-            <button class="chip" data-action="parent-add-cat">添加</button>
-          </span>
+      <h3 style="margin-top:16px">📥 批量添加</h3>
+      <textarea id="pt-batch" style="min-height:132px" placeholder="语文作业{先复习生字}[校内作业][10]&#10;跳绳500个[运动][5][选做]&#10;&#10;第一行写日期，就分别布置到那几天：&#10;10-25&#10;数学卷子[15]"></textarea>
+      <button class="btn-primary" data-action="parent-parse" style="width:100%;margin-top:8px">解析并添加</button>
+      <details class="fold-box" style="margin-top:8px">
+        <summary>格式说明</summary>
+        <div class="fold-body">
+          <div class="form-hint" style="margin:0;line-height:1.75">· 每行一个任务，不写日期就加到 <b>${S.parentDate}</b><br>· 行尾可写 <b>[类别] [分数] 选做</b>（中/小括号都行），不写默认「作业 / 10 分 / 必做」<br>· 名字后跟 <b>{小提示}</b>，行尾「空格+数字」也算分数<br>· 第一行写日期（<b>10-25</b> / <b>明天</b> / <b>周一</b>）就分别布置到那几天</div>
         </div>
       </details>
-      <button class="btn-primary" data-action="parent-multi" style="width:100%;margin-top:16px">📅 批量布置多天任务</button>
-      <h3 style="margin-top:16px">📥 批量添加单次任务</h3>
-      <div class="form-hint" style="margin-bottom:6px">格式：<b>每行一个任务</b>；类别 / 分数 / 选做用 <b>[中括号] 或 (小括号)</b> 指定（不写用默认）<br>· 名称末尾 <b>{花括号}</b> 会识别成小提示，如 <b>语文作业{先复习生字}</b><br>· 行尾 <b>空格+数字</b> 会识别成分数（上限100），如 <b>练字一页 10</b><br>这里添加的是<b>单次任务</b>（当前日期做一次、做完消失）；<b>重复任务（每天都有）</b>请用上方「新建任务 → 重复（每天都有）」单独建，避免批量复制重复建出很多条。</div>
-      <textarea id="pt-batch" placeholder="每行一个任务，整行就是任务名&#10;语文作业{先复习生字}[校内作业][10]&#10;跳绳500个(运动)(5)(选做)&#10;练字一页 10&#10;&#10;[类别] 默认「作业」　[分数] 默认 10　加「选做」= 非必做&#10;名称末尾 {花括号} = 小提示　行尾「空格+数字」= 分数"></textarea>
-      <button class="btn-primary" data-action="parent-parse" style="margin-top:8px">解析并添加</button>
-      <div class="form-hint">批量添加的都是当天的一次性任务，不会重复出现在以后的每天里。</div>
     </div>
   `;
 }
@@ -4423,27 +4427,64 @@ function parseBatchLines(text) {
   return text.split('\n').map(l => l.trim()).filter(Boolean).map(parseTaskLine).filter(Boolean);
 }
 
+// 批量添加：一段文本两种玩法 —— 首行写日期（10-25 / 明天 / 周一）就按天分组布置，不写就全部加到当前日期
 async function parseBatch() {
-  const text = $('pt-batch').value.trim();
+  const el = $('pt-batch');
+  const text = (el.value || '').trim();
   if (!text) { toast('粘贴内容为空'); return; }
+  const first = text.split('\n')[0].trim();
+  if (parseDateToken(first, DB.today())) {
+    const groups = parseMultiDay(text);
+    if (!groups.length) { toast('日期下面还没写任务，每天至少要写一条'); return; }
+    el.value = '';
+    await applyMultiDayGroups(groups);
+    return;
+  }
+  el.value = '';
+  await applyBatchSingle(text);
+}
+// 不加日期：全部作为「当天的一次性任务」
+async function applyBatchSingle(text) {
   const items = parseBatchLines(text);
   if (!items.length) { toast('没解析到有效任务'); return; }
   let n = 0, dup = 0;
   const added = new Set();
+  const toAdd = [];
   for (const it of items) {
     // 同名拦截：当天已有同名任务 / 粘贴内容里自己重复了
     if (added.has(it.title) || sameTitleTask(it.title, { parentId: null, date: S.parentDate })) { dup++; continue; }
     saveCat(it.category);
     // 批量添加固定为单次任务（当前日期做一次、做完消失），避免批量复制重复建重复任务
-    await DB.addTask({ title: it.title, hint: it.hint, category: it.category, points: it.points, schedule: 'once', required: it.required, start_date: S.parentDate, end_date: S.parentDate });
+    toAdd.push({ title: it.title, hint: it.hint, category: it.category, points: it.points, schedule: 'once', required: it.required, start_date: S.parentDate, end_date: S.parentDate });
     added.add(it.title);
     n++;
   }
-  $('pt-batch').value = '';
+  if (toAdd.length) await Promise.all(toAdd.map(x => DB.addTask(x)));
   await refreshAll();
   render();
   if (!n) toast(`都是同名任务，没有新增（跳过 ${dup} 个）`);
   else toast(dup ? `添加 ${n} 个，跳过 ${dup} 个同名` : `成功添加 ${n} 个单次任务`);
+}
+// 带日期分组：每组布置到对应那天（每行一个任务，同名只留一个）
+async function applyMultiDayGroups(groups) {
+  let n = 0, dup = 0;
+  const toAdd = [];
+  for (const g of groups) {
+    const added = new Set();
+    for (const it of g.items) {
+      // 同名拦截：同一天里重名的只留一个（不同天允许同名，那是两天的独立任务）
+      if (added.has(it.title) || sameTitleTask(it.title, { parentId: null, date: g.date })) { dup++; continue; }
+      saveCat(it.category);
+      toAdd.push({ title: it.title, hint: it.hint, category: it.category, points: it.points, schedule: 'once', required: it.required, start_date: g.date, end_date: g.date });
+      added.add(it.title);
+      n++;
+    }
+  }
+  // 逐天逐条 await 在跨境网络下会拖很久（10 个任务 ≈ 16 秒），一次并发发出
+  if (toAdd.length) await Promise.all(toAdd.map(x => DB.addTask(x)));
+  await refreshAll(); render();
+  if (!n) toast(`都是同名任务，没有布置（跳过 ${dup} 个）`);
+  else toast(`已布置 ${n} 个任务（${groups.length} 天）${dup ? `，跳过 ${dup} 个同名` : ''}`);
 }
 // ---------- 批量布置多天：日期分隔行 ----------
 function pad2(n) { return String(n).padStart(2, '0'); }
@@ -4484,51 +4525,6 @@ function parseMultiDay(text) {
     if (item) cur.items.push(item);
   });
   return groups.filter(g => g.items.length);
-}
-// 弹窗：一次规划多天
-function openMultiDayAssign() {
-  const modal = document.createElement('div');
-  modal.className = 'modal-mask';
-  modal.innerHTML = `
-    <div class="modal" style="max-width:460px;width:calc(100% - 40px)">
-      <h3>📅 批量布置多天任务</h3>
-      <p class="form-hint">一次规划好几天：每行写一个日期（如 <b>10-20</b> / <b>周一</b> / <b>明天</b>），下面几行是那天要做的任务，直到下一个日期行。<br>布置后任务只出现在对应的那天，<b>错过当天就不再出现</b>。</p>
-      <textarea id="md-input" style="min-height:180px" placeholder="10-20&#10;语文作业{先复习生字}[校内作业][10]&#10;跳绳500个[运动][5][选做]&#10;10-21&#10;英语作业[校内作业][10]&#10;阅读20分钟[阅读][5]"></textarea>
-      <div class="form-hint">任务格式同「批量添加」：每行一个任务，[类别] [分数] [选做] 用中括号或小括号指定（不写用默认；名称末尾 {花括号}=小提示；行尾空格+数字当分数）</div>
-      <div style="margin-top:12px;display:flex;gap:8px">
-        <button class="btn-cancel" data-cancel style="flex:1">取消</button>
-        <button class="btn-primary" data-ok style="flex:2">解析并布置</button>
-      </div>
-    </div>
-  `;
-  modal.querySelector('[data-cancel]').onclick = () => modal.remove();
-  modal.querySelector('[data-ok]').onclick = async () => {
-    const text = modal.querySelector('#md-input').value.trim();
-    if (!text) { toast('内容为空'); return; }
-    const groups = parseMultiDay(text);
-    if (!groups.length) { toast('没解析到有效的日期分组，第一行请先写日期'); return; }
-    let n = 0, dup = 0;
-    const toAdd = [];
-    for (const g of groups) {
-      const added = new Set();
-      for (const it of g.items) {
-        // 同名拦截：同一天里重名的只留一个（不同天允许同名，那是两天的独立任务）
-        if (added.has(it.title) || sameTitleTask(it.title, { parentId: null, date: g.date })) { dup++; continue; }
-        saveCat(it.category);
-        toAdd.push({ title: it.title, hint: it.hint, category: it.category, points: it.points, schedule: 'once', required: it.required, start_date: g.date, end_date: g.date });
-        added.add(it.title);
-        n++;
-      }
-    }
-    // 逐天逐条 await 在跨境网络下会拖很久（10 个任务 ≈ 16 秒），一次并发发出
-    await Promise.all(toAdd.map(x => DB.addTask(x)));
-    modal.remove();
-    await refreshAll(); render();
-    if (!n) toast(`都是同名任务，没有布置（跳过 ${dup} 个）`);
-    else toast(`已布置 ${n} 个任务（${groups.length} 天）${dup ? `，跳过 ${dup} 个同名` : ''}`);
-  };
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 // 家长中心顶部：当前数据模式提示（demo 演示模式才显示重置按钮）
 function modePanel() {
