@@ -48,8 +48,10 @@ module.exports = async function run() {
   ok(APP.includes("lsSet(LK('pm_sort')"), '排序选择存本机 localStorage（不跨设备）');
   ok(!APP.includes("sharedSet('pm_sort'"), '排序不写共享存储');
   ok(/PM_SORT_OPTS\s*=\s*\[/.test(APP) && APP.includes("'捕获顺序'") && APP.includes("'捕获倒序'") && APP.includes("'编号顺序'") && APP.includes("'属性'"), '四个排序选项齐全');
-  ok(APP.includes('class="mini-no"'), '小卡显示了图鉴编号');
-  ok(/\.mini-no\s*\{/.test(CSS), '编号有对应的小字样式');
+  ok(APP.includes('class="mini-no-badge"'), '小卡显示了图鉴编号（挪到图片左下角）');
+  ok(/\.mini-no-badge\s*\{/.test(CSS), '编号有对应的角标样式');
+  ok(/class="mini-exp/.test(APP), '小卡显示当前经验/总经验');
+  ok(/\.mini-expbar\s*\{/.test(CSS), '小卡图片底部有经验进度条');
 
   section('闪耀卡：明显视觉 + 详情可切换造型');
   ok(APP.includes('class="art-toggle"'), '详情卡有造型切换按钮');

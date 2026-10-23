@@ -1055,10 +1055,10 @@ function canEvolve(pm) {
   if (!hasNextEvo(pm.pokedex_no)) {
     if (pm.shiny) return { ok: false };
     if (hasShinyCopy(pm.pokedex_no)) return { ok: false, why: '已拥有闪耀形态' };  // 别再重复生成闪耀卡
-    return pm.exp >= needExp ? { ok: true, shiny: true } : { ok: false, why: `经验 ${pm.exp}/${needExp}` };
+    return pm.exp >= needExp ? { ok: true, shiny: true } : { ok: false, left: needExp - pm.exp, why: `还差 ${needExp - pm.exp} 经验` };
   }
   const stage = evoStage(pm.pokedex_no);
-  if (pm.exp < needExp) return { ok: false, why: `经验 ${pm.exp}/${needExp}` };
+  if (pm.exp < needExp) return { ok: false, left: needExp - pm.exp, why: `还差 ${needExp - pm.exp} 经验` };
   // 这条链已经有 ✨ 卡（闪耀卡用在了更早的形态上）→ 进化出来的形态也直接是闪耀形态
   const inherit = evoTargets(pm.pokedex_no).some(t => willInheritShiny(pm, t));
   return { ok: true, needExp, stage, inherit };
@@ -2335,6 +2335,14 @@ function renderPokemons() {
 }
 
 // 获取时间：小卡上放「年-月-日 时:分」，title 里放同样的完整时间
+// 小卡上只留「月-日」（完整时间在卡片 title 和详情里）
+function caughtDay(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso).slice(5, 10);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 function caughtShort(iso) {
   if (!iso) return '时间未知';
   const d = new Date(iso);
@@ -2362,13 +2370,18 @@ function pmBallIcon(pmId) {
   return balls[i]();
 }
 
-// 小卡牌（列表）：第一行「属性 + 名字」，第二行获取时间
+// 小卡牌（列表）：第一行「属性 + 名字」，第二行「获取日期 + 当前经验/总经验」
+// 经验放小卡上是给孩子"选哪只出战"用的：数字 + 图片底部一条细进度条，一眼看出谁快进化
 function pmCardHTML(pm) {
   const info = PK_BY_NO[pm.pokedex_no];
   const type = pmType(pm.pokedex_no);
   // 选择态：已经闪的（自己就是 ✨ 或同编号已有 ✨ 卡）不能再选
   const locked = shinyPickOn && (pm.shiny || hasShinyCopy(pm.pokedex_no));
   const act = shinyPickOn ? (locked ? 'shiny-locked' : 'shiny-apply') : 'card';
+  const maxed = isMaxed(pm);
+  const thr = expThreshold(pm) || 1;
+  const expPct = maxed ? 100 : Math.min(100, Math.max(0, Math.round((pm.exp || 0) / thr * 100)));
+  const expText = maxed ? (pm.shiny ? '✨ 满' : '满级') : `${pm.exp || 0}/${thr}`;
   return `
   <div class="pm-card-mini ${pm.shiny ? 'shiny' : ''} ${shinyPickOn ? 'picking' : ''} ${locked ? 'locked' : ''}" data-action="${act}" data-pmid="${pm.id}" title="获取于 ${caughtFull(pm.caught_at)}">
     <div class="mini-frame" style="--tc:${TYPE_COLOR[type] || '#a8a878'}">
@@ -2376,14 +2389,15 @@ function pmCardHTML(pm) {
       ${pm.shiny ? '<span class="mini-shiny">✨</span>' : ''}
       ${pm.id === S.leadId ? '<span class="mini-lead">⭐</span>' : ''}
       <span class="mini-lv-badge">${evoStageLabel(pm)}</span>
+      <span class="mini-no-badge">#${String(pm.pokedex_no || 0).padStart(3, '0')}</span>
       ${shinyPickOn && !locked ? '<span class="mini-pick">闪耀吧！✨</span>' : ''}
+      <span class="mini-expbar"><i style="width:${expPct}%"></i></span>
     </div>
     <div class="mini-line">
-      <span class="mini-no">#${String(pm.pokedex_no || 0).padStart(3, '0')}</span>
       <span class="mini-type" style="background:${TYPE_COLOR[type] || '#a8a878'}">${TYPE_NAME[type] || type}</span>
       <span class="mini-name">${info.name}</span>
     </div>
-    <div class="mini-time"><span class="ball-ico">${pmBallIcon(pm.id)}</span> ${caughtShort(pm.caught_at)}</div>
+    <div class="mini-time"><span class="mini-when"><span class="ball-ico">${pmBallIcon(pm.id)}</span>${caughtDay(pm.caught_at)}</span><span class="mini-exp${maxed ? ' full' : (expPct >= 75 ? ' near' : '')}">${expText}</span></div>
   </div>`;
 }
 
@@ -2423,7 +2437,7 @@ function showCardDetail(pm) {
         <div class="exp-track"><div class="exp-fill" style="width:${expPct}%"></div></div>
         ${evoChainLine(pm.pokedex_no)}
         ${evoFamily(pm.pokedex_no).length > 1 ? '<div class="chain-tip">👆 点上面的名字，可以看每个形态的详情</div>' : ''}
-        ${((hasNextEvo(pm.pokedex_no) || !pm.shiny)) ? `<div class="ptcg-evo ${evo.ok ? 'ok' : ''}">${evo.ok ? (evo.shiny ? '✨ 可以进入闪耀形态啦！' : (evo.inherit ? '✨ 可以进化啦（进化出来直接是闪耀形态）！' : '✨ 可以进化啦！')) : (evo.why ? '『' + evo.why + '』' : '')}</div>` : ''}
+        ${(hasNextEvo(pm.pokedex_no) || !pm.shiny) && (evo.ok || (!evo.left && evo.why)) ? `<div class="ptcg-evo ${evo.ok ? 'ok' : ''}">${evo.ok ? (evo.shiny ? '✨ 可以进入闪耀形态啦！' : (evo.inherit ? '✨ 可以进化啦（进化出来直接是闪耀形态）！' : '✨ 可以进化啦！')) : evo.why}</div>` : ''}
       </div>
       <div class="ptcg-btns">
         <button class="btn-lead" ${isLead ? 'disabled' : ''}>${isLead ? '⭐ 出战' : '出战'}</button>
@@ -3625,23 +3639,23 @@ function parentTaskPanel() {
           : '<div class="empty-tip" style="padding:4px 0">还没有常用任务，点右上角 ＋ 加一个</div>'}
       </div>
       <h3 style="margin-top:16px">🆕 新建任务</h3>
-      <div class="input-row">
+      <div class="input-row" style="margin-top:8px">
         <textarea id="pt-title" placeholder="任务名称（末尾可加 {提示}）" style="flex:2;min-height:44px"></textarea>
       </div>
-      <div class="input-row">
-        ${catSelectHTML('pt-cat', '作业', 'flex:1.5')}
-        <input id="pt-pts" type="number" placeholder="积分" value="10" style="width:90px">
-      </div>
-      <div class="input-row">
+      <div class="input-row" style="margin-top:8px">
+        ${catSelectHTML('pt-cat', '作业', 'flex:1.4')}
+        <input id="pt-pts" type="number" placeholder="积分" value="10" style="width:72px;flex:0 0 auto;min-width:72px">
         ${reqToggleHTML('pt-req', true)}
-        ${uiSelectHTML('pt-schedule', 'once', [
-          { v: 'once', t: '单次 · 做完消失' },
-          { v: 'daily', t: '重复 · 每天都有' },
-          { v: 'weekly', t: '多日 · 带截止拆子任务' },
-        ], 'flex:1.5', 'onPtScheduleChange')}
       </div>
-      <div class="input-row">
-        <input id="pt-deadline" type="date" style="display:none;flex:1">
+      <div class="input-row" id="pt-deadline-row" style="display:none;margin-top:8px">
+        <input id="pt-deadline" type="date" style="flex:1">
+      </div>
+      <div class="input-row" style="margin-top:8px">
+        ${uiSelectHTML('pt-schedule', 'once', [
+          { v: 'once', t: '单次 · 做完消失', s: '单次' },
+          { v: 'daily', t: '重复 · 每天都有', s: '重复' },
+          { v: 'weekly', t: '多日 · 带截止拆子任务', s: '多日' },
+        ], 'flex:1.6', 'onPtScheduleChange')}
         <button class="btn-primary" data-action="parent-save" style="flex:1">添加</button>
       </div>
       <div id="pt-children-wrap" style="display:none;margin-top:8px">
@@ -3680,8 +3694,8 @@ function parentTaskPanel() {
 // 新建任务的「类型」下拉联动：选多日才显示截止日期 / 子任务拆分区
 function onPtScheduleChange(v) {
   const weekly = v === 'weekly';
-  const d = document.getElementById('pt-deadline');
-  if (d) d.style.display = weekly ? '' : 'none';
+  const row = document.getElementById('pt-deadline-row');
+  if (row) row.style.display = weekly ? '' : 'none';
   const c = document.getElementById('pt-children-wrap');
   if (c) c.style.display = weekly ? '' : 'none';
 }
