@@ -852,6 +852,16 @@ async function fixTodayAllClear() {
       awardLocked.add(g.key);
       added.push(g);
     });
+    // 孩子端也留一条家长消息：这笔奖不是他打卡触发的，不给通知他会不知道哪来的分
+    if (added.length) {
+      const pts = added.reduce((s, g) => s + g.bonus, 0);
+      pushNotice(
+        'points',
+        `今天${added.map(g => g.label).join(' + ')}任务已全清！+${pts} 积分`,
+        `家长调整了今天的任务 · 等家长确认后到账`,
+        added.map(g => ({ title: `${g.label}全清`, pts: g.bonus })),
+      );
+    }
     return added;
   } catch (err) {
     console.error('[fixTodayAllClear]', err);

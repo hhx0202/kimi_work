@@ -48,6 +48,7 @@
 - 明细要包含**不挂 task_id 的流水**（全清奖 `必选全清_日期`、多日完成奖），以前 `confirmPending` 只挑带 task_id 的，会漏掉这两类、加起来对不上总数。
 - **内部 reason 一律先过 `pointReasonLabel()` 再展示**：`完成:xxx`→任务名、`必选全清_日期`→「必做全清」、`多日完成奖:xxx`→「多日任务完成 · xxx」。孩子端积分记录、家长端待确认面板/流水、撤销确认弹窗都已接。别直接把 `l.reason` 打到界面上。
 - 通知卡 `align-items: flex-start`（有明细时会变高，图标要贴标题顶），`.notice-ok` 单独 `align-self: center`。
+- **`fixTodayAllClear()` 补发完必须 `pushNotice`**：这笔奖不是孩子打卡触发的，只改进度条他根本不知道分从哪来。文案要写明「待家长确认」（流水是 confirmed:false、不进余额），两条一起补发时合并成一条通知（明细两行），不要发两条。
 
 ## 任务/进度约定
 - 多日任务进度 = 子任务权重完成率：`childWeightMode` 依次尝试 points → percent → 条数均分（历史 0 分数据兜底）；不要再写死按 points 求和。

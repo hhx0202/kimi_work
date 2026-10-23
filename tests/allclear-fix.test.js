@@ -39,6 +39,11 @@ module.exports = async function run() {
   ok(log[0].args[3].confirmed === false, '记为待家长确认（不直接加余额）');
   ok(c.S.pointLogs.some(l => l.reason === `必选全清_${D}` && l.amount === 5), '本地流水已补上（进度条能立刻显示）');
   ok(c.allClearFixText(added).includes('补发 +5 分'), '提示文案带补发积分');
+  // 孩子端要收到通知，否则这笔奖不是他打卡触发的、不知道分从哪来
+  let ntc = (c.__noticeArgs || []).find(n => String(n.text).includes('全清'));
+  ok(!!ntc, '给孩子的通知已推送');
+  ok(Array.isArray(ntc.items) && ntc.items.length === 1 && ntc.items[0].title === '必做全清', '通知带明细「必做全清」');
+  ok(String(ntc.text).includes('+5') && String(ntc.sub).includes('等家长确认'), '正文写清分数、副标题说明待确认');
 
   section('幂等：再点一次保存不会重复发');
   added = await c.fixTodayAllClear();
@@ -83,6 +88,9 @@ module.exports = async function run() {
   const el = Date.now() - t0;
   ok(added.length === 2, '必做和选做都补发');
   ok(el < 20, `耗时 ${el}ms（两条流水并发，不是 2×5ms）`);
+  const twoNtc = (c.__noticeArgs || []).filter(n => String(n.text).includes('全清'));
+  ok(twoNtc.length === 1, '两条奖合并成一条通知，不刷屏');
+  ok(twoNtc[0].items.length === 2 && String(twoNtc[0].text).includes('必做 + 选做'), '一条通知里列两行明细');
 
   section('写库失败时不吞错、也没有假流水');
   c = setup();
