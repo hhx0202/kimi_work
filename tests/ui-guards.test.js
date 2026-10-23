@@ -88,6 +88,13 @@ module.exports = async function run() {
     '造型按钮是名字行里的普通 flex 件（不再 absolute 挂在画面上）');
   ok(!/\.ptcg\.scene-mode \.art-toggle\s*\{/.test(CSS), '场景卡不再给按钮加位移覆盖（位置恒定）');
   ok(/<div class="ptcg-top">[\s\S]{0,700}?class="art-toggle"/.test(APP), '按钮渲染在 .ptcg-top 名字行里');
+  // 名字行右边那两枚胶囊必须同一个体系：同字号、同高、同一套内边距（以前 12px/1.5 对 10px/1.45）
+  ok(/\.ptcg-shiny,\s*[\r\n\s]*\.art-toggle\s*\{[^}]*font-size:\s*11px/.test(CSS)
+    && /\.ptcg-shiny,\s*[\r\n\s]*\.art-toggle\s*\{[^}]*height:\s*22px/.test(CSS),
+    '形态徽章和卡面切换键共用同一套盒子（同字号 11px / 同高 22px）');
+  // 阶段胶囊：以前靠 line-height + 上下不对称 padding，字在框里会偏；现在 flex 竖居中
+  ok(/\.ptcg-lv\s*\{[^}]*display:\s*inline-flex[^}]*align-items:\s*center[^}]*justify-content:\s*center/.test(CSS),
+    '阶段标签用 flex 居中（文字在胶囊正中间）');
   ok(/\.ptcg\.scene-mode \.ptcg-art img\s*\{[^}]*height:\s*auto/.test(CSS)
     && !/\.ptcg\.scene-mode \.ptcg-art img\s*\{[^}]*height:\s*100%/.test(CSS),
     '场景卡图片高度随宽度自适应（保持原比例，不拉伸）');

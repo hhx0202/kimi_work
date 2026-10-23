@@ -1160,10 +1160,19 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 }
 /* 名字后面的弹性空隙：把「形态徽章 / 卡面切换」推到最右边，阶段就不会读成「二阶立绘」 */
 .ptcg-gap { flex: 1 1 0; min-width: 2px; }
-.ptcg-shiny {
-  flex: 0 0 auto; font-size: 12px; font-weight: 800; color: #ffd54f; background: rgba(0,0,0,.35);
-  padding: 3px 9px; border-radius: 999px; border: 0; font-family: inherit; line-height: 1.5;
+/* 名字行右边两枚胶囊（形态切换 / 卡面切换）**必须长得一模一样**：
+   同字号 11px、同高 22px、同内边距、都用 inline-flex 竖居中。
+   以前一个 12px/line-height:1.5、一个 10px/line-height:1.45，看着像两个体系的东西 */
+.ptcg-shiny,
+.art-toggle {
+  flex: 0 0 auto; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center; gap: 2px;
+  height: 22px; padding: 0 10px;
+  border: 0; border-radius: 999px; font-family: inherit;
+  font-size: 11px; font-weight: 800; line-height: 1;
+  -webkit-tap-highlight-color: transparent;
 }
+.ptcg-shiny { color: #ffd54f; background: rgba(0,0,0,.35); }
 /* 同一编号还有个「另一版」时，这枚徽章就是切换按钮：加一圈细边暗示可点 */
 .ptcg-shiny.swap { cursor: pointer; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .38); -webkit-tap-highlight-color: transparent; }
 .ptcg-shiny.swap:active { transform: scale(.95); }
@@ -1172,17 +1181,23 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 /* 名字行里要同时塞下：名字 + 形态徽章 + 阶段 + 卡面切换。
    窄屏（≤360）把徽章的「闪耀/普通」二字收掉，只留 ✨/🖼 图标（金色/白色本来就区分得开），
    否则「三合一磁怪」这种 5 字名会被压成省略号 */
+@media (min-width: 361px) {
+  /* 两枚胶囊文字长短不同（◇普通 ⇄ / 🖼 立绘），给个最小宽度拉平，看着一样大 */
+  .ptcg-shiny, .art-toggle { min-width: 58px; }
+}
 @media (max-width: 360px) {
   .ptcg-shiny .shiny-txt { display: none; }
-  .ptcg-shiny { padding: 3px 7px; }
+  .ptcg-shiny { padding: 0 8px; }
 }
 /* 进化阶段：跟着名字走的小标签。用等宽字体 + 深色底，和名字的白粗体明显不是一回事，
    不会像以前那样挨着右边的「立绘」被读成一串（用户原话「二阶立绘莫名其妙」） */
 .ptcg-lv {
-  flex: 0 0 auto; margin-left: 5px;
+  flex: 0 0 auto; margin-left: 3px;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box; height: 18px; padding: 0 6px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
-  font-size: 9px; font-weight: 700; letter-spacing: 1px; line-height: 1;
-  padding: 2px 5px 3px; border-radius: 5px;
+  font-size: 9px; font-weight: 700; letter-spacing: 0; line-height: 1;
+  border-radius: 5px;
   background: rgba(0, 0, 0, .3); color: rgba(255, 255, 255, .9);
   text-shadow: none;
 }
@@ -1261,11 +1276,9 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
    切到场景卡时（卡图铺满整张卡）又要靠 .scene-mode 挪到画面外，
    两种模式位置不一样 → 切换时按钮跳、整页像闪了一下。放名字行后永远不动 */
 .art-toggle {
-  flex: 0 0 auto; border: 0; cursor: pointer; font-size: 10px; font-weight: 800;
-  padding: 4px 8px; border-radius: 999px; line-height: 1.45; font-family: inherit;
+  cursor: pointer;
   background: rgba(255,255,255,.92); color: #b8860b;
   box-shadow: 0 2px 8px rgba(0,0,0,.18);
-  -webkit-tap-highlight-color: transparent;
 }
 .art-toggle:active { transform: scale(.94); }
 /* 场景卡：整张中文卡面，保持完整不裁切（黑底衬托），并去掉立绘的发光/浮动 */
