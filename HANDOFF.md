@@ -20,7 +20,7 @@
 
 | 模块 | 功能 | 状态 |
 |---|---|---|
-| 任务 | daily/once/weekly(子任务)/必做可选/批量粘贴/日历 | ✅ |
+| 任务 | daily/once/weekly(子任务)/必做可选/批量粘贴/日历；**前一天没做完的单次任务自动复制一份到今天**（必做/选做都带，源任务标记 `note='carried'` 防复活） | ✅ |
 | 奖励 | 任务积分、必做全清+5、选做全清+5、**连续 7 天必做全清**在最下方进度条点「领取」得 ✨ 闪耀卡（宝可梦页点「使用」自己挑一只）、多日完成奖 | ✅ |
 | 提交/审批 | 孩子点「完成」→ **乐观更新立即变已提交**（不等数据库，DB 后台落库失败才提示）；再点可撤销；家长「待确认积分」审批后 → **已完成**；积分先进待发池；**任务完成后不再下架**，待审核/已完成都保留在孩子页与家长页列表展示，按钮按状态显示（完成/已提交/已完成） | ✅ |
 | 详情 | 任务详情弹窗保持**一行紧凑信息**：分类 · 分数 · 类型 · 开始日期 · 截止日期（+剩 N 天），子任务跟随多日任务的截止日期并标注「随多日任务」，另起一行写所属多日任务；**多日任务**点进度条弹出的子任务清单头部带截止日期/剩余天数/进度/全清奖 | ✅ |
@@ -152,6 +152,9 @@
   - **2026-10-22 复查：线上仍是 `Script error.`（说明还有别的跨域来源，比如浏览器扩展/App 内置 WebView 注入）**。为此补了两层"现场信息"：① `index.html` 里在任何外部脚本**之前**、用 capture 挂了一个 `window.__earlyErrors` 监听（CDN 脚本自己报错时 app.js 还没加载，必须提前挂），启动时由 `DOMContentLoaded` 收进错误日志；② `envSnapshot()` 在每条脚本错误里附带 UA、页面路径、`document.lastModified`（判断手机是否在跑旧版本）、可见性、在线状态、屏幕尺寸、外部脚本域名、三个 CDN 依赖是否就绪（`supabase/confetti/html2canvas`）、访问过的近期早期错误，以及"是否在切回前台 10 秒内"（`visibilityHint`）。跨域的 `Script error.` 单独归为「脚本错误（跨域，无详情）」。`reportError` 的 `extra` 容量从 240 提到 900 字。下次手机再弹错误，让家长端点「详情 → 复制」发来即可定位。
   - **实测结论（2026-10-22 17:05 那条日志）**：`外部脚本=cdn.jsdelivr.net`、`就绪=supabase:是,confetti:是,html2canvas:是`、三个 CDN 都带 `crossorigin` → **这条无文件名的跨域错误不是页面自己加载的脚本抛的**，是页面里其他跨域脚本（浏览器/输入法/App WebView 注入之类）抛的；`可见=hidden` 说明发生在页面切到后台期间。于是再加三类现场：`脚本标签=N(外域:…)(内联N)` + `已加载脚本域=`（`performance.getEntriesByType('resource')`，能抓到动态插入后又移除的脚本）、`加载后=Ns`、`导航=刷新/前进后退恢复/正常打开`。同时修掉重复记录：`index.html` 的早期监听在 `window.__kmAppReady` 置位后不再写入，避免同一条错误既记「早期错误」又记「脚本错误」
 - **类别**：`allCategories / catSelectHTML / onCatSelectChange / readCat`（新建任务、编辑、多日布置都用同一套下拉）
+- **下拉控件全部自绘**（2026-10-23，`uiSelectHTML / uiVal / uiSetVal / uiOpen / reqToggleHTML / reqVal` + CSS `.uiselect*`）：原生 `<select>` 在手机上弹的是**系统全屏选择器**（盖住整页、样式改不动），已全部替换成贴着按钮展开的小浮层。三个必须知道的点：① 浮层是 `position: fixed` + 用 `getBoundingClientRect` 现算坐标——弹窗 `.modal` 本身 `overflow-y: auto`，用 absolute 会被裁掉；② 值存在容器 `.uiselect` 的 `data-val` 上，**读值一律用 `uiVal(id)`**（不要写 `.value`），`.uiselect-opt` 的元素是按钮不是 option；③ 所有下拉共用一套 document 级委托（capture 阶段），弹窗里临时拼的 HTML 不用逐个绑定，值变化回调走容器 `data-cb` 上的全局函数名。选项支持 `s`（短文案）字段：按钮上显示短的、浮层里显示长的，窄屏不截断。**「必做/选做」只有两个值，改成了点一下就切换的胶囊**（`.req-toggle`，红=必做/绿=选做，读值用 `reqVal(id)`），比下拉少一次点击也不怕 320 宽
+- **任务编辑弹窗布局**（2026-10-23）：网格 `.te-grid` / `.te-grid3`（类别·积分·必做一行）/ `.te-grid2`（所属多日任务·任务类型一行），已删掉「选多日任务后…」那行说明；**「推迟一天」从独占整行的大按钮挪到标题行右侧的小胶囊**（`.te-postpone`），单次任务才有
+- **前一天没做完的单次任务带到今天**（2026-10-23，`carryOverOnceTasks`，在 `refreshAll` 末尾调用，`tests/carry-over.test.js` 守）：只看 `schedule === 'once'` 且**带 `end_date`** 的任务（无日期的老数据被当成"一直存在"，不参与）；`end_date < 今天` 且那天没打卡才复制（已提交待审批也算做完）。**幂等的关键是源任务复制完立刻写 `note = 'carried'`**：① 一份任务只带走一次，家长删掉今天这条，明天不会又冒出来；② 隔几天没开页面时，链条中间的节点都已是 `carried`，只会带走链末端那一条，不会一次翻出好几条旧账。复制品 `note = carry:<源id>:<源日期>` 便于追溯，日期写今天。今天已有同名一次性任务（家长自己又布置了）就不叠加。整段用 try/catch 包住单条写入，写库失败只 `console.warn`，**绝不能让它把 `refreshAll` 打断成白屏**
 - **常用任务**：`quickTasks / saveQuickList / openQuickEdit / openQuickAddTask / delQuick / bindQuickLongPress`（localStorage `km_quick_tasks`，每项 `{title,category,points,required,iconKey}`；图标 key 池在 `js/poke-icons.js` 的 `POKE_ICON_KEY_MAP`）。长按手势要用 `touchMode` 屏蔽合成的 mousedown/mouseleave，并在松手后吞掉那次合成 click，否则弹窗会被遮罩点击关掉
 - **规则设置**：`SETTING_FIELDS`（app.js 顶部）+ `parentSettingsPanel / openSettings`
 - **动画**：`showCatch / showEvolve / showShiny / showLevelUp / shareCard`（CSS 在 `style.css` 末尾）

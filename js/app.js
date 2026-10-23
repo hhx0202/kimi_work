@@ -379,6 +379,51 @@ async function refreshAll() {
   // 有宝可梦但没选出战（演示数据/首次进入）→ 自动选第一只当伙伴，省得手动设置
   if (!S.leadId && pokemons.length) S.leadId = pokemons[0].id;
   if (sharedLeadId() !== S.leadId) setSharedLead(S.leadId);   // 首次/换设备/失效时同步回共享
+  // 前一天没做完的单次任务 → 今天自动补一份（必做/选做都带，家长不用每天早上重打一遍）
+  const carried = await carryOverOnceTasks();
+  if (carried) toast(`📌 昨天没做完的 ${carried} 个一次性任务，已自动带到今天`);
+}
+
+// 前一天没做完的单次任务复制到今天。规则与幂等：
+// · 只看 schedule==='once' 且带 end_date 的（没日期的老数据被当成一直存在，没有"前一天"这一说）；
+// · 只处理「已经过期」且那天没打卡的；做完的（哪怕还在待家长确认）到此为止；
+// · 源任务带走后写 note='carried'：一份任务只带走一次 —— 家长删掉今天这条，明天不会又冒出来；
+//   也正因为如此，隔几天没开页面也只会带走链末端那一条，不会一次堆出好几条；
+// · 复制品 note 记 `carry:<源id>:<源日期>`，方便追溯；今天已经有同名一次性任务就不叠加。
+async function carryOverOnceTasks() {
+  const today = DB.today();
+  const todo = [];
+  for (const t of S.tasks) {
+    if (t.schedule !== 'once' || t.parent_id || !t.end_date) continue;
+    if (t.end_date >= today) continue;             // 还没到期的（含今天这条）不用管
+    if (t.note === 'carried') continue;            // 已经带走过
+    if (logOn(t.id, t.end_date)) continue;         // 那天做完了 → 不带到今天
+    if (inEffect(t, today)) continue;              // 今天它自己还在（日期被改到今天）
+    // 今天已经有同名的一次性任务（家长自己又布置了一遍，或上一轮刚带过来）→ 不再叠加
+    if (S.tasks.some(x => x.schedule === 'once' && !x.parent_id && inEffect(x, today) && x.title === t.title)) continue;
+    todo.push(t);
+  }
+  if (!todo.length) return 0;
+  let carried = 0;
+  for (const src of todo) {
+    try {
+      const row = await DB.addTask({
+        title: src.title, hint: src.hint, category: src.category, points: src.points,
+        schedule: 'once', required: src.required !== false,
+        start_date: today, end_date: today, note: `carry:${src.id}:${src.end_date}`,
+      });
+      if (!row) continue;
+      S.tasks.push(row);
+      // 源任务标记为已带走（只改 note，不动日期和属性，历史上的记录保持原样）
+      await DB.updateTask(src.id, { note: 'carried' });
+      src.note = 'carried';
+      carried++;
+    } catch (e) {
+      // 离线/写库失败：这次先跳过，下次刷新再试。绝不能让它把整个刷新流程打断（页面会白）
+      console.warn('[带任务] 失败：', src.title, e);
+    }
+  }
+  return carried;
 }
 
 function activeTasks() { return S.tasks.filter(t => t.active); }
@@ -3588,15 +3633,12 @@ function parentTaskPanel() {
         <input id="pt-pts" type="number" placeholder="积分" value="10" style="width:90px">
       </div>
       <div class="input-row">
-        <select id="pt-req" style="flex:1">
-          <option value="1">必做</option>
-          <option value="0">选做</option>
-        </select>
-        <select id="pt-schedule" onchange="var d=document.getElementById('pt-deadline'),c=document.getElementById('pt-children-wrap');var w=this.value==='weekly';if(d)d.style.display=w?'':'none';if(c)c.style.display=w?'':'none';" style="flex:1.5">
-          <option value="once">单次（当天做完消失）</option>
-          <option value="daily">重复（每天都有）</option>
-          <option value="weekly">多日（带截止，拆子任务）</option>
-        </select>
+        ${reqToggleHTML('pt-req', true)}
+        ${uiSelectHTML('pt-schedule', 'once', [
+          { v: 'once', t: '单次 · 做完消失' },
+          { v: 'daily', t: '重复 · 每天都有' },
+          { v: 'weekly', t: '多日 · 带截止拆子任务' },
+        ], 'flex:1.5', 'onPtScheduleChange')}
       </div>
       <div class="input-row">
         <input id="pt-deadline" type="date" style="display:none;flex:1">
@@ -3635,14 +3677,22 @@ function parentTaskPanel() {
     </div>
   `;
 }
+// 新建任务的「类型」下拉联动：选多日才显示截止日期 / 子任务拆分区
+function onPtScheduleChange(v) {
+  const weekly = v === 'weekly';
+  const d = document.getElementById('pt-deadline');
+  if (d) d.style.display = weekly ? '' : 'none';
+  const c = document.getElementById('pt-children-wrap');
+  if (c) c.style.display = weekly ? '' : 'none';
+}
 async function saveParentTask() {
   const { title, hint } = splitHint($('pt-title').value.trim());
   if (!title) { toast('请填任务名称'); return; }
   const category = readCat('pt-cat');
   const points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt($('pt-pts').value) || 10));
-  const schedule = $('pt-schedule').value;
+  const schedule = uiVal('pt-schedule') || 'once';
   const deadline = (schedule === 'weekly' && $('pt-deadline').value) ? $('pt-deadline').value : null;
-  const required = $('pt-req').value !== '0';
+  const required = reqVal('pt-req');
   // 同名拦截：单次任务按「这一天」判重，重复/多日任务全局判重
   if (sameTitleTask(title, { parentId: null, date: schedule === 'once' ? S.parentDate : null })) {
     toast(dupTitleMsg(title)); return;
@@ -3787,35 +3837,22 @@ function openTaskEditor(id) {
   modal.className = 'modal-mask';
   modal.innerHTML = `
     <div class="modal" style="max-width:440px;width:calc(100% - 40px)">
-      <h3>✏️ 编辑任务</h3>
+      <h3>✏️ 编辑任务${t.schedule === 'once' ? '<button type="button" class="te-postpone" data-postpone title="这条今天先不出现，挪到明天">⏭ 推迟一天</button>' : ''}</h3>
       <label>任务名称</label>
       <textarea id="te-title" rows="2" placeholder="任务名称">${t.title}</textarea>
-      <label>类别</label>
-      <div class="input-row" style="margin-top:0">
-        ${catSelectHTML('te-cat', t.category, 'flex:1')}
-      </div>
-      <div class="input-row" style="margin-top:10px">
-        <input id="te-pts" type="number" value="${t.points}" placeholder="积分">
-        <select id="te-req">
-          <option value="1" ${t.required !== false ? 'selected' : ''}>必做</option>
-          <option value="0" ${t.required === false ? 'selected' : ''}>选做</option>
-        </select>
+      <div class="te-grid te-grid3">
+        <div class="te-fld"><label>类别</label>${catSelectHTML('te-cat', t.category)}</div>
+        <div class="te-fld"><label>积分</label><input id="te-pts" type="number" value="${t.points}" placeholder="积分"></div>
+        <div class="te-fld"><label>必做/选做</label>${reqToggleHTML('te-req', t.required !== false)}</div>
       </div>
       <label>小提示</label>
       <textarea id="te-hint" rows="2" placeholder="给孩子的小提示（如：先复习生字）">${t.hint || ''}</textarea>
-      <label>所属多日任务</label>
-      <select id="te-parent">
-        <option value="">独立任务（不关联）</option>
-        ${weeklyTasks().map(w => `<option value="${w.id}" ${t.parent_id === w.id ? 'selected' : ''}>${w.title}</option>`).join('')}
-      </select>
-      ${isChild ? '' : `
-      <label>任务类型</label>
-      <select id="te-schedule">
-        <option value="daily" ${t.schedule === 'daily' ? 'selected' : ''}>重复（每天都有）</option>
-        <option value="once" ${t.schedule === 'once' ? 'selected' : ''}>单次（当天做完消失）</option>
-      </select>`}
-      <div class="form-hint">选「多日任务」后，本任务成为它的子任务，孩子按完成度独立计分。</div>
-      ${t.schedule === 'once' ? `<button class="btn-cancel" data-postpone style="width:100%;margin-top:10px">⏭ 推迟一天（今天先不出现）</button>` : ''}
+      <div class="te-grid${isChild ? '' : ' te-grid2'}">
+        <div class="te-fld"><label>所属多日任务</label>${uiSelectHTML('te-parent', t.parent_id == null ? '' : t.parent_id,
+          [{ v: '', t: '独立任务' }].concat(weeklyTasks().map(w => ({ v: String(w.id), t: w.title }))))}</div>
+        ${isChild ? '' : `<div class="te-fld"><label>任务类型</label>${uiSelectHTML('te-schedule', t.schedule,
+          [{ v: 'daily', t: '重复 · 每天都有', s: '每天重复' }, { v: 'once', t: '单次 · 做完消失', s: '只做一次' }])}</div>`}
+      </div>
       <div style="margin-top:12px;display:flex;gap:8px">
         <button class="btn-danger" data-del style="flex:1">删除</button>
         <button class="btn-cancel" data-cancel style="flex:1">取消</button>
@@ -3834,9 +3871,9 @@ function openTaskEditor(id) {
     const hint = modal.querySelector('#te-hint').value.trim() || null;
     const category = readCat('te-cat');
     const points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt(modal.querySelector('#te-pts').value) || 10));
-    const required = modal.querySelector('#te-req').value !== '0';
+    const required = reqVal('te-req');
     const oldParent = t.parent_id;
-    const parentVal = (modal.querySelector('#te-parent').value || '').trim();
+    const parentVal = uiVal('te-parent').trim();
     const newParent = parentVal ? Number(parentVal) : null;
     if (sameTitleTask(title, { ignoreId: t.id, parentId: newParent })) { toast(dupTitleMsg(title)); return; }
     const patch = { title, hint, category, points, required };
@@ -3851,7 +3888,7 @@ function openTaskEditor(id) {
         patch.schedule = 'daily';  // 子任务取消关联 → 恢复独立每天
         patch.start_date = DB.today();   // 从今天起才算，别回溯到子任务建立那天
       } else if (!isChild) {
-        const schedule = modal.querySelector('#te-schedule').value;
+        const schedule = uiVal('te-schedule') || t.schedule;
         if (schedule !== t.schedule) {
           if (schedule === 'once') { patch.start_date = S.parentDate; patch.end_date = S.parentDate; }
           // 改成重复 = 从今天起每天都有；不能留空（留空会被当成"一直存在"，回溯到过去）
@@ -4011,36 +4048,147 @@ function deleteCat(cat) {
   const hide = hiddenCats();
   if (!hide.includes(cat)) { hide.push(cat); sharedSet('categories_hidden', hide); }
 }
-// 类别选择控件：用原生 <select>（手机上是系统选择器，任何浏览器都能选）
-// 末尾附「自定义类别…」，选中后显示输入框；历史类别全部在内
+// ---------- 自绘下拉（替代原生 select） ----------
+// 原生 <select> 在手机上弹的是系统全屏选择器，盖住整页、样式也没法调；这里改成贴着按钮展开的小浮层。
+// opts: [{ v, t }]；cb = 值变化时调用的全局函数名（可选，回调参数 (值, 控件id)）。
+// 值存在容器 .uiselect 的 data-val 上，读值一律用 uiVal(id)（不要再碰 .value）。
+function uiSelectHTML(id, cur, opts, extraStyle = '', cb = '') {
+  const val = String(cur == null ? '' : cur);
+  const hit = opts.find(o => String(o.v) === val) || opts[0] || { v: '', t: '' };
+  return `<div class="uiselect" id="${id}" data-val="${escHTML(hit.v)}" data-cb="${cb}" style="${extraStyle}">
+    <button type="button" class="uiselect-btn"><span class="uiselect-val">${escHTML(hit.s || hit.t)}</span><i class="uiselect-caret"></i></button>
+    <div class="uiselect-pop">${opts.map(o => `<button type="button" class="uiselect-opt${String(o.v) === String(hit.v) ? ' on' : ''}" data-v="${escHTML(o.v)}"${o.s ? ` data-short="${escHTML(o.s)}"` : ''}>${escHTML(o.t)}</button>`).join('')}</div>
+  </div>`;
+}
+function uiVal(id) {
+  const el = document.getElementById(id);
+  return el ? String(el.dataset.val || '') : '';
+}
+// 必做/选做胶囊：data-req = '1'（必做）/ '0'（选做），点一下切换
+function reqToggleHTML(id, required) {
+  const on = required !== false;
+  return `<button type="button" class="req-toggle${on ? '' : ' opt'}" id="${id}" data-req="${on ? '1' : '0'}">${on ? '必做' : '选做'}</button>`;
+}
+function reqVal(id) {
+  const el = document.getElementById(id);
+  return !el || el.dataset.req !== '0';
+}
+function uiSetVal(id, v) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const val = String(v);
+  el.dataset.val = val;
+  let label = '';
+  el.querySelectorAll('.uiselect-opt').forEach(o => {
+    const on = String(o.dataset.v) === val;
+    o.classList.toggle('on', on);
+    if (on) label = o.dataset.short || o.textContent;
+  });
+  const lab = el.querySelector('.uiselect-val');
+  if (lab) lab.textContent = label;
+}
+function uiCloseAll(except) {
+  document.querySelectorAll('.uiselect.open').forEach(el => { if (el !== except) el.classList.remove('open'); });
+}
+// 展开浮层：定位用 getBoundingClientRect（fixed 坐标系），空间不够时向上翻
+function uiOpen(el) {
+  uiCloseAll(el);
+  el.classList.add('open');
+  const pop = el.querySelector('.uiselect-pop');
+  const btn = el.querySelector('.uiselect-btn');
+  if (!pop || !btn) return;
+  const r = btn.getBoundingClientRect();
+  const gap = 4;
+  const maxH = Math.max(120, Math.min(240, window.innerHeight - 16));
+  pop.style.visibility = 'hidden';
+  pop.style.maxHeight = maxH + 'px';
+  // 宽度：至少和按钮一样宽；选项文字长就跟着变宽（别把「＋ 自定义类别…」截成半句），手机屏放不下时收窄
+  let w = r.width;
+  pop.querySelectorAll('.uiselect-opt').forEach(o => { w = Math.max(w, o.scrollWidth + 26); });
+  w = Math.min(w, window.innerWidth - 16);
+  const h = Math.min(pop.scrollHeight, maxH);
+  const below = r.bottom + gap;
+  const above = r.top - gap - h;
+  pop.style.top = (below + h > window.innerHeight - 8 && above > 8 ? above : below) + 'px';
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+  pop.style.width = w + 'px';
+  pop.style.visibility = '';
+  // 把当前选中项滚进可视区，省得选项多时要自己找
+  const cur = pop.querySelector('.uiselect-opt.on');
+  if (cur) {
+    const cr = cur.getBoundingClientRect(), pr = pop.getBoundingClientRect();
+    if (cr.top < pr.top) pop.scrollTop -= (pr.top - cr.top) + 6;
+    else if (cr.bottom > pr.bottom) pop.scrollTop += (cr.bottom - pr.bottom) + 6;
+  }
+}
+// 全局委托：所有下拉共用一套事件，弹窗里临时拼的 HTML 不用逐个绑定
+document.addEventListener('click', e => {
+  const tgt = e.target;
+  if (!tgt || !tgt.closest) return;
+  const opt = tgt.closest('.uiselect-opt');
+  if (opt) {
+    const box = opt.closest('.uiselect');
+    if (box) {
+      const v = String(opt.dataset.v || '');
+      uiSetVal(box.id, v);
+      box.classList.remove('open');
+      const cb = box.dataset.cb;
+      if (cb && typeof window[cb] === 'function') window[cb](v, box.id);
+    }
+    e.preventDefault(); e.stopPropagation();
+    return;
+  }
+  const btn = tgt.closest('.uiselect-btn');
+  if (btn) {
+    const box = btn.closest('.uiselect');
+    if (box) { if (box.classList.contains('open')) box.classList.remove('open'); else uiOpen(box); }
+    e.preventDefault(); e.stopPropagation();
+    return;
+  }
+  const req = tgt.closest('.req-toggle');
+  if (req) {
+    const on = req.dataset.req !== '1';
+    req.dataset.req = on ? '1' : '0';
+    req.textContent = on ? '必做' : '选做';
+    req.classList.toggle('opt', !on);
+    e.preventDefault(); e.stopPropagation();
+    return;
+  }
+  if (!tgt.closest('.uiselect')) uiCloseAll();
+}, true);
+// 页面/弹窗滚动、窗口变化时收起（fixed 浮层不会跟着滚，留着会漂到别处）
+document.addEventListener('scroll', e => {
+  const t2 = e.target;
+  if (t2 && t2.closest && t2.closest('.uiselect-pop')) return;
+  uiCloseAll();
+}, true);
+window.addEventListener('resize', () => uiCloseAll());
+
+// 类别选择控件：自绘下拉（末尾附「自定义类别…」，选中后显示输入框；历史类别全部在内）
 function catSelectHTML(id, cur, extraStyle = '') {
   const cats = allCategories();
   const val = String(cur == null ? '' : cur).trim();
   const isCustom = !!val && !cats.includes(val);
-  return `
-    <select id="${id}" onchange="onCatSelectChange(this)" style="${extraStyle}">
-      ${cats.map(c => `<option value="${c}"${c === val ? ' selected' : ''}>${c}</option>`).join('')}
-      <option value="__custom__"${isCustom ? ' selected' : ''}>＋ 自定义类别…</option>
-    </select>
-    <input id="${id}-custom" class="cat-custom" placeholder="输入新类别名" value="${isCustom ? escHTML(val) : ''}" style="display:${isCustom ? '' : 'none'}">
-  `;
+  const opts = cats.map(c => ({ v: c, t: c })).concat([{ v: '__custom__', t: '＋ 自定义类别…' }]);
+  return `${uiSelectHTML(id, isCustom ? '__custom__' : val, opts, extraStyle, 'onCatSelectChange')}
+    <input id="${id}-custom" class="cat-custom" placeholder="输入新类别名" value="${isCustom ? escHTML(val) : ''}" style="display:${isCustom ? '' : 'none'}">`;
 }
-function onCatSelectChange(sel) {
-  const inp = document.getElementById(sel.id + '-custom');
+function onCatSelectChange(v, id) {
+  const inp = document.getElementById(id + '-custom');
   if (!inp) return;
-  const custom = sel.value === '__custom__';
+  const custom = v === '__custom__';
   inp.style.display = custom ? '' : 'none';
   if (custom) { inp.focus(); inp.select && inp.select(); }
 }
 // 读取 catSelectHTML 的最终值
 function readCat(id) {
-  const sel = document.getElementById(id);
-  if (!sel) return '作业';
-  if (sel.value === '__custom__') {
+  const v = uiVal(id);
+  if (!document.getElementById(id)) return '作业';
+  if (v === '__custom__') {
     const inp = document.getElementById(id + '-custom');
     return String((inp && inp.value) || '').trim() || '作业';
   }
-  return String(sel.value || '').trim() || '作业';
+  return v.trim() || '作业';
 }
 // 类别排序索引：按记忆顺序 + 历史类别，未记录的排最后
 function catOrder(cat) {
@@ -4154,28 +4302,15 @@ function openQuickAddTask(idx) {
       <h3>➕ 添加任务</h3>
       <label>任务名称</label>
       <textarea id="qa-title" rows="2" style="width:100%">${escHTML(it.title)}</textarea>
-      <label>小提示（可留空，孩子会在任务卡上看到）</label>
-      <div class="input-row" style="margin-top:0">
-        <input id="qa-hint" value="${escHTML(it.hint || '')}" placeholder="如：先复习生字再写">
+      <div class="te-grid te-grid3">
+        <div class="te-fld"><label>类别</label>${catSelectHTML('qa-cat', it.category || '作业')}</div>
+        <div class="te-fld"><label>积分</label><input id="qa-pts" type="number" value="${it.points || 10}" placeholder="积分"></div>
+        <div class="te-fld"><label>必做/选做</label>${reqToggleHTML('qa-req', it.required !== false)}</div>
       </div>
-      <label>类别</label>
-      <div class="input-row" style="margin-top:0">
-        ${catSelectHTML('qa-cat', it.category || '作业', 'flex:1')}
+      <div class="te-grid" style="grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)">
+        <div class="te-fld"><label>小提示（可留空）</label><input id="qa-hint" value="${escHTML(it.hint || '')}" placeholder="如：先复习生字"></div>
+        <div class="te-fld"><label>布置到</label>${uiSelectHTML('qa-schedule', 'once', [{ v: 'once', t: `只 ${S.parentDate.slice(5)} 这一次`, s: '只这一天' }, { v: 'daily', t: '每天都有（重复）', s: '每天都有' }])}</div>
       </div>
-      <label>分数 / 必做</label>
-      <div class="input-row" style="margin-top:0">
-        <input id="qa-pts" type="number" value="${it.points || 10}" placeholder="积分">
-        <select id="qa-req">
-          <option value="1" ${it.required !== false ? 'selected' : ''}>必做</option>
-          <option value="0" ${it.required === false ? 'selected' : ''}>选做</option>
-        </select>
-      </div>
-      <label>布置到</label>
-      <select id="qa-schedule">
-        <option value="once">只 ${S.parentDate} 这一次</option>
-        <option value="daily">每天都有（重复）</option>
-      </select>
-      <div class="form-hint">确认后立刻加到 ${S.parentDate} 的任务里。</div>
       <div style="margin-top:12px;display:flex;gap:8px">
         <button class="btn-cancel" data-cancel style="flex:1">取消</button>
         <button class="btn-primary" data-ok style="flex:2">确认添加</button>
@@ -4193,8 +4328,8 @@ function openQuickAddTask(idx) {
     const hint = typedHint || inlineHint || null;
     const category = readCat('qa-cat');
     const points = Math.max(1, Math.min(CONFIG.MAX_POINTS_PER_TASK, parseInt(modal.querySelector('#qa-pts').value) || 10));
-    const required = modal.querySelector('#qa-req').value !== '0';
-    const schedule = modal.querySelector('#qa-schedule').value === 'daily' ? 'daily' : 'once';
+    const required = reqVal('qa-req');
+    const schedule = uiVal('qa-schedule') === 'daily' ? 'daily' : 'once';
     // 重复任务也从布置那天起生效，别让它回溯到布置之前（会毁掉已经算好的连击）
     const bindDate = S.parentDate;
     if (sameTitleTask(title, { parentId: null, date: schedule === 'once' ? bindDate : null })) { toast(dupTitleMsg(title)); return; }

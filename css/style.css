@@ -462,6 +462,72 @@ textarea {
 }
 .form-hint { font-size: 11px; color: var(--ink-soft); margin-top: 6px; }
 
+/* ---------- 自绘下拉（替代原生 select） ----------
+   原生 select 在手机上会弹满屏的系统选择器（还会盖住整个页面），这里改成贴着按钮展开的小浮层。
+   浮层用 position:fixed + 动态算坐标：弹窗本身是 overflow:auto，absolute 会被裁掉。 */
+.uiselect { position: relative; flex: 1 1 auto; min-width: 0; }
+.uiselect-btn {
+  width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 6px;
+  border: 1.5px solid #e3e8ef; border-radius: 9px; background: #fafbfd;
+  height: 36px; padding: 0 10px; font-size: 13px; font-family: inherit; color: var(--ink);
+  text-align: left; cursor: pointer; transition: border-color .15s, background .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.uiselect-btn:active { background: #eef4fb; }
+.uiselect.open .uiselect-btn { border-color: var(--blue); background: #fff; }
+.uiselect-val { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.uiselect-caret {
+  flex: 0 0 auto; width: 0; height: 0; margin-top: 2px;
+  border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #90a4ae;
+  transition: transform .18s;
+}
+.uiselect.open .uiselect-caret { transform: rotate(180deg); }
+.uiselect-pop {
+  position: fixed; z-index: 120; display: none; box-sizing: border-box;
+  background: #fff; border: 1px solid #e6ebf2; border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(31, 64, 98, .18); padding: 5px;
+  max-height: 240px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+}
+.uiselect.open .uiselect-pop { display: block; }
+.uiselect-opt {
+  display: block; width: 100%; box-sizing: border-box; border: 0; background: transparent;
+  border-radius: 8px; padding: 9px 10px; font-size: 13px; font-family: inherit; color: var(--ink);
+  text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  -webkit-tap-highlight-color: transparent;
+}
+.uiselect-opt:active { background: #eef4fb; }
+.uiselect-opt.on { color: var(--blue); background: #e3f2fd; font-weight: 800; }
+/* 表单行里的下拉跟输入框一样高一样粗（家长端内联表单用大号） */
+.input-row .uiselect-btn { height: auto; border-width: 2px; border-radius: 12px; padding: 13px 10px; font-size: 14px; }
+.input-row .req-toggle { flex: 1; height: auto; padding: 13px 6px; border-width: 2px; border-radius: 12px; font-size: 14px; }
+/* 编辑弹窗里的紧凑栅格：类别/积分/必做 一行，所属多日任务/任务类型 一行 */
+.te-grid { display: grid; gap: 8px; align-items: end; margin-bottom: 6px; }
+.te-grid3 { grid-template-columns: minmax(0, 1.45fr) minmax(0, .72fr) minmax(0, 1fr); }
+.te-grid2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.te-fld { min-width: 0; }
+.te-fld > label { margin: 6px 0 3px; }
+.te-fld .uiselect { width: 100%; flex: none; }
+.te-fld input, .te-fld .uiselect-btn { margin-bottom: 0; }
+/* 必做/选做：只有两个值，做成点一下就切换的胶囊，比下拉少一次点击、也不怕窄屏挤 */
+.req-toggle {
+  width: 100%; box-sizing: border-box; height: 36px; padding: 0 6px;
+  border: 1.5px solid #ffcdd2; border-radius: 9px; background: #fff5f5;
+  color: #d32f2f; font-size: 13px; font-weight: 800; font-family: inherit;
+  cursor: pointer; white-space: nowrap; -webkit-tap-highlight-color: transparent;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.req-toggle:active { transform: scale(.97); }
+.req-toggle.opt { border-color: #c8e6c9; background: #f1f8f2; color: #2e7d32; }
+
+/* 编辑弹窗标题行右侧的「推迟一天」：小号胶囊，不再独占一整行 */
+.te-postpone {
+  margin-left: auto; flex: 0 0 auto; border: 0; border-radius: 999px;
+  padding: 5px 11px; background: #eef4fb; color: #1565c0;
+  font-size: 12px; font-weight: 800; font-family: inherit; cursor: pointer; white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.te-postpone:active { background: #dbeafe; }
+
 .btn-primary {
   border: 0; cursor: pointer; border-radius: 999px; padding: 11px 22px;
   font-size: 14px; font-weight: 800; color: #fff;

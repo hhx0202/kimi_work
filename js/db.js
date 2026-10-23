@@ -497,8 +497,8 @@ const DB = (() => {
       if (error) sFail(error, '读取任务');
       return data || [];
     },
-    async addTask({ title, category, points, schedule = 'daily', deadline = null, parent_id = null, percent = null, required = true, start_date = null, end_date = null, hint = null, sort = 0, bonus = null }) {
-      const { data, error } = await sClient().from('tasks').insert({ title, category, points, schedule, deadline, parent_id, percent, required, start_date, end_date, hint, sort, bonus, active: true }).select();
+    async addTask({ title, category, points, schedule = 'daily', deadline = null, parent_id = null, percent = null, required = true, start_date = null, end_date = null, hint = null, sort = 0, note = null, bonus = null }) {
+      const { data, error } = await sClient().from('tasks').insert({ title, category, points, schedule, deadline, parent_id, percent, required, start_date, end_date, hint, sort, note, bonus, active: true }).select();
       if (error) sFail(error, '新增任务');
       return data[0];
     },
