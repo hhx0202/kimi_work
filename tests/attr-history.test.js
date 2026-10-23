@@ -67,4 +67,23 @@ module.exports = async function run() {
   ok(c.tasksOnDate('2026-10-19')[0].title === '跳绳100个', '跨天编辑：更早的日子仍是最初属性');
   ok(c.tasksOnDate('2026-10-21')[0].title === '跳绳400个', '10-21 显示第二次编辑前的版本');
   ok(c.tasksOnDate('2026-10-22')[0].title === '跳绳500个', '10-22 起显示最新');
+
+  section('改日期：把任务挪到明天，历史那天不能少一条');
+  c = makeCtx(FNS, {});
+  // 10-19 布置的单次任务，今天(10-21) 改到 10-25
+  let td = Object.assign(mkTask(), { schedule: 'once', start_date: '2026-10-19', end_date: '2026-10-19' });
+  let pd = { start_date: '2026-10-25', end_date: '2026-10-25' };
+  const changedDate = c.pushAttrHistory(td, { title: td.title, points: td.points, required: true, category: td.category, hint: null }, pd);
+  ok(changedDate === true && pd.history.length === 1, '只改日期（别的都没动）也会存快照');
+  ok(pd.history[0].start_date === '2026-10-19' && pd.history[0].end_date === '2026-10-19', '快照存的是旧日期');
+  Object.assign(td, pd);
+  c.S.tasks = [td];
+  ok(c.tasksOnDate('2026-10-19').length === 1, '10-19 那天仍看得到这条任务（历史没被抹掉）');
+  ok(c.tasksOnDate('2026-10-21').length === 0, '今天看不到（已经挪到 10-25）');
+  ok(c.tasksOnDate('2026-10-25').length === 1, '10-25 出现');
+
+  // 今天才布置的任务没生效过 → 改日期不留快照（不然会凭空多一条历史）
+  td = Object.assign(mkTask(), { schedule: 'once', start_date: '2026-10-21', end_date: '2026-10-21' });
+  pd = { start_date: '2026-10-25', end_date: '2026-10-25' };
+  ok(c.pushAttrHistory(td, { title: td.title, points: td.points, required: true, category: td.category, hint: null }, pd) === false, '今天才布置的任务改日期不留快照');
 };

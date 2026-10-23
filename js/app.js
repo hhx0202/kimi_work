@@ -418,7 +418,12 @@ function pushAttrHistory(t, next, patch) {
     next.category !== (t.category || '') ||
     (next.hint || '') !== (t.hint || '');
   const scheduleChanged = !!patch.schedule && patch.schedule !== t.schedule;
-  if (!hadPast || (!attrsChanged && !scheduleChanged)) return false;
+  // 改日期也要冻结历史：否则把「10-20 的单次任务」改到 10-24，10-20 那天会突然少一条任务，
+  // 那天已经算过的进度条/全清记录就对不上了
+  const dateChanged =
+    (patch.start_date !== undefined && (patch.start_date || null) !== (t.start_date || null)) ||
+    (patch.end_date !== undefined && (patch.end_date || null) !== (t.end_date || null));
+  if (!hadPast || (!attrsChanged && !scheduleChanged && !dateChanged)) return false;
   const hist = Array.isArray(t.history) ? t.history.slice() : [];
   hist.push({
     from: t.start_date || '', to: yesterday,
@@ -2052,6 +2057,34 @@ async function delTask(id) {
   const fixedClear = await fixTodayAllClear();
   await refreshAll(); render();
   toast('已删除' + allClearFixText(fixedClear));
+}
+
+// 推迟一天：今天这条先不出现，挪到明天。
+// 只做单次任务 —— 重复任务每天都做，「推迟一天」等于今天跳过，项目没有「跳过某天」的概念；
+// 多日任务在它自己的编辑弹窗里改截止日期即可。
+async function postponeTask(taskId) {
+  const t = S.tasks.find(x => x.id === taskId);
+  if (!t) return;
+  if (t.schedule !== 'once') {
+    toast(t.schedule === 'daily' ? '重复任务每天都做，推迟一天没意义；要停掉请删除它' : '这类任务没有可以推迟的日期');
+    return;
+  }
+  const from = t.start_date || DB.today();
+  const next = shiftDate(from, 1);
+  const doneTip = logOn(t.id, from) ? '原日期的完成记录和积分保留。' : '';
+  if (!await askConfirm(`把「${t.title}」从 ${from.slice(5)} 推到 ${next.slice(5)}？${doneTip}`, { okText: '推迟一天' })) return;
+  const patch = { start_date: next, end_date: next };
+  // 让原日期仍显示这条任务：不记快照的话，改完日期那一刻原来的日子会凭空少一条，进度条分母就变了
+  pushAttrHistory(t, {
+    title: t.title || '', points: t.points, required: t.required !== false,
+    category: t.category || '', hint: t.hint || null,
+  }, patch);
+  await DB.updateTask(t.id, patch);
+  Object.assign(t, patch);
+  // 挪走后今天可能正好全清（剩下的本来就做完了）→ 复用补发逻辑
+  const fixedClear = await fixTodayAllClear();
+  await refreshAll(); render();
+  toast(`⏭ 已推迟到 ${next.slice(5)}` + allClearFixText(fixedClear));
 }
 
 // ---------- 多日任务进度条（统一风格，挨着每日进度条增加） ----------
@@ -3782,6 +3815,7 @@ function openTaskEditor(id) {
         <option value="once" ${t.schedule === 'once' ? 'selected' : ''}>单次（当天做完消失）</option>
       </select>`}
       <div class="form-hint">选「多日任务」后，本任务成为它的子任务，孩子按完成度独立计分。</div>
+      ${t.schedule === 'once' ? `<button class="btn-cancel" data-postpone style="width:100%;margin-top:10px">⏭ 推迟一天（今天先不出现）</button>` : ''}
       <div style="margin-top:12px;display:flex;gap:8px">
         <button class="btn-danger" data-del style="flex:1">删除</button>
         <button class="btn-cancel" data-cancel style="flex:1">取消</button>
@@ -3792,6 +3826,8 @@ function openTaskEditor(id) {
   modal.querySelector('[data-cancel]').onclick = () => modal.remove();
   const delBtn = modal.querySelector('[data-del]');
   if (delBtn) delBtn.onclick = () => { modal.remove(); delTask(t.id); };
+  const postBtn = modal.querySelector('[data-postpone]');
+  if (postBtn) postBtn.onclick = () => { modal.remove(); postponeTask(t.id); };
   modal.querySelector('[data-save]').onclick = async () => {
     const title = modal.querySelector('#te-title').value.trim();
     if (!title) { toast('任务名称不能为空'); return; }
@@ -3828,6 +3864,7 @@ function openTaskEditor(id) {
     // 编辑只对「今天及之后」生效：昨天及以前生效过的日子存成快照，历史日期照旧渲染旧名称/旧分值
     // （打卡记录、积分、连续天数都按任务 id 走，本来就不受影响）
     const versioned = pushAttrHistory(t, { title, points, required, category, hint }, patch);
+    const oldStart = t.start_date || '';
     await DB.updateTask(id, patch);
     Object.assign(t, patch);
     // 关联变化时重算相关多日任务的总分
@@ -3837,7 +3874,8 @@ function openTaskEditor(id) {
     // 改必做⇄选做、改关联都可能让今天"突然全清"（家长把没做完的必做改成选做）→ 补发缺的全清奖
     const fixedClear = await fixTodayAllClear();
     await refreshAll(); render();
-    toast((versioned ? '已保存，改动从今天起生效（之前的日期保持原样）' : '已保存') + allClearFixText(fixedClear));
+    const moved = (patch.start_date && patch.start_date !== oldStart) ? `，日期改到 ${patch.start_date.slice(5)}` : '';
+    toast((versioned ? '已保存，改动从今天起生效（之前的日期保持原样）' : '已保存') + moved + allClearFixText(fixedClear));
   };
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
