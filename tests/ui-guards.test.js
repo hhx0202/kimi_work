@@ -114,4 +114,28 @@ module.exports = async function run() {
   ok(APP.includes("reportError('生成成就图失败'"), '失败原因写进错误日志，家长端能复制');
   ok(/Promise\.race\(\[done, timeout\]\)/.test(APP), 'html2canvas 卡住时有超时结论');
   ok(APP.includes('闪耀吧！✨'), '选卡态小卡的按钮文案');
+
+  section('成就图：去标题、去连击框、底部换宝可梦台词');
+  // 只看 shareCardHTML 内部：页面标题 / 任务页的连击统计里本来就有这些字，不能全文件否定
+  const SHARE = (APP.match(/function shareCardHTML\(\)[\s\S]*?\n}/) || [''])[0];
+  ok(SHARE.length > 200, '取到成就卡模板');
+  ok(!SHARE.includes('佑佑的任务岛'), '顶部标题已删（不再压着宝可梦）');
+  ok(!SHARE.includes('必做全清连击'), '连击框已删（只剩累计完成 + 图鉴两个框，宽度跟卡片对得上）');
+  ok(/const SHARE_TYPE_LINES\s*=/.test(APP) && /function shareQuote\(/.test(APP), '底部那句按属性挑，有台词池');
+  ok(/class="sc-foot"><i><\/i>\$\{escHTML\(quote\)\}/.test(SHARE), '底部换成一句宝可梦台词');
+  ok(!/sc-foot[\s\S]{0,40}DB\.today\(\)/.test(SHARE), '底部不再打印日期');
+  // 预览里的卡片是 scale 缩过的，但 .share-scaler 的布局盒仍是 640×900，
+  // 不挡住按钮的话手机上「关闭 / 生成图片」点了没反应（实测 elementFromPoint 命中的是 scaler）
+  ok(/\.share-scaler\s*\{[^}]*pointer-events:\s*none/.test(CSS), '缩放后的卡面不吃点击');
+  ok(/\.share-acts\s*\{[^}]*z-index:\s*6/.test(CSS), '底部按钮浮在缩略卡之上');
+
+  section('小卡日期带年、详情省高度、介绍与招式等宽');
+  ok(APP.includes('class="mini-date"') && APP.includes('class="mini-hm"'), '小卡日期带年，时分单独一段');
+  ok(/function caughtTime\(/.test(APP), '有取时分的函数');
+  ok(/@container \(min-width: 112px\)/.test(CSS), '卡片够宽才显示时分（窄卡只留年月日）');
+  ok(APP.includes('class="ptcg-meta"'), '详情把捕获时间和经验并成一行');
+  // 卡面底色随属性变（草绿 / 深紫），灰字直接压在上面看不清 → 时间必须自带浅色底
+  ok(/\.ptcg-caught\s*\{[^}]*background:\s*rgba\(255,\s*255,\s*255/.test(CSS), '捕获时间有浅色胶囊底，任何属性底色上都看得清');
+  ok(!APP.includes('点上面的名字'), '删掉了「点上面的名字…」提示');
+  ok(/\.ptcg-flavor\s*\{[^}]*margin:\s*10px 0 0/.test(CSS), '图鉴介绍块和招式块等宽');
 };

@@ -2,6 +2,7 @@
 
 ## 视觉/样式验证方式（重要）
 - **用户明确要求：先本地测，不要等上线再测。** 本地链路：`python serve.py`（ThreadingHTTPServer，localhost 命中 `DB_MODE='demo'`，数据走 `km_` 本地 demo）+ chromium headless 带 `--remote-debugging-port=9333 --user-data-dir=<临时目录>`，再用 Node 22 自带的 WebSocket 跑 CDP：`Runtime.evaluate`（改 `localStorage` / 直接调 `S`、`DB`、`render()` 造状态）+ `Emulation.setDeviceMetricsOverride`（390/320 移动视口）+ `Page.captureScreenshot`（可带 clip 只截某个卡片）。上线后只做一次「md5 是否一致」的部署确认即可。
+- **「点了没反应」不能用 `el.click()` 验证**（2026-10-24 踩）：脚本里 `.click()` 直接派发事件、**绕过命中测试**，被透明元素盖住的按钮照样"通过"。要判断真实可点性必须 `Input.dispatchMouseEvent` 真点，或先 `document.elementFromPoint(x,y)` 看那个坐标命中谁。曾因此漏掉一个真 bug：成就图预览的缩略卡片（`transform: scale()` 缩放但布局盒仍 640×685）盖住底部按钮，用户在手机和电脑上都点不动。
 - Edge headless 在沙箱里渲染不出内容，但 **playwright 自带的 chromium 可以截图**：
   `%LOCALAPPDATA%/ms-playwright/chromium-1140/chrome-win/chrome.exe --headless=new --disable-gpu --hide-scrollbars --window-size=W,H --virtual-time-budget=3000 --screenshot=out.png file:///...`
 - 长驻的 chromium 必须用后台任务方式启动（`run_in_background`），普通 `&` 启动的会在 shell 退出时被回收，CDP 端口随即 ECONNREFUSED。
@@ -71,7 +72,7 @@
 - **闪耀沿进化链往后继承**（2026-10-22，`shinyLineageNo / willInheritShiny`）：闪耀卡用在基础形态上后，这条链的普通卡**进化出来的形态直接是 ✨**（`evolvePm` 连 `shiny` 一起写库，动画走异色图）。只向后继承（✨ 只在后面的形态时，前面的卡进化不做成闪）、目标编号已有 ✨ 就不再生成第二张。血统是从 `S.pokemons` 推导的，没加数据库字段。
 - 进化阶段在 UI/排序里统一叫「**进化阶段**」（基础 / 一阶 / 二阶，卡牌术语「基础 / 1阶进化 / 2阶进化」）；`stageText(pm)` 只出阶段文字，`evoStageLabel(pm)` 给角标用、闪耀卡加 ✨ 前缀。
 - **代价型按钮一律二次确认**：捕捉（扣球）、买球（扣积分）都先 `askConfirm`，文案里写清"花什么/还剩多少"，`danger:false` 用蓝色主按钮；确认后要再判一次状态（别的设备可能改了数据）。
-- 小卡列表按**获取先后**排序（`caught_at`，同时间按 id）；**第一行「属性胶囊 + 名字」，第二行「🕒 MM-DD + 当前经验/总经验」**（2026-10-24 改：编号挪到图片左下角 `#094` 角标，否则 111px 宽放不下四字名；图片底部有条 4px 经验进度条，≥75% 橙色、满级金色）。改卡片信息时保持这两行结构，别把属性放回第二行。
+- 小卡列表按**获取先后**排序（`caught_at`，同时间按 id）；**第一行「属性胶囊 + 名字」，第二行「2026-10-24 [00:40] + 当前经验/总经验」**（2026-10-24 改：日期带年、时分拆成 `.mini-hm` 由容器查询 `@container (min-width:112px)` 控制显不显示；编号挪到图片左下角 `#094` 角标，否则 111px 宽放不下四字名；图片底部有条 4px 经验进度条，≥75% 橙色、满级金色）。改卡片信息时保持这两行结构，别把属性放回第二行。
 - **闪耀卡的合法状态只有两种**（2026-10-23 用户指出）：① 用闪耀卡 → 普通卡保留 + 额外多一张 ✨（同编号两张）；② 闪耀血统沿链继承 → 旧卡被 `evolvePm` **改写成**后代 ✨（这时只有 ✨、没有普通卡，因为普通卡被消耗了）。所以**「祖先普通 + 后代闪耀」这种组合在真实数据里不可能出现**，演示/测试数据不许造。图鉴口径另算：`dexGot` 里任一形态闪耀就整链标 ✨（含分支），这是家族级显示，不代表每只都有实体 ✨ 卡。
 - **演示种子必须过 `expandDemoPms`**（`js/db.js`）：它把 `[编号, 经验, 闪耀]` 清单规范成自洽的一组卡——先把 ✨ 沿整条链铺开，再给每个 ✨ 编号补普通卡。两个易错点：① **顺序不能反**（先补普通再铺链路，链路新补进来的基础形态又会缺普通卡）；② 找家族要**先回溯到根再往下铺全分支**（只算祖先+后代，遇到伊布这种分支进化会漏掉兄弟分支）。`evoChainOf` 已按这个改。加数据后 `SEED_VER` 要升版并在 `migrate` 里补一次，老演示数据才会跟着修。
 - **场景卡分两套**（2026-10-23）：`scenePath(no, shiny)` → 普通卡 `assets/scenes/{no}.jpg`（第一套，简体中文卡面）、闪耀卡 `assets/scenes-shiny/{no}.jpg`（第二套，跨系列精选的全图异画/现代卡）。第二套由 `tools/fetch_shiny_scenes.py` 抓取，规则与来源坑写在 HANDOFF「第二套场景卡素材来源」一节；**别把 `sv3pt5` 整段排除**——它的普卡与第一套同图要排除，但它的 Illustration Rare/SIR 是整幅异画、第一套没用过，必须允许。

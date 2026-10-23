@@ -2334,14 +2334,21 @@ function renderPokemons() {
   `;
 }
 
-// 获取时间：小卡上放「年-月-日 时:分」，title 里放同样的完整时间
-// 小卡上只留「月-日」（完整时间在卡片 title 和详情里）
+// 小卡上的获取日期：「2026-10-24」，时分单独拆成 .mini-hm（卡片够宽时 CSS 才显示）
+// 拆成两截而不是拼一串，是因为 3 列的窄卡放不下「2026-10-24 00:05」，截断会把时间吃掉
 function caughtDay(iso) {
   if (!iso) return '';
   const d = new Date(iso);
-  if (isNaN(d.getTime())) return String(iso).slice(5, 10);
+  if (isNaN(d.getTime())) return String(iso).slice(0, 10);
   const p = n => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function caughtTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso).slice(11, 16);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 function caughtShort(iso) {
   if (!iso) return '时间未知';
@@ -2397,7 +2404,7 @@ function pmCardHTML(pm) {
       <span class="mini-type" style="background:${TYPE_COLOR[type] || '#a8a878'}">${TYPE_NAME[type] || type}</span>
       <span class="mini-name">${info.name}</span>
     </div>
-    <div class="mini-time"><span class="mini-when"><span class="ball-ico">${pmBallIcon(pm.id)}</span>${caughtDay(pm.caught_at)}</span><span class="mini-exp${maxed ? ' full' : (expPct >= 75 ? ' near' : '')}">${expText}</span></div>
+    <div class="mini-time"><span class="mini-when"><span class="ball-ico">${pmBallIcon(pm.id)}</span><span class="mini-date">${caughtDay(pm.caught_at)}</span><i class="mini-hm">${caughtTime(pm.caught_at)}</i></span><span class="mini-exp${maxed ? ' full' : (expPct >= 75 ? ' near' : '')}">${expText}</span></div>
   </div>`;
 }
 
@@ -2432,11 +2439,12 @@ function showCardDetail(pm) {
       ${typeof PK_FLAVOR !== 'undefined' && PK_FLAVOR[pm.pokedex_no] ? `
       <div class="ptcg-flavor">📖 ${PK_FLAVOR[pm.pokedex_no]}</div>` : ''}
       <div class="ptcg-foot">
-        <div class="ptcg-caught"><span class="ball-ico">${pmBallIcon(pm.id)}</span> ${caughtFull(pm.caught_at)}</div>
-        <div class="ptcg-exprow">${maxed ? (pm.shiny ? '✨ 已满级（封顶）' : '✅ 已进入闪耀形态（这张是普通卡）') : `EXP ${pm.exp}/${expThreshold(pm)}`}</div>
+        <div class="ptcg-meta">
+          <div class="ptcg-caught"><span class="ball-ico">${pmBallIcon(pm.id)}</span> ${caughtFull(pm.caught_at)}</div>
+          <div class="ptcg-exprow">${maxed ? (pm.shiny ? '✨ 已满级（封顶）' : '✅ 已成为闪耀形态') : `EXP ${pm.exp}/${expThreshold(pm)}`}</div>
+        </div>
         <div class="exp-track"><div class="exp-fill" style="width:${expPct}%"></div></div>
         ${evoChainLine(pm.pokedex_no)}
-        ${evoFamily(pm.pokedex_no).length > 1 ? '<div class="chain-tip">👆 点上面的名字，可以看每个形态的详情</div>' : ''}
         ${(hasNextEvo(pm.pokedex_no) || !pm.shiny) && (evo.ok || (!evo.left && evo.why)) ? `<div class="ptcg-evo ${evo.ok ? 'ok' : ''}">${evo.ok ? (evo.shiny ? '✨ 可以进入闪耀形态啦！' : (evo.inherit ? '✨ 可以进化啦（进化出来直接是闪耀形态）！' : '✨ 可以进化啦！')) : evo.why}</div>` : ''}
       </div>
       <div class="ptcg-btns">
@@ -2527,7 +2535,6 @@ function showDexDetail(no) {
       <div class="ptcg-foot">
         <div class="ptcg-exprow">📚 ${stageLabelByNo(no)}${famPm ? ` · 同家族你拥有 ${famName}` : ''}</div>
         ${evoChainLine(no)}
-        ${evoFamily(no).length > 1 ? '<div class="chain-tip">👆 点上面的名字，可以切换查看其它形态</div>' : ''}
       </div>
       <div class="ptcg-btns dex-btns" style="grid-template-columns:repeat(${famPm ? 2 : 1}, 1fr)">
         ${famPm ? `<button class="btn-lead btn-owned">看我的 ${famName}</button>` : ''}
@@ -4969,7 +4976,7 @@ function openShare() {
   const saved = lsGet(LK('share_pick'), null);
   const pickId = saved && list.some(p => p.id === saved.pmId) ? saved.pmId
     : (list.some(p => p.id === S.leadId) ? S.leadId : list[0].id);
-  sharePick = { pmId: pickId, art: saved && saved.art === 'scene' ? 'scene' : 'art' };
+  sharePick = { pmId: pickId, art: saved && saved.art === 'scene' ? 'scene' : 'art', quoteSeed: Math.floor(Date.now() / 1000) };
   renderSharePreview();
 }
 function saveSharePick() { try { lsSet(LK('share_pick'), sharePick); } catch (e) {} }
@@ -5044,6 +5051,7 @@ function openSharePicker() {
     const b = e.target.closest('.share-pk');
     if (!b) return;
     sharePick.pmId = Number(b.dataset.pm);
+    sharePick.quoteSeed = (Number(sharePick.quoteSeed) || 0) + 1;
     saveSharePick();
     box.remove();
     renderSharePreview();
@@ -5089,6 +5097,41 @@ async function shareCard() {
   }
 }
 
+// 成就图底部那句话：按当前宝可梦的属性挑一句，再掺几句通用的
+// 用 sharePick.quoteSeed 决定取哪一句（不用 Math.random：预览和截图必须同一句）
+const SHARE_TYPE_LINES = {
+  fire:     '火焰越烧越旺，今天的努力也一样。',
+  water:    '水一直在流，所以你从没停下。',
+  electric: '攒够的每一分，都会变成电光照亮你。',
+  grass:    '像种子一样，每天长一点点。',
+  ice:      '冷静一点，一步一个脚印也能登顶。',
+  fighting: '每一拳都算数，每一次坚持都记录在案。',
+  poison:   '慢慢来，你的积累正在起效。',
+  ground:   '大地从不着急，却托起了所有山。',
+  flying:   '飞得高不难，难的是每天都起飞。',
+  psychic:  '心里想着的事，会被一步一步做到。',
+  bug:      '小小的努力叠起来，就是一张大网。',
+  rock:     '一点点硬，最后就坚不可摧。',
+  ghost:    '看不见的坚持，最后都会显形。',
+  dragon:   '真正的力量，是一天一天长出来的。',
+  steel:    '把自己磨得结实，风雨都撞不弯。',
+  fairy:    '温柔地坚持，也是一种了不起的力量。',
+  normal:   '平凡的日子做好平凡的事，就很了不起。',
+};
+const SHARE_LINES = [
+  '记录不会说谎，你已经走了这么远了。',
+  '今天的这一步，就是明天的底气。',
+  '和它一起，把每一天都打一遍卡。',
+  '慢慢来，但要一直来。',
+  '训练家和宝可梦，都是一天一天变强的。',
+];
+function shareQuote(no, seed) {
+  const own = SHARE_TYPE_LINES[pmType(no)];
+  const pool = own ? [own].concat(SHARE_LINES) : SHARE_LINES.slice();
+  const i = Math.abs(Math.floor(seed || 0)) % pool.length;
+  return pool[i];
+}
+
 // 固定装饰点（不用随机：每次预览和截图必须长得一模一样）
 const SHARE_SPARKS = [
   [7, 9, 20], [24, 4, 12], [43, 7, 9], [77, 5, 16], [93, 12, 22],
@@ -5108,8 +5151,8 @@ function shareCardHTML() {
   const src = scene ? scenePath(no, shiny) : artworkPath(no);
   const name = (pm && (pm.name || info.name)) || '皮卡丘';
   const doneTotal = totalDoneCount();
-  const streak = calcStreak();
   const dexN = dexGotCount();
+  const quote = shareQuote(no, sharePick.quoteSeed || 0);
   return `
     <div class="share-card">
       <div class="sc-in">
@@ -5117,8 +5160,6 @@ function shareCardHTML() {
         <div class="sc-rays">${Array.from({ length: 12 }, (_, i) => `<i style="transform:rotate(${i * 30}deg)"></i>`).join('')}</div>
         ${SHARE_SPARKS.map(([x, y, s]) => `<i class="sc-spark" style="left:${x}%;top:${y}%;font-size:${s}px">✦</i>`).join('')}
         <div class="sc-body">
-          <div class="sc-brand">🏝️ 佑佑的任务岛</div>
-          <div class="sc-brand-sub">ADVENTURE LOG</div>
           <div class="sc-stage">
             <img class="sc-art${scene ? ' scene' : ''}" src="${src}" alt="">
           </div>
@@ -5126,10 +5167,9 @@ function shareCardHTML() {
           <div class="sc-tag">${stageText(pm || {})} · ${theme.name}属性</div>
           <div class="share-stats">
             <div class="sc-stat"><b>${doneTotal}</b><span>累计完成任务</span></div>
-            <div class="sc-stat"><b>${streak}</b><span>必做全清连击</span></div>
             <div class="sc-stat"><b>${dexN}<em>/151</em></b><span>图鉴收集</span></div>
           </div>
-          <div class="sc-foot"><i></i>${DB.today()} · 快乐打卡每一天<i></i></div>
+          <div class="sc-foot"><i></i>${escHTML(quote)}<i></i></div>
         </div>
       </div>
     </div>
