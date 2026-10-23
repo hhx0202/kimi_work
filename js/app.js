@@ -297,6 +297,8 @@ function scenePath(no, shiny) { return `assets/scenes${shiny ? '-shiny' : ''}/${
 //   scene = 场景卡（整张中文卡面，不裁切；素材在 assets/scenes/）
 // 选择存本机（浏览偏好，不跨设备）
 const CARD_ART_LABEL = { art: '🖼 立绘', sprite: '✨ 异色动图', scene: '🎴 场景卡' };
+// 名字行里那一小枚切换按钮用短文案（长的那套留给 title / 无障碍朗读）
+const CARD_ART_SHORT = { art: '🖼 立绘', sprite: '✨ 异色', scene: '🎴 场景' };
 function cardArtModes(pm) { return pm.shiny ? ['art', 'sprite', 'scene'] : ['art', 'scene']; }
 function savedCardArtMode() {
   const m = lsGet(LK('card_art_mode'), 'art');
@@ -1054,7 +1056,9 @@ function canEvolve(pm) {
   // 没有后续进化的宝可梦：经验满 SHINY_EXP 即进入闪耀形态
   if (!hasNextEvo(pm.pokedex_no)) {
     if (pm.shiny) return { ok: false };
-    if (hasShinyCopy(pm.pokedex_no)) return { ok: false, why: '已拥有闪耀形态' };  // 别再重复生成闪耀卡
+    // 已经有 ✨ 副本了 → 不能再进化/再生成闪耀卡。**不要给 why**：经验行已经写了「已满级」，
+    // 再来一句「已拥有闪耀形态」就是重复啰嗦（用户明确要求删掉）
+    if (hasShinyCopy(pm.pokedex_no)) return { ok: false };
     return pm.exp >= needExp ? { ok: true, shiny: true } : { ok: false, left: needExp - pm.exp, why: `还差 ${needExp - pm.exp} 经验` };
   }
   const stage = evoStage(pm.pokedex_no);
@@ -2433,15 +2437,15 @@ function showCardDetail(pm) {
     <div class="ptcg${pm.shiny ? ' shiny-card' : ''}${artMode === 'scene' ? ' scene-mode' : ''}" style="--tc:${theme.color}; --bg1:${theme.bg1}; --bg2:${theme.bg2}">
       <div class="ptcg-top">
         <span class="ptcg-name">${info.name}</span>
-        ${(pm.shiny || altPm) ? `<button class="ptcg-shiny${altPm ? ' swap' : ''}${pm.shiny ? '' : ' plain'}"${altPm ? ` data-alt="${altPm.id}"` : ' disabled'}>${pm.shiny ? '✨ 闪耀形态' : '🖼 普通形态'}${altPm ? ' ⇄' : ''}</button>` : ''}
+        ${(pm.shiny || altPm) ? `<button class="ptcg-shiny${altPm ? ' swap' : ''}${pm.shiny ? '' : ' plain'}"${altPm ? ` data-alt="${altPm.id}"` : ' disabled'}>${pm.shiny ? '✨' : '🖼'}<span class="shiny-txt">${pm.shiny ? '闪耀' : '普通'}</span>${altPm ? ' ⇄' : ''}</button>` : ''}
         <span class="ptcg-lv">${stageText(pm)}</span>
+        <button class="art-toggle" type="button" title="切换卡面：立绘 / 场景卡">${CARD_ART_SHORT[artMode]}</button>
       </div>
       <div class="ptcg-art${pm.shiny ? ' shiny-art' : ''}${artMode === 'sprite' ? ' sprite-art' : ''}${artMode === 'scene' ? ' scene-art' : ''}">
         <img src="${cardArtSrc(pm)}" alt="${info.name}">
         ${artMode !== 'scene' ? cardFxHTML(type) : ''}
         ${artMode !== 'scene' ? `<span class="ptcg-type">${TYPE_NAME[type] || type}</span>` : ''}
         ${pm.shiny ? cardGlitterHTML(artMode === 'scene') : ''}
-        <button class="art-toggle" type="button">${CARD_ART_LABEL[artMode]}</button>
       </div>
       ${movesBlockHTML(pm.pokedex_no, theme)}
       ${typeof PK_FLAVOR !== 'undefined' && PK_FLAVOR[pm.pokedex_no] ? `
@@ -2483,7 +2487,7 @@ function showCardDetail(pm) {
     if (c) c.classList.remove('scene-mode');
     setCardArtMode('art');   // 这张还没有场景卡 → 记住回退到立绘，别每次打开都 404
     const t = ov.querySelector('.art-toggle');
-    if (t) t.textContent = CARD_ART_LABEL.art;
+    if (t) t.textContent = CARD_ART_SHORT.art;
   };
   if (artImg && artMode === 'scene') artImg.onerror = sceneFallback;
   const artToggle = ov.querySelector('.art-toggle');
@@ -2503,7 +2507,7 @@ function showCardDetail(pm) {
       retuneGlitter(artEl, mode === 'scene');
       artImg.onerror = mode === 'scene' ? sceneFallback : null;
       artImg.src = cardArtSrc(pm);
-      artToggle.textContent = CARD_ART_LABEL[mode];
+      artToggle.textContent = CARD_ART_SHORT[mode];
     };
   }
   bindChainClicks(ov);
@@ -5053,14 +5057,25 @@ function renderSharePreview() {
   `;
   ov.querySelectorAll('[data-shtool]').forEach(b => { b.onclick = () => onShareTool(b.dataset.shtool); });
   fitShareScale();
+  watchShareCard();
+  if (!window.__shareResizeBound) {
+    window.__shareResizeBound = 1;
+    window.addEventListener('resize', () => { if (document.querySelector('.share-fit')) fitShareScale(); });
+  }
 }
-// 预览缩放到屏幕里（截图用的 #share-wrap 始终是 640 原尺寸，不受影响）
+// 预览缩放到屏幕里（截图用的 #share-wrap 始终是 560 原尺寸，不受影响）
+// 坑：场景卡的图是 height:auto，图片没加载完时高度是 0 → 量出来的卡片很矮、缩放比偏大；
+// 等图片加载完卡片突然变高 1039，缩放比还是老的 → 卡片从 267 一路画到 946，
+// 把底下的「关闭 / 生成图片」全盖住（用户报「界面乱了、卡排挡住按钮」）。
+// 两道保险：① CSS 给场景图固定 aspect-ratio（布局阶段就有高度，见 .sc-art.scene）；
+// ② watchShareCard 用 ResizeObserver 盯着卡片，高度真变了就重算一次。
+let shareRO = null;
 function fitShareScale() {
   const fit = document.querySelector('.share-fit');
   const card = document.querySelector('.share-scaler .share-card');
   if (!fit || !card) return;
   card.style.transform = 'none';
-  const cw = card.offsetWidth || 640, ch = card.offsetHeight || 900;
+  const cw = card.offsetWidth || 560, ch = card.offsetHeight || 900;
   const availW = Math.min(window.innerWidth - 24, 520);
   const availH = Math.max(260, window.innerHeight - 190);
   const s = Math.min(availW / cw, availH / ch, 1);
@@ -5069,8 +5084,27 @@ function fitShareScale() {
   fit.style.width = Math.round(cw * s) + 'px';
   fit.style.height = Math.round(ch * s) + 'px';
 }
+// 卡片高度会变的地方：场景图加载完、字体回流、换伙伴/换卡面。盯住它就够了
+function watchShareCard() {
+  if (shareRO) { shareRO.disconnect(); shareRO = null; }
+  const card = document.querySelector('.share-scaler .share-card');
+  if (!card || typeof ResizeObserver === 'undefined') return;
+  let last = 0;
+  shareRO = new ResizeObserver(() => {
+    const h = card.offsetHeight;
+    if (h === last) return;              // 只认「真变高/变矮」，避免自己改 fit 触发反复重算
+    last = h;
+    requestAnimationFrame(fitShareScale);
+  });
+  shareRO.observe(card);
+}
 function onShareTool(act) {
-  if (act === 'close') { $('overlay').classList.add('hidden'); $('overlay').innerHTML = ''; return; }
+  if (act === 'close') {
+    if (shareRO) { shareRO.disconnect(); shareRO = null; }
+    $('overlay').classList.add('hidden');
+    $('overlay').innerHTML = '';
+    return;
+  }
   if (act === 'art') {
     sharePick.art = sharePick.art === 'scene' ? 'art' : 'scene';
     saveSharePick();
@@ -5243,7 +5277,7 @@ function shareCardHTML() {
         <div class="sc-body">
           <div class="sc-head">
             <div class="sc-kicker">每日打卡</div>
-            <div class="sc-title">和 ${escHTML(name)} 一起，今天也在努力</div>
+            <div class="sc-title">${escHTML(name)}的训练家，今天也完成任务啦</div>
           </div>
           <div class="sc-stage">
             <img class="sc-art${scene ? ' scene' : ''}" src="${src}" alt="">

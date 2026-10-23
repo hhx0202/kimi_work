@@ -72,7 +72,7 @@ module.exports = async function run() {
   ok(/\.ptcg\.scene-mode \.ptcg-moves/.test(CSS) && /\.ptcg\.scene-mode \.ptcg-flavor/.test(CSS),
     '场景卡模式隐藏 App 自己的招式/图鉴介绍（卡面已印）');
   ok(!/\.ptcg\.scene-mode \.ptcg-top[\s\S]{0,40}display:\s*none/.test(CSS), '场景卡模式仍保留名字行');
-  ok(/\.ptcg\.scene-mode \.ptcg-top\s*\{[^}]*margin-bottom/.test(CSS), '名字行下方留出造型按钮的空带');
+  ok(/\.ptcg\.scene-mode \.ptcg-top\s*\{[^}]*margin-bottom:\s*8px/.test(CSS), '场景卡不再为造型按钮留 40px 空带');
   ok(/\.ptcg\.scene-mode \.ptcg-art\s*\{[^}]*aspect-ratio:\s*auto/.test(CSS), '场景卡按图片自身比例撑高（不裁切）');
   ok(/@supports not \(aspect-ratio: 1 \/ 1\)[\s\S]*\.ptcg\.scene-mode \.ptcg-art\s*\{[^}]*padding-bottom:\s*0/.test(CSS),
     'iOS 14 兜底里场景卡不套正方形 padding（否则底下多一大块空白）');
@@ -80,7 +80,12 @@ module.exports = async function run() {
   ok(!/\.ptcg\.scene-mode\s*\{[^}]*\bwidth\s*:/.test(CSS), '场景卡不改 card 宽度（切换时整张卡不跳）');
   ok(!/\.ptcg\.scene-mode\s*\{[^}]*\bpadding\s*:/.test(CSS), '场景卡不改整体 padding（左右留白不变）');
   ok(!/\.ptcg\.scene-mode\s*\{[^}]*padding-(left|right)\s*:/.test(CSS), '场景卡不改左右 padding（图片宽度/比例不变）');
-  ok(/\.ptcg\.scene-mode \.art-toggle\s*\{[^}]*top:\s*-/.test(CSS), '场景卡模式把造型按钮移到卡图上方');
+  // 造型按钮以前 absolute 挂在画面右上角、场景卡时又要靠 .scene-mode 挪出去，
+  // 两种模式位置不同 → 切换时按钮跳、整页像闪一下。现在固定放在名字行里
+  ok(/\.art-toggle\s*\{[^}]*flex:\s*0 0 auto/.test(CSS) && !/\.art-toggle\s*\{[^}]*position:\s*absolute/.test(CSS),
+    '造型按钮是名字行里的普通 flex 件（不再 absolute 挂在画面上）');
+  ok(!/\.ptcg\.scene-mode \.art-toggle\s*\{/.test(CSS), '场景卡不再给按钮加位移覆盖（位置恒定）');
+  ok(/<div class="ptcg-top">[\s\S]{0,700}?class="art-toggle"/.test(APP), '按钮渲染在 .ptcg-top 名字行里');
   ok(/\.ptcg\.scene-mode \.ptcg-art img\s*\{[^}]*height:\s*auto/.test(CSS)
     && !/\.ptcg\.scene-mode \.ptcg-art img\s*\{[^}]*height:\s*100%/.test(CSS),
     '场景卡图片高度随宽度自适应（保持原比例，不拉伸）');
@@ -126,8 +131,13 @@ module.exports = async function run() {
   ok(APP.includes('class="sc-head"') && APP.includes('每日打卡'), '顶部有「每日打卡」标题（打卡记录，不是炫卡）');
   ok(APP.includes('sc-kicker') && APP.includes('每日打卡'), '小字定性「每日打卡」');
   // 用户明确要求标题里别出现具体天数（"第 N 天"会随时间变得奇怪）
-  ok(/和 \$\{escHTML\(name\)\} 一起，今天也在努力/.test(APP), '主标是「和 XX 一起，今天也在努力」');
+  ok(/\$\{escHTML\(name\)\}的训练家，今天也完成任务啦/.test(APP), '主标是「XX 的训练家，今天也完成任务啦」');
   ok(!APP.includes('checkinDays'), '标题不再带天数（checkinDays 已删）');
+  // 场景图是 height:auto，没写 aspect-ratio 的话：图未加载时高 0 → 缩放比按矮卡片算，
+  // 图加载完卡片变 1039 高、缩放比不重算，卡片直接盖住底部的关闭/生成按钮
+  ok(/\.sc-art\.scene\s*\{[^}]*aspect-ratio:\s*400 \/ 559/.test(CSS), '场景图固定宽高比（图片未加载也有高度）');
+  ok(/function watchShareCard\(/.test(APP) && /new ResizeObserver/.test(APP), '卡片变高后自动重算缩放');
+  ok(/\$\{escHTML\(name\)\}的训练家/.test(APP) && !/和 \$\{escHTML\(name\)\} 一起/.test(APP), '旧主标已替换');
   ok(/\.share-card\s*\{[^}]*width:\s*560px/.test(CSS), '卡片改窄到 560（原 640，太扁）');
   ok(/\.sc-art\s*\{[^}]*height:\s*412px/.test(CSS), '立绘放大到 412，宝可梦当主角');
   ok(/\.share-scaler\s*\{[^}]*width:\s*560px/.test(CSS), '预览缩放框与卡片同宽（否则会盖住底部按钮）');
@@ -183,7 +193,7 @@ module.exports = async function run() {
   ok(/function evoChainLine\(no, cur\)/.test(APP), '链渲染知道当前是哪张卡（普通还是闪耀）');
   ok(/data-shiny="\$\{pv\}"/.test(APP), '每个阶段带上该跳哪种形态');
   ok(/showDexDetail\(Number\(el\.dataset\.evo\), sh === '1'/.test(APP), '按形态挑个体，不会掉回普通卡');
-  ok(/class="ptcg-shiny\$\{altPm \? ' swap'/.test(APP) && APP.includes('🖼 普通形态'), '右上角徽章就是普通/闪耀切换按钮');
+  ok(/class="ptcg-shiny\$\{altPm \? ' swap'/.test(APP) && APP.includes('shiny-txt'), '右上角徽章就是普通/闪耀切换按钮（文字包在 .shiny-txt 里，窄屏可收）');
   ok(/swapBtn\.onclick = \(\) => showCardDetail\(altPm\)/.test(APP), '点徽章切到另一版那张卡');
   ok(!APP.includes('chain-alt') && !APP.includes('tap variant'), '链尾不再另放切换按钮（已并入徽章）');
   ok(APP.includes("'✅ 已满级（封顶）'"), '普通卡满级只讲满级');

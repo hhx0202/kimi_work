@@ -1152,10 +1152,13 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   0% { transform: perspective(900px) rotateY(95deg) scale(.55); opacity: 0; }
   100% { transform: perspective(900px) rotateY(0) scale(1); opacity: 1; }
 }
-.ptcg-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.ptcg-name { font-size: 22px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.35); flex: 1; }
+.ptcg-top { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.ptcg-name {
+  font-size: 22px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.35);
+  flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
 .ptcg-shiny {
-  font-size: 12px; font-weight: 800; color: #ffd54f; background: rgba(0,0,0,.35);
+  flex: 0 0 auto; font-size: 12px; font-weight: 800; color: #ffd54f; background: rgba(0,0,0,.35);
   padding: 3px 9px; border-radius: 999px; border: 0; font-family: inherit; line-height: 1.5;
 }
 /* 同一编号还有个「另一版」时，这枚徽章就是切换按钮：加一圈细边暗示可点 */
@@ -1163,7 +1166,14 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .ptcg-shiny.swap:active { transform: scale(.95); }
 /* 普通卡：用白底深字，一眼区分「这张是普通的」 */
 .ptcg-shiny.plain { color: #37474f; background: rgba(255, 255, 255, .88); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .7); }
-.ptcg-lv { font-size: 15px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.3); }
+/* 名字行里要同时塞下：名字 + 形态徽章 + 阶段 + 卡面切换。
+   窄屏（≤360）把徽章的「闪耀/普通」二字收掉，只留 ✨/🖼 图标（金色/白色本来就区分得开），
+   否则「三合一磁怪」这种 5 字名会被压成省略号 */
+@media (max-width: 360px) {
+  .ptcg-shiny .shiny-txt { display: none; }
+  .ptcg-shiny { padding: 3px 7px; }
+}
+.ptcg-lv { flex: 0 0 auto; font-size: 15px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.3); }
 .ptcg-art {
   position: relative; border-radius: 14px; overflow: hidden;
   border: 2px solid rgba(255,255,255,.5); background: rgba(255,255,255,.25);
@@ -1234,15 +1244,18 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   filter: drop-shadow(0 0 10px #ffe082) drop-shadow(0 0 26px rgba(255,193,7,.8));
   animation: art-float 3.2s ease-in-out infinite;
 }
-/* 详情卡右上角：造型切换（立绘 / 异色动图 / 场景卡） */
+/* 造型切换（立绘 / 异色动图 / 场景卡）
+   **必须放在 .ptcg-top 名字行里**：以前它是 absolute 挂在画面右上角，
+   切到场景卡时（卡图铺满整张卡）又要靠 .scene-mode 挪到画面外，
+   两种模式位置不一样 → 切换时按钮跳、整页像闪了一下。放名字行后永远不动 */
 .art-toggle {
-  position: absolute; top: 8px; right: 8px; z-index: 4;
-  border: 0; cursor: pointer; font-size: 11px; font-weight: 800;
-  padding: 5px 10px; border-radius: 999px;
+  flex: 0 0 auto; border: 0; cursor: pointer; font-size: 10px; font-weight: 800;
+  padding: 4px 8px; border-radius: 999px; line-height: 1.45; font-family: inherit;
   background: rgba(255,255,255,.92); color: #b8860b;
-  box-shadow: 0 2px 10px rgba(255,193,7,.55);
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  -webkit-tap-highlight-color: transparent;
 }
-.art-toggle:active { transform: scale(.95); }
+.art-toggle:active { transform: scale(.94); }
 /* 场景卡：整张中文卡面，保持完整不裁切（黑底衬托），并去掉立绘的发光/浮动 */
 .ptcg-art.scene-art { background: radial-gradient(circle at 50% 40%, #2a3040, #10131a 75%); }
 .ptcg-art.scene-art img,
@@ -1263,7 +1276,7 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .ptcg.scene-mode .ptcg-flavor { display: none; }
 /* 名字行下面留一条空带放造型按钮：卡图铺满后按钮会压住卡面右上角的 HP / 属性。
    只动纵向间距，横向宽度不变（测试守着 width / 左右 padding）。 */
-.ptcg.scene-mode .ptcg-top { margin-bottom: 40px; }
+.ptcg.scene-mode .ptcg-top { margin-bottom: 8px; }   /* 切换按钮已进名字行，不再为它留 40px 空带 */
 .ptcg.scene-mode .ptcg-art {
   aspect-ratio: auto; height: auto; display: block;
   /* 边框只改颜色不改宽度：少掉 2px 边框会让图片跟着宽 4px，切换瞬间有细微位移 */
@@ -1293,12 +1306,6 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
     filter: drop-shadow(0 0 14px rgba(255,241,170,1)) drop-shadow(0 0 34px rgba(255,193,7,.85))
             saturate(1.18) brightness(1.07);
   }
-}
-/* 场景卡模式下卡图铺满整张卡，按钮会正好压住卡面右上角的 HP / 属性：
-   挪到名字行下方那条空带里（.ptcg-art 在场景卡模式是 overflow: visible），顺便收小一点 */
-.ptcg.scene-mode .art-toggle {
-  top: -32px; right: 0;
-  padding: 4px 9px; font-size: 10px;
 }
 @keyframes art-float {
   0%, 100% { transform: translateY(0) scale(1); }
@@ -1714,10 +1721,15 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   box-shadow: 0 14px 34px rgba(0, 0, 0, .55), 0 0 26px rgba(255, 200, 60, .3);
 }
 /* 场景卡（400×559 竖版整卡）按内容宽撑满：图更高、整张成就图也跟着变高。
-   立绘是方图（412 高），两者故意生成不同高度的图 —— 场景卡本来就更长 */
+   立绘是方图（412 高），两者故意生成不同高度的图 —— 场景卡本来就更长。
+   **必须写 aspect-ratio**：只有 height:auto 的话，图还没加载完时高度是 0，
+   预览会按「一个很矮的卡片」算缩放比，图一加载完卡片突然变高、溢出盖住底部按钮 */
 .share-card.scene-mode .sc-stage { height: auto; margin-top: 10px; }
 .share-card.scene-mode .sc-stage::before { display: none; }   /* 卡面自己有底，不用再画站台光 */
-.share-card.scene-mode .sc-art.scene { width: 100%; max-width: 470px; height: auto; }
+.share-card.scene-mode .sc-art.scene {
+  width: 100%; max-width: 470px; height: auto;
+  aspect-ratio: 400 / 559; object-fit: contain;
+}
 .sc-name {
   margin-top: 12px; font-size: 38px; font-weight: 900; color: #fff; line-height: 1.15;
   text-shadow: 0 3px 0 rgba(0, 0, 0, .45), 0 0 20px rgba(255, 255, 255, .3);
