@@ -1529,7 +1529,11 @@ function reportError(kind, message, stack, extra) {
     }
     saveErrors(list);
   } catch (e) {}
-  try { showErrBanner(rec || { kind, message: String(message || ''), count: 1 }); } catch (e) {}
+  // 跨域脚本（CDN 上的库内部）抛的 "Script error." 没有文件名、没有堆栈，排查不了任何问题，
+  // 弹横幅只会让孩子/家长以为出大事了（用户报「生成图片时还提示这错误」）。
+  // 这类只进「我的 → 错误日志」，不弹横幅；本地脚本的错误照常提示
+  const crossNoDetail = /^script error\.?$/i.test(String(message || '').trim());
+  try { if (!crossNoDetail) showErrBanner(rec || { kind, message: String(message || ''), count: 1 }); } catch (e) {}
   window.__reportingError = false;
 }
 function showErrBanner(rec) {
@@ -5052,10 +5056,12 @@ function renderSharePreview() {
       <button class="share-tool" data-shtool="pick">🔁 换伙伴</button>
       <button class="share-tool" data-shtool="art">${sharePick.art === 'scene' ? '🎴 场景卡' : '🖼 立绘'}</button>
     </div>
-    <div class="share-fit"><div class="share-scaler">${shareCardHTML()}</div></div>
-    <div class="share-acts">
-      <button class="share-close" data-shtool="close">关闭</button>
-      <button class="share-gen" data-shtool="gen">📸 生成图片</button>
+    <div class="share-page">
+      <div class="share-fit"><div class="share-scaler">${shareCardHTML()}</div></div>
+      <div class="share-acts">
+        <button class="share-close" data-shtool="close">关闭</button>
+        <button class="share-gen" data-shtool="gen">📸 生成图片</button>
+      </div>
     </div>
   `;
   ov.querySelectorAll('[data-shtool]').forEach(b => { b.onclick = () => onShareTool(b.dataset.shtool); });
@@ -5195,13 +5201,15 @@ async function shareCard() {
     const imgSrc = blob ? URL.createObjectURL(blob) : canvas.toDataURL('image/png');
     if (blob) shareBlobUrl = imgSrc;
     const fileName = `任务岛打卡-${DB.today()}.png`;
-    ov.innerHTML = `<img class="share-img" src="${imgSrc}" alt="成就图">
-      <p class="share-tip">💡 长按图片 → 存储到相册；长按没反应就点下面的「保存图片」</p>
+    ov.innerHTML = `<div class="share-page">
+      <a class="share-img-link" href="${imgSrc}" download="${fileName}"><img class="share-img" src="${imgSrc}" alt="成就图"></a>
+      <p class="share-tip">💡 长按图片存相册，或点「保存图片」</p>
       <div class="share-acts">
         <a class="share-save" href="${imgSrc}" download="${fileName}">⬇️ 保存图片</a>
         <button class="share-ghost" data-back="again">🔁 再做一张</button>
         <button class="share-close" data-back="close">关闭</button>
-      </div>`;
+      </div>
+    </div>`;
     ov.querySelector('[data-back="again"]').onclick = () => { renderSharePreview(); };
     ov.querySelector('[data-back="close"]').onclick = () => { closeShareResult(); };
   } catch (err) {
@@ -5307,7 +5315,7 @@ function shareCardHTML() {
         ${SHARE_SPARKS.map(([x, y, s]) => `<i class="sc-spark" style="left:${x}%;top:${y}%;font-size:${s}px">✦</i>`).join('')}
         <div class="sc-body">
           <div class="sc-head">
-            <div class="sc-kicker">每日打卡</div>
+            <div class="sc-kicker">每日打卡 <span class="sc-kicker-date">${DB.today()}</span></div>
             <div class="sc-title">${escHTML(name)}的训练家，今天也完成任务啦</div>
           </div>
           <div class="sc-stage">

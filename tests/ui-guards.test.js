@@ -139,6 +139,14 @@ module.exports = async function run() {
 
   ok(APP.includes('class="sc-head"') && APP.includes('每日打卡'), '顶部有「每日打卡」标题（打卡记录，不是炫卡）');
   ok(APP.includes('sc-kicker') && APP.includes('每日打卡'), '小字定性「每日打卡」');
+  ok(/每日打卡 <span class="sc-kicker-date">\$\{DB\.today\(\)\}<\/span>/.test(APP), '打卡后面带年月日');
+  // 结果页曾用 .overlay 的 justify-content:center，内容一超高就上下同时溢出、还滑不动，
+  // 底部按钮被浏览器工具栏挡住（用户报「页面撑满了，不能上下滑动」）
+  ok(/\.overlay\.share-view\s*\{[^}]*overflow-y:\s*auto/.test(CSS), '预览/结果层自己能上下滚动');
+  ok(/\.share-img\s*\{[^}]*max-height:\s*(66|72)(d)?vh/.test(CSS), '结果图限高（不把整页顶出去）');
+  ok(/class="share-img-link""?/.test(APP) || APP.includes('share-img-link'), '结果图外面套了 <a download>（长按也能存）');
+  // 跨域脚本抛的 "Script error." 没有文件名/堆栈，弹横幅只会吓人 → 只进日志
+  ok(/crossNoDetail/.test(APP) && /if \(!crossNoDetail\) showErrBanner/.test(APP), '跨域无详情错误不弹横幅');
   // 用户明确要求标题里别出现具体天数（"第 N 天"会随时间变得奇怪）
   ok(/\$\{escHTML\(name\)\}的训练家，今天也完成任务啦/.test(APP), '主标是「XX 的训练家，今天也完成任务啦」');
   ok(!APP.includes('checkinDays'), '标题不再带天数（checkinDays 已删）');
