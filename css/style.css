@@ -1566,6 +1566,14 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .ptcg-chain i { font-style: normal; font-size: 12px; }
 /* 进化链每个形态可点开自己的详情 */
 .ptcg-chain span.tap { cursor: pointer; transition: transform .12s, box-shadow .12s; }
+/* 链尾的「普通版 / 闪耀版」切换：这是另一张卡、不是下一个阶段，所以用虚线边框区分 */
+.ptcg-chain span.variant { border: 1px dashed rgba(0, 0, 0, .22); font-weight: 800; }
+.ptcg-chain .chain-alt { display: inline-flex; align-items: center; gap: 6px; }
+.ptcg-chain span.variant.shiny {
+  background: linear-gradient(135deg, #ffe082, #ffb300); color: #3e2723;
+  border-color: rgba(255, 255, 255, .8);
+}
+.ptcg-chain span.variant.plain { background: rgba(255, 255, 255, .9); color: #546e7a; }
 .ptcg-chain span.tap:hover, .ptcg-chain span.tap:active { transform: translateY(-1px); box-shadow: 0 3px 8px rgba(0, 0, 0, .16); }
 .chain-tip { margin-top: 6px; text-align: center; font-size: 10px; color: #90a4ae; }
 /* 分支进化（伊布）：选进化形态 */

@@ -2441,10 +2441,10 @@ function showCardDetail(pm) {
       <div class="ptcg-foot">
         <div class="ptcg-meta">
           <div class="ptcg-caught"><span class="ball-ico">${pmBallIcon(pm.id)}</span> ${caughtFull(pm.caught_at)}</div>
-          <div class="ptcg-exprow">${maxed ? (pm.shiny ? '✨ 已满级（封顶）' : '✅ 已成为闪耀形态') : `EXP ${pm.exp}/${expThreshold(pm)}`}</div>
+          <div class="ptcg-exprow">${maxed ? (pm.shiny ? '✨ 已满级（封顶）' : '✅ 已满级（封顶）') : `EXP ${pm.exp}/${expThreshold(pm)}`}</div>
         </div>
         <div class="exp-track"><div class="exp-fill" style="width:${expPct}%"></div></div>
-        ${evoChainLine(pm.pokedex_no)}
+        ${evoChainLine(pm.pokedex_no, pm)}
         ${(hasNextEvo(pm.pokedex_no) || !pm.shiny) && (evo.ok || (!evo.left && evo.why)) ? `<div class="ptcg-evo ${evo.ok ? 'ok' : ''}">${evo.ok ? (evo.shiny ? '✨ 可以进入闪耀形态啦！' : (evo.inherit ? '✨ 可以进化啦（进化出来直接是闪耀形态）！' : '✨ 可以进化啦！')) : evo.why}</div>` : ''}
       </div>
       <div class="ptcg-btns">
@@ -2501,10 +2501,13 @@ function showCardDetail(pm) {
 }
 
 // 图鉴里点开某一形态的详情：进化后前一阶也能看（没有对应个体时用只读卡）
-function showDexDetail(no) {
+function showDexDetail(no, opt = {}) {
   const info = PK_BY_NO[no];
   if (!info) return;
-  const owned = S.pokemons.find(p => p.pokedex_no === no);
+  // 同一编号可能有普通卡和 ✨ 卡两张，按调用方要的形态挑（没指定就随便取第一张）
+  const list = S.pokemons.filter(p => pkNoOf(p) === no);
+  const wantShiny = typeof opt.shiny === 'boolean' ? opt.shiny : null;
+  const owned = (wantShiny === null ? list[0] : list.find(p => !!p.shiny === wantShiny)) || list[0];
   if (owned) { showCardDetail(owned); return; }          // 正好拥有这只 → 完整详情
   const { got, shinyOwned } = dexGot();
   if (!got[no]) { showDexMissing(no); return; }          // 还没收集到 → 也点得开（剪刀影卡，不剧透）
@@ -2594,18 +2597,36 @@ function showDexMissing(no) {
 }
 
 // 进化链展示（每个形态都可点开自己的详情，进化后前一阶也能看；分支用「/」并列，如伊布）
-function evoChainLine(no) {
-  const node = (c, isCur) => `<span class="tap ${isCur ? 'cur' : ''}" data-evo="${c}" title="查看 ${PK_BY_NO[c].name} 的详情"><img src="${spritePath(c, false)}" alt="">${PK_BY_NO[c].name}</span>`;
+function evoChainLine(no, cur) {
+  // 同一个编号可能同时有普通卡和 ✨ 卡。链上点某一阶时，优先跳到「和当前这张同一种形态」的那只：
+  // 否则从 ✨ 二阶点一阶，会掉到普通一阶上（用户报的 bug）。
+  const prefer = c => {
+    if (!cur) return '';
+    const want = !!cur.shiny;
+    return S.pokemons.some(p => pkNoOf(p) === c && !!p.shiny === want) ? (want ? '1' : '0') : '';
+  };
+  const node = (c, isCur) => {
+    const pv = prefer(c);
+    return `<span class="tap ${isCur ? 'cur' : ''}" data-evo="${c}"${pv === '' ? '' : ` data-shiny="${pv}"`} title="查看 ${PK_BY_NO[c].name} 的详情"><img src="${spritePath(c, false)}" alt="">${PK_BY_NO[c].name}</span>`;
+  };
   const parts = evoAncestors(no).filter(c => c !== no).map(c => node(c, false));
   parts.push(node(no, true));
+  // 当前这张如果同一编号还有另一版（普通 ↔ 闪耀），给一个直接切过去的按钮。
+  // 放在链尾、用 ⇄ 连接（不是 →，否则看着像又一次进化）
+  let variant = '';
+  if (cur) {
+    const alt = S.pokemons.find(p => pkNoOf(p) === no && !!p.shiny !== !!cur.shiny);
+    if (alt) variant = `<span class="tap variant ${alt.shiny ? 'shiny' : 'plain'}" data-pmid="${alt.id}" title="看${alt.shiny ? '闪耀' : '普通'}版这张卡">${alt.shiny ? '✨ 闪耀版' : '🖼 普通版'}</span>`;
+  }
   // 往下走：单线继续延伸，遇到分支则把几个分支并列显示后停止
-  let cur = no;
+  // 注意：这里不能用 cur 当游标，cur 是入参（当前看的那张卡）
+  let walk = no;
   for (let guard = 0; guard < 20; guard++) {
-    const t = evoTargets(cur);
+    const t = evoTargets(walk);
     if (!t.length) break;
     if (t.length > 1) { parts.push(t.map(c => node(c, false)).join('<i>/</i>')); break; }
     parts.push(node(t[0], false));
-    cur = t[0];
+    walk = t[0];
   }
   // 自己是分支里的某一支：把"兄弟姐妹"也并列出来（伊布家族）
   if (!hasNextEvo(no)) {
@@ -2613,12 +2634,24 @@ function evoChainLine(no) {
     const sibs = parent !== undefined ? evoTargets(parent).filter(c => c !== no) : [];
     if (sibs.length) parts.push(sibs.map(c => node(c, false)).join('<i>/</i>'));
   }
-  return `<div class="ptcg-chain">${parts.join('<i>→</i>')}</div>`;
+  // ⇄ 和切换按钮包成一组：窄屏换行时不会出现「⇄ 在一行、按钮在下一行」
+  return `<div class="ptcg-chain">${parts.join('<i>→</i>')}${variant ? `<span class="chain-alt"><i>⇄</i>${variant}</span>` : ''}</div>`;
 }
 // 把详情卡里的进化链做成可点（点某一形态 → 打开它的详情）
 function bindChainClicks(ov) {
   ov.querySelectorAll('.ptcg-chain span[data-evo]').forEach(el => {
-    el.onclick = e => { e.stopPropagation(); showDexDetail(Number(el.dataset.evo)); };
+    el.onclick = e => {
+      e.stopPropagation();
+      const sh = el.dataset.shiny;
+      showDexDetail(Number(el.dataset.evo), sh === '1' ? { shiny: true } : (sh === '0' ? { shiny: false } : {}));
+    };
+  });
+  ov.querySelectorAll('.ptcg-chain span[data-pmid]').forEach(el => {
+    el.onclick = e => {
+      e.stopPropagation();
+      const pm = S.pokemons.find(p => p.id === Number(el.dataset.pmid));
+      if (pm) showCardDetail(pm);
+    };
   });
 }
 // 阶段文案（按图鉴编号）

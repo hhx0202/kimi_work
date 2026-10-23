@@ -9,6 +9,12 @@ const HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const { APP_SRC: APP } = require('./harness');
 
 module.exports = async function run() {
+  // app.js 有语法错的话整页白屏、所有测试却照样绿（都是静态断言）→ 这里直接试着解析一遍
+  section('app.js 能解析（防重名变量这类致命错）');
+  let parseErr = '';
+  try { new Function(APP); } catch (e) { parseErr = e.message; }
+  ok(!parseErr, 'app.js 没有语法错误' + (parseErr ? '：' + parseErr : ''));
+
   section('「我的」页明细列表：超高后内部滚动');
   ok(/\.log-list\s*\{[^}]*max-height:\s*340px/.test(CSS), '.log-list 有固定最大高度');
   ok(/\.log-list\s*\{[^}]*overflow-y:\s*auto/.test(CSS), '.log-list 内部可滚动');
@@ -138,4 +144,13 @@ module.exports = async function run() {
   ok(/\.ptcg-caught\s*\{[^}]*background:\s*rgba\(255,\s*255,\s*255/.test(CSS), '捕获时间有浅色胶囊底，任何属性底色上都看得清');
   ok(!APP.includes('点上面的名字'), '删掉了「点上面的名字…」提示');
   ok(/\.ptcg-flavor\s*\{[^}]*margin:\s*10px 0 0/.test(CSS), '图鉴介绍块和招式块等宽');
+
+  section('进化链：跳转保持普通/闪耀，满级文案不重复');
+  // 坑：链上只认编号不认形态，从 ✨ 二阶点一阶会掉到普通一阶上
+  ok(/function evoChainLine\(no, cur\)/.test(APP), '链渲染知道当前是哪张卡（普通还是闪耀）');
+  ok(/data-shiny="\$\{pv\}"/.test(APP), '每个阶段带上该跳哪种形态');
+  ok(/showDexDetail\(Number\(el\.dataset\.evo\), sh === '1'/.test(APP), '按形态挑个体，不会掉回普通卡');
+  ok(/span class="tap variant/.test(APP) && APP.includes('✨ 闪耀版') && APP.includes('🖼 普通版'), '链尾能一键切换普通/闪耀版');
+  ok(APP.includes("'✅ 已满级（封顶）'"), '普通卡满级只讲满级');
+  ok(!APP.includes("'✅ 已成为闪耀形态'"), '不再和经验行下面的「已拥有闪耀形态」重复提闪耀');
 };
