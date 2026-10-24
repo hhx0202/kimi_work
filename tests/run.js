@@ -7,7 +7,9 @@ const { summary } = require('./harness');
   const files = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.js')).sort();
   for (const f of files) {
     console.log(`\n=== ${f} ===`);
-    await require(path.join(__dirname, f))();
+    const mod = require(path.join(__dirname, f));
+    await mod();
+    if (typeof mod.walletChecks === 'function') mod.walletChecks();
   }
   const s = summary();
   console.log(`\n${'='.repeat(40)}\n合计 ${s.pass} 通过 / ${s.fail} 失败\n`);

@@ -1,5 +1,5 @@
 -- ============================================================
--- Kimi 任务岛 - 完整建库脚本（合并 v2~v10，可重复执行）
+-- Kimi 任务岛 - 完整建库脚本（合并 v2~v11，可重复执行）
 -- 在 Supabase SQL Editor 里粘贴执行一次即可
 -- 表已存在则跳过建表（后面 alter 补缺失字段），重复执行无害
 -- ============================================================
@@ -86,7 +86,7 @@ create table if not exists settings (
 do $$
 declare t text;
 begin
-  foreach t in array array['tasks','task_logs','pokemon','point_logs','item_logs','notes','settings'] loop
+  foreach t in array array['tasks','task_logs','pokemon','point_logs','item_logs','notes','settings','wallet_logs'] loop
     execute format('alter table %I enable row level security;', t);
     execute format('drop policy if exists "public access" on %I;', t);
     execute format('create policy "public access" on %I for all using (true) with check (true);', t);
@@ -122,3 +122,19 @@ alter table tasks add column if not exists sort int not null default 0;
 alter table tasks add column if not exists bonus int;
 -- 属性版本快照（编辑只对今天及之后生效；历史日期按 history 里的旧属性渲染）
 alter table tasks add column if not exists history jsonb;
+
+-- ============================================================
+-- v11：零花钱流水表（dir: in 收 / out 支；pending=孩子记的等家长确认）
+-- ============================================================
+create table if not exists wallet_logs (
+  id bigint generated always as identity primary key,
+  log_date date not null default current_date,
+  dir text not null,
+  cat text not null,
+  note text not null default '',
+  amt numeric(10,2) not null,
+  pending boolean not null default false,
+  created_at timestamptz not null default now()
+);
+alter table wallet_logs enable row level security;
+create policy "public access" on wallet_logs for all using (true) with check (true);

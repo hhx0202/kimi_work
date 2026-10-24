@@ -257,3 +257,24 @@ module.exports = async function run() {
   ok(APP.includes("'✅ 已满级（封顶）'"), '普通卡满级只讲满级');
   ok(!APP.includes("'✅ 已成为闪耀形态'"), '不再和经验行下面的「已拥有闪耀形态」重复提闪耀');
 };
+
+module.exports.walletChecks = () => {
+  section('零花钱：入口、数据层、弹窗闭环');
+  ok(APP.includes('data-action="wallet-kid"') && APP.includes('💰 我的零花钱'), '「我的」页有零花钱入口');
+  ok(/function walletPendingPanel\(/.test(APP) && APP.includes('孩子记了一笔零花钱花销'), '待确认卡在最顶、直接 ✓/✕ 文案对');
+  ok(/data-action="wallet-ok"/.test(APP) && /data-action="wallet-rej"/.test(APP), '确认 / 拒绝都有一键操作');
+  ok(/function walletPanel\(/.test(APP) && APP.includes('wallet-range'), '家长中心有零花钱面板，余额口径可切近30天/累计');
+  ok(/function openWalletKid\(/.test(APP) && APP.includes('我花了一笔'), '孩子端明细弹窗 + 右上角记花销按钮');
+  ok(/function openWalletList\(/.test(APP) && /w-rowbtn del/.test(APP), '家长明细带删除按钮');
+  ok(/function openWalletMgr\(/.test(APP) && /mode === 'parent' \? `<button class="btn-icon" data-wact="mgrdel"/.test(APP), '管理类别：孩子只能加、家长能删');
+  ok(/W\.formDir = 'out';/.test(APP), '家长记账默认记花销');
+  // 数据层：demo / supabase 两个实现都要有，且必须导出
+  ok(DB_SRC.includes('wallet_logs'), 'db.js 里有 wallet_logs 表');
+  ['getWalletLogs', 'addWalletLog', 'confirmWalletLog', 'deleteWalletLog'].forEach(fn => {
+    const n = (DB_SRC.match(new RegExp(`async ${fn}\\(`, 'g')) || []).length;
+    ok(n === 2, `db.js 两个模式都实现了 ${fn}（现在是 ${n} 处）`);
+  });
+  ok((DB_SRC.match(/getWalletLogs: impl\.getWalletLogs\.bind/) || []).length === 1, '钱包方法已导出');
+  ok(/wallet-range/.test(APP) && /W\.range\[who\]/.test(APP), '口径切换真的会改状态');
+  ok(/readWalletCats\(settings/.test(APP), '自定义类别从 settings 读回');
+};

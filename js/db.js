@@ -20,7 +20,7 @@ const DB = (() => {
   // ==========================================================
   // 模式一：demo（localStorage 模拟）
   // ==========================================================
-  const K = { tasks: P + 'tasks', logs: P + 'logs', pms: P + 'pokemons', pts: P + 'points', items: P + 'items' };
+  const K = { tasks: P + 'tasks', logs: P + 'logs', pms: P + 'pokemons', pts: P + 'points', items: P + 'items', wallet: P + 'wallet' };
   const K_SEED_VER = P + 'seedver';
   const SEED_VER = 8;   // 演示数据版本：升版本时会给已有的演示数据补一次测试内容 / 修一次历史数据
 
@@ -230,6 +230,18 @@ const DB = (() => {
     }));
   }
 
+  // 演示用的零花钱流水：有一笔收入、一笔支出、一笔孩子刚记等确认的，三个状态都能看到
+  function demoWalletRows() {
+    const d = n => { const x = new Date(today() + 'T00:00:00'); x.setDate(x.getDate() - n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+    return [
+      { id: 1, log_date: d(5), dir: 'in', cat: '零花钱', note: '', amt: 20, pending: false },
+      { id: 2, log_date: d(3), dir: 'in', cat: '阅读排名', note: '周排名第 8', amt: 30, pending: false },
+      { id: 3, log_date: d(2), dir: 'out', cat: '零食', note: '奥利奥', amt: 12, pending: false },
+      { id: 4, log_date: d(1), dir: 'out', cat: '玩具', note: '卡包', amt: 15, pending: false },
+      { id: 5, log_date: today(), dir: 'out', cat: '文具', note: '买了块橡皮', amt: 3, pending: true },
+    ];
+  }
+
   function lsGet(key, def) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? def; } catch { return def; } }
   function lsSet(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 
@@ -402,6 +414,8 @@ const DB = (() => {
       }
       // v7 → v8：给还没打过卡的演示数据补一批历史打卡，成就图/日历才看得出"积累"
       if (prevVer < 8 && dGet(K.logs).length === 0) dSet(K.logs, demoHistoryLogs(dGet(K.tasks), today()));
+      // 零花钱：首次初始化（老演示数据升级时也补一份，只补这一次）
+      if (lsGet(K.wallet, null) === null) dSet(K.wallet, demoWalletRows());
       lsSet(K_SEED_VER, SEED_VER);
     },
     async getTasks() { return [...dGet(K.tasks)]; },
@@ -472,6 +486,20 @@ const DB = (() => {
     },
     async hasItemReason(reason) {
       return dGet(K.items).some(r => r.reason === reason);
+    },
+    // 零花钱流水（全量读取，量小）
+    async getWalletLogs() { return [...dGet(K.wallet)]; },
+    async addWalletLog({ log_date, dir, cat, note = '', amt, pending = false }) {
+      const rows = dGet(K.wallet);
+      const row = { id: dNextId(K.wallet), log_date, dir, cat, note, amt: Number(amt), pending };
+      rows.push(row); dSet(K.wallet, rows);
+      return { ...row };
+    },
+    async confirmWalletLog(id) {
+      dSet(K.wallet, dGet(K.wallet).map(r => r.id === id ? { ...r, pending: false } : r));
+    },
+    async deleteWalletLog(id) {
+      dSet(K.wallet, dGet(K.wallet).filter(r => r.id !== id));
     },
     // 今天的叮嘱（家长留言，孩子端顶部展示）
     // 当天没单独写过 → 自动沿用「这天之前最近一次」的叮嘱（家长换个字就能用，不用每天重打）
@@ -601,6 +629,25 @@ const DB = (() => {
       if (error) sFail(error, '查重');
       return (data || []).length > 0;
     },
+    // 零花钱流水（全量读取，量小）
+    async getWalletLogs() {
+      const { data, error } = await sClient().from('wallet_logs').select('*').order('id');
+      if (error) sFail(error, '读取零花钱');
+      return (data || []).map(r => ({ ...r, amt: Number(r.amt) }));
+    },
+    async addWalletLog({ log_date, dir, cat, note = '', amt, pending = false }) {
+      const { data, error } = await sClient().from('wallet_logs').insert({ log_date, dir, cat, note, amt: Number(amt), pending }).select();
+      if (error) sFail(error, '记零花钱');
+      return { ...data[0], amt: Number(data[0].amt) };
+    },
+    async confirmWalletLog(id) {
+      const { error } = await sClient().from('wallet_logs').update({ pending: false }).eq('id', id);
+      if (error) sFail(error, '确认零花钱');
+    },
+    async deleteWalletLog(id) {
+      const { error } = await sClient().from('wallet_logs').delete().eq('id', id);
+      if (error) sFail(error, '删除零花钱');
+    },
     // 今天的叮嘱（家长留言）
     // 当天没记录 → 取这天之前最近一条（自动沿用）；当天记了空串 = 明确清空
     async getNote(date) {
@@ -640,10 +687,10 @@ const DB = (() => {
       };
       const noteQ = sClient().from('notes').select('log_date, note').order('log_date', { ascending: false }).limit(1);
       const revQ = sClient().from('settings').select('value').eq('key', 'rev').limit(1);
-      const [logs, pts, tasks, note, rev] = await Promise.all([maxId('task_logs'), maxId('point_logs'), maxId('tasks'), noteQ, revQ]);
+      const [logs, pts, tasks, note, rev, wallet] = await Promise.all([maxId('task_logs'), maxId('point_logs'), maxId('tasks'), noteQ, revQ, maxId('wallet_logs')]);
       const n = (note.data && note.data[0]) ? `${note.data[0].log_date}:${note.data[0].note || ''}` : '';
       const r = (rev.data && rev.data[0]) ? rev.data[0].value : '';
-      return [logs, pts, tasks, n, r].join('|');
+      return [logs, pts, tasks, n, r, wallet].join('|');
     },
   };
 
@@ -673,6 +720,10 @@ const DB = (() => {
     addItemLog: impl.addItemLog.bind(impl),
     getItemCount: impl.getItemCount.bind(impl),
     hasItemReason: impl.hasItemReason.bind(impl),
+    getWalletLogs: impl.getWalletLogs.bind(impl),
+    addWalletLog: impl.addWalletLog.bind(impl),
+    confirmWalletLog: impl.confirmWalletLog.bind(impl),
+    deleteWalletLog: impl.deleteWalletLog.bind(impl),
     getNote: impl.getNote.bind(impl),
     setNote: impl.setNote.bind(impl),
     getSettings: impl.getSettings.bind(impl),

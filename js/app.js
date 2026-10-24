@@ -25,6 +25,8 @@ const S = {
   balance: 0,
   balls: 0,
   shinyCards: 0,        // ✨ 闪耀卡库存
+  walletLogs: [],       // 零花钱流水（dir: in 收 / out 支；pending: 孩子记的等确认）
+  walletCats: null,     // 自定义类别 { in: [...], out: [...] }，存在 settings 里
   viewNote: null,       // 孩子端当前查看日期的叮嘱
   parentNote: null,     // 家长端当前查看日期的叮嘱
   // 家长端
@@ -343,6 +345,9 @@ async function refreshAll() {
   ]);
   // 家长设置的规则数值覆盖默认 config（只覆盖配置过的 key）
   Object.keys(settings || {}).forEach(k => { if (CONFIG[k] !== undefined && settings[k] !== '') CONFIG[k] = Number(settings[k]); });
+  // 零花钱：类别配置 + 流水（表还没建时容错为空，面板显示 0，不影响其他功能）
+  S.walletCats = readWalletCats(settings || {});
+  try { S.walletLogs = await DB.getWalletLogs(); } catch { S.walletLogs = S.walletLogs || []; }
   // 跨设备共享的小数据（消息卡/常用任务/类别/出战宝可梦/领奖标记）随这次刷新一起拉回来
   SHARED = {};
   Object.keys(settings || {}).forEach(k => { if (SHARED_LABEL[k]) SHARED[k] = settings[k]; });
@@ -2762,6 +2767,7 @@ function renderMe() {
         <div class="stat-card"><b>${streak}</b><span>必做全清连击(天)</span></div>
       </div>
       <div class="me-actions">
+        <button class="btn-ghost mini" data-action="wallet-kid">💰 我的零花钱</button>
         <button class="btn-ghost mini" data-action="share">📸 生成成就图</button>
       </div>
     </div>
@@ -3202,6 +3208,13 @@ function bindActions() {
     else if (act === 'parent-confirm') confirmPending();
     else if (act === 'parent-undo') await undoPoint(Number(btn.dataset.plid));
     else if (act === 'share') openShare();
+    else if (act === 'wallet-kid') openWalletKid();
+    else if (act === 'wallet-add') openWalletParentForm();
+    else if (act === 'wallet-list') openWalletList();
+    else if (act === 'wallet-range') { const who = btn.dataset.who === 'kid' ? 'kid' : 'par'; W.range[who] = W.range[who] === '30' ? 'all' : '30'; render(); }
+    else if (act === 'wallet-ok') await walletConfirm(Number(btn.dataset.wid));
+    else if (act === 'wallet-rej') await walletReject(Number(btn.dataset.wid));
+    else if (act === 'wallet-del') await walletDelete(Number(btn.dataset.wid));
   };
 }
 function setLead(id) {
@@ -3370,9 +3383,11 @@ function renderParent() {
       </div>
     </div>
     <div class="page">
+      ${walletPendingPanel()}
       ${pendingPointsPanel()}
       ${parentTaskPanel()}
       ${parentPmPanel()}
+      ${walletPanel()}
       ${parentSettingsPanel()}
       ${pointLogPanel()}
       ${errorLogPanel()}
@@ -5421,3 +5436,451 @@ window.addEventListener('DOMContentLoaded', async () => {
     $('app').innerHTML = `<div class="loading-screen"><p>加载失败：${err.message}<br>检查 CONFIG 里的数据库配置</p></div>`;
   }
 });
+
+// ============================================================
+// 零花钱（钱包）：孩子端只读 + 自己记花销（待家长确认）；家长端记账 / 明细 / 管理类别
+// 数据：DB.getWalletLogs / addWalletLog / confirmWalletLog / deleteWalletLog
+// 类别：settings 的 wallet_cats_in / wallet_cats_out（JSON 数组），删类别不影响老流水
+// ============================================================
+const WALLET_CATS_DEFAULT = {
+  in: ['零花钱', '奖励', '阅读排名', '红包'],
+  out: ['零食', '文具', '玩具', '娱乐', '罚款', '礼物', '衣服', '书', '其他'],
+};
+const WALLET_ICON = {
+  in: { '零花钱': '💵', '奖励': '🏅', '阅读排名': '📖', '红包': '🧧', '其他': '✨' },
+  out: { '零食': '🍦', '文具': '✏️', '玩具': '🧸', '书': '📚', '娱乐': '🎮', '罚款': '⚠️', '礼物': '🎁', '衣服': '👕', '学费': '🎓', '其他': '✨' },
+};
+const WALLET_DIR_LABEL = { all: '☰ 全部', in: '💵 收入', out: '🛒 花销' };
+const W = {
+  range: { kid: '30', par: '30' },   // 余额卡统计口径：30 = 最近 30 天 / all = 累计
+  dir: { kid: 'all', par: 'all' },   // 明细方向筛选：all / in / out（循环切换）
+  cat: { kid: 'all', par: 'all' },   // 明细类别筛选（再点一下取消）
+  formDir: 'out',                    // 记账表单方向：默认记花销
+  formCat: null,
+};
+let wKidEl = null, wKidFormEl = null, wListEl = null, wFormEl = null, wMgrEl = null;
+
+function readWalletCats(settings) {
+  const parse = (k, def) => {
+    try { const v = JSON.parse(settings[k]); return Array.isArray(v) && v.length ? v : def; } catch { return def; }
+  };
+  return { in: parse('wallet_cats_in', WALLET_CATS_DEFAULT.in), out: parse('wallet_cats_out', WALLET_CATS_DEFAULT.out) };
+}
+function wRows() { return S.walletLogs || []; }
+function wIcon(cat, dir) { return (WALLET_ICON[dir] && WALLET_ICON[dir][cat]) || (dir === 'in' ? '💵' : '🛒'); }
+function wCatDir(cat) { const l = wRows().find(x => x.cat === cat); return l ? l.dir : 'out'; }
+function wYuan(n) {
+  const v = Number(n || 0).toFixed(2);
+  return v.length > 6 ? v.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : v;
+}
+function wBalance() {   // 只算已确认的；孩子记的 pending 不算
+  return wRows().filter(l => !l.pending).reduce((s, l) => s + (l.dir === 'in' ? l.amt : -l.amt), 0);
+}
+function wSums(range) {   // { in, out }：range '30' = 最近 30 天 / 'all' = 累计
+  let cut = '0000-01-01';
+  if (range === '30') {
+    const d = new Date(DB.today() + 'T00:00:00');
+    d.setDate(d.getDate() - 29);
+    cut = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  const c = wRows().filter(l => !l.pending && l.log_date >= cut);
+  return {
+    in: c.filter(l => l.dir === 'in').reduce((s, l) => s + l.amt, 0),
+    out: c.filter(l => l.dir === 'out').reduce((s, l) => s + l.amt, 0),
+  };
+}
+// 记账表单的类别池：家长/孩子共享一套，最近用过的排最前
+function wCats(dir) {
+  const saved = S.walletCats && Array.isArray(S.walletCats[dir]) && S.walletCats[dir].length ? S.walletCats[dir] : WALLET_CATS_DEFAULT[dir];
+  const last = new Map();
+  wRows().filter(l => l.dir === dir).forEach(l => {
+    if (!last.has(l.cat) || l.log_date > last.get(l.cat)) last.set(l.cat, l.log_date);
+  });
+  return saved.slice().sort((a, b) =>
+    ((last.has(b) ? 1 : 0) - (last.has(a) ? 1 : 0)) || (last.get(b) || '').localeCompare(last.get(a) || ''));
+}
+// 明细筛选条的类别：只列流水里出现过的，按最近出现从新到旧
+function wCatsAll(dir) {
+  const last = new Map();
+  wRows().filter(l => dir === 'all' || l.dir === dir).forEach(l => {
+    if (!last.has(l.cat) || l.log_date > last.get(l.cat)) last.set(l.cat, l.log_date);
+  });
+  return [...last.keys()].sort((a, b) => (last.get(b) || '').localeCompare(last.get(a) || ''));
+}
+async function walletSaveCats() {
+  try {
+    await DB.setSettings({
+      wallet_cats_in: JSON.stringify(S.walletCats.in),
+      wallet_cats_out: JSON.stringify(S.walletCats.out),
+    });
+  } catch (e) { toast('类别没存上：' + e.message); }
+}
+
+// ---------- 家长页面板 ----------
+function walletPendingPanel() {   // 放家长中心最顶：孩子记的花销直接 ✓ / ✕，不用跳明细
+  const pend = wRows().filter(l => l.pending);
+  if (!pend.length) return '';
+  return `
+    <div class="panel w-pend-panel">
+      <h3>⏳ ${pend.length === 1 ? '孩子记了一笔零花钱花销' : `孩子记了 ${pend.length} 笔零花钱花销`}，等你确认</h3>
+      ${pend.map(l => `
+        <div class="prow w-pend-row">
+          <span>${wIcon(l.cat, l.dir)}</span>
+          <div class="grow"><b>${escHTML(l.cat)}</b><small>${escHTML(l.note || '—')} · ${l.log_date}</small></div>
+          <span class="w-amt out">−¥${wYuan(l.amt)}</span>
+          <button class="btn-icon w-ok" data-action="wallet-ok" data-wid="${l.id}" title="确认，从余额扣">✓</button>
+          <button class="btn-icon" data-action="wallet-rej" data-wid="${l.id}" title="拒绝（删掉这条，不扣钱）">✕</button>
+        </div>`).join('')}
+    </div>`;
+}
+function walletPanel() {   // 家长中心的「💳 零花钱」面板（放在奖励 / 扣分下面）
+  const r = wSums(W.range.par);
+  const pendN = wRows().filter(l => l.pending).length;
+  return `
+    <div class="panel">
+      <h3>💳 零花钱${pendN ? `<small style="font-weight:400">⏳ ${pendN} 笔等确认</small>` : ''}</h3>
+      <div class="w-hero">
+        <div class="w-bal"><small>¥</small>${wYuan(wBalance())}</div>
+        <div class="w-sub">
+          <button class="w-rng" data-action="wallet-range" data-who="par">${W.range.par === '30' ? '近30天' : '累计'} ⇄</button>
+          <b>+${wYuan(r.in)} / −${wYuan(r.out)}</b>
+        </div>
+      </div>
+      <div class="input-row" style="margin-top:10px">
+        <button class="btn-primary" data-action="wallet-add" style="flex:1">📝 记一笔</button>
+        <button class="btn-cancel" data-action="wallet-list" style="flex:1">📋 全部明细</button>
+      </div>
+    </div>`;
+}
+
+// ---------- 弹窗工具 ----------
+function wOpenModal(cls) {
+  const mask = document.createElement('div');
+  mask.className = 'modal-mask';
+  mask.innerHTML = `<div class="modal ${cls}"></div>`;
+  mask.addEventListener('click', e => { if (e.target === mask) mask.remove(); });
+  document.body.appendChild(mask);
+  return mask;
+}
+const wRowHTML = manage => l => `
+  <div class="w-row ${l.dir}${l.pending ? ' pend' : ''}">
+    <span class="ic">${wIcon(l.cat, l.dir)}</span>
+    <div class="mid">
+      <b>${escHTML(l.cat)}${l.pending ? '<span class="tag-pend">待确认</span>' : ''}</b>
+      <span class="note">${escHTML(l.note || '—')} · ${l.log_date}</span>
+    </div>
+    <span class="amt">${l.dir === 'in' ? '+' : '−'}¥${wYuan(l.amt)}</span>
+    ${manage && l.pending ? `<button class="w-rowbtn ok" data-action="wallet-ok" data-wid="${l.id}" title="确认">✓</button>` : ''}
+    ${manage ? `<button class="w-rowbtn del" data-action="wallet-del" data-wid="${l.id}" title="删除">🗑</button>` : ''}
+  </div>`;
+function wFilterRowHTML(who, dir, cat) {
+  const cats = wCatsAll(dir);
+  return `
+    <div class="w-filter">
+      <button class="w-dir" data-wact="${who}dir" data-d="${dir}">${WALLET_DIR_LABEL[dir]}</button>
+      <div class="w-chips">
+        ${cats.map(c => `<button class="w-chip${cat === c ? ' on' : ''}" data-wact="${who}cat" data-cat="${escHTML(c)}">${wIcon(c, dir === 'all' ? wCatDir(c) : dir)} ${escHTML(c)}</button>`).join('') || '<span class="form-hint">还没有记录</span>'}
+      </div>
+    </div>`;
+}
+function wDirCycle(d) { return d === 'all' ? 'in' : d === 'in' ? 'out' : 'all'; }
+function wCatValid(who) {   // 换向后原选中的类别若不属于该方向就回「全部」
+  if (W.cat[who] !== 'all' && !wCatsAll(W.dir[who]).includes(W.cat[who])) W.cat[who] = 'all';
+}
+
+// ---------- 孩子端：零花钱明细（只读） ----------
+function openWalletKid() {
+  wKidEl = wOpenModal('w-modal');
+  wKidEl.addEventListener('click', e => {
+    const b = e.target.closest('[data-wact]');
+    if (!b) return;
+    const act = b.dataset.wact;
+    if (act === 'kidrange') { W.range.kid = W.range.kid === '30' ? 'all' : '30'; renderWalletKid(); }
+    else if (act === 'kdir') {
+      W.dir.kid = wDirCycle(W.dir.kid);
+      wCatValid('kid');
+      renderWalletKid();
+    }
+    else if (act === 'kcat') { W.cat.kid = W.cat.kid === b.dataset.cat ? 'all' : b.dataset.cat; renderWalletKid(); }
+    else if (act === 'kidform') openWalletKidForm();
+  });
+  renderWalletKid();
+}
+function renderWalletKid() {
+  if (!wKidEl || !document.body.contains(wKidEl)) return;
+  const r = wSums(W.range.kid);
+  const rows = wRows()
+    .filter(l => W.dir.kid === 'all' || l.dir === W.dir.kid)
+    .filter(l => W.cat.kid === 'all' || l.cat === W.cat.kid)
+    .sort((a, b) => b.log_date.localeCompare(a.log_date) || b.id - a.id);
+  wKidEl.firstElementChild.innerHTML = `
+    <div class="w-hero">
+      <button class="w-cta" data-wact="kidform">🛒 我花了一笔</button>
+      <div class="w-k">我的零花钱</div>
+      <div class="w-bal"><small>¥</small>${wYuan(wBalance())}</div>
+      <div class="w-sub">
+        <button class="w-rng" data-wact="kidrange">${W.range.kid === '30' ? '近30天' : '累计'} ⇄</button>
+        <b>+${wYuan(r.in)} / −${wYuan(r.out)} · ${wRows().length}笔</b>
+      </div>
+    </div>
+    ${wFilterRowHTML('k', W.dir.kid, W.cat.kid)}
+    <div class="w-rows">${rows.length ? rows.map(wRowHTML(false)).join('') : '<div class="empty-tip" style="padding:14px 0">没有符合条件的记录</div>'}</div>
+    <p class="form-hint" style="text-align:center;margin-top:10px">花钱点右上角「我花了一笔」，家长确认后才扣</p>`;
+}
+
+// ---------- 记账表单（孩子记花销 / 家长记账共用一套样式） ----------
+function wCatChipsHTML(dir, who) {
+  return wCats(dir).map(c =>
+    `<button class="w-cat${W.formCat === c ? ' on' : ''}" data-wact="${who}cat" data-cat="${escHTML(c)}">${wIcon(c, dir)} ${escHTML(c)}</button>`).join('')
+    + `<button class="w-cat act" data-wact="${who}mgr">🏷️ 管理</button>`;
+}
+function wAmtField(id, who) {
+  return `
+    <div class="w-fld">
+      <label>金额</label>
+      <div class="w-amt-row"><i>¥</i><input id="${id}" type="number" inputmode="decimal" step="any" min="0" placeholder="0.00"></div>
+      <div class="w-quick">${[5, 10, 20, 50].map(n => `<button data-wact="${who}quick" data-amt="${n}">${n}</button>`).join('')}</div>
+    </div>`;
+}
+function openWalletKidForm() {
+  wKidFormEl = wOpenModal('w-modal');
+  W.formDir = 'out';
+  W.formCat = null;
+  wKidFormEl.firstElementChild.innerHTML = `
+    <h3>🛒 我花了一笔</h3>
+    <p class="form-hint">提交后等家长确认，确认了才从余额里扣</p>
+    ${wAmtField('w-k-amt', 'k')}
+    <div class="w-fld"><label>类别</label><div class="w-cats" id="w-k-cats">${wCatChipsHTML('out', 'k')}</div></div>
+    <div class="w-fld"><label>说明（可不填）</label><input id="w-k-note" type="text" maxlength="30" placeholder="买了什么"></div>
+    <div class="input-row" style="margin-top:14px">
+      <button class="btn-cancel" data-wact="kback" style="flex:1">返回</button>
+      <button class="btn-primary" data-wact="ksave" style="flex:2">提交给家长</button>
+    </div>`;
+  wKidFormEl.addEventListener('click', async e => {
+    const b = e.target.closest('[data-wact]');
+    if (!b) return;
+    const act = b.dataset.wact;
+    if (act === 'kback') { wKidFormEl.remove(); wKidFormEl = null; }
+    else if (act === 'kquick') { document.getElementById('w-k-amt').value = b.dataset.amt; }
+    else if (act === 'kcat') {   // 单选；重渲染会清掉已输入的金额，所以只切高亮
+      W.formCat = W.formCat === b.dataset.cat ? null : b.dataset.cat;
+      document.querySelectorAll('#w-k-cats .w-cat').forEach(x => x.classList.toggle('on', x.dataset.cat === W.formCat));
+    }
+    else if (act === 'kmgr') openWalletMgr('kid');
+    else if (act === 'ksave') {
+      const amt = Number(document.getElementById('w-k-amt').value);
+      if (!(amt > 0)) { toast('先填一下金额'); return; }
+      b.disabled = true;
+      try {
+        const row = await DB.addWalletLog({
+          log_date: DB.today(), dir: 'out',
+          cat: W.formCat || wCats('out')[0],
+          note: (document.getElementById('w-k-note').value || '').trim(),
+          amt, pending: true,
+        });
+        S.walletLogs.push(row);
+        wKidFormEl.remove(); wKidFormEl = null;
+        toast('记好了，等家长确认');
+        render();
+        walletRefreshOpenLists();
+      } catch (err) { b.disabled = false; toast('没记上：' + err.message); }
+    }
+  });
+}
+
+// ---------- 家长端：全部明细 ----------
+function openWalletList() {
+  wListEl = wOpenModal('w-modal');
+  wListEl.addEventListener('click', e => {
+    const b = e.target.closest('[data-wact]');
+    if (!b) return;
+    const act = b.dataset.wact;
+    if (act === 'wclose') { wListEl.remove(); wListEl = null; }
+    else if (act === 'prange') { W.range.par = W.range.par === '30' ? 'all' : '30'; renderWalletList(); }
+    else if (act === 'pdir') { W.dir.par = wDirCycle(W.dir.par); wCatValid('par'); renderWalletList(); }
+    else if (act === 'pcat') { W.cat.par = W.cat.par === b.dataset.cat ? 'all' : b.dataset.cat; renderWalletList(); }
+    else if (act === 'padd') openWalletParentForm();
+  });
+  renderWalletList();
+}
+function renderWalletList() {
+  if (!wListEl || !document.body.contains(wListEl)) return;
+  const r = wSums(W.range.par);
+  const rows = wRows()
+    .filter(l => W.dir.par === 'all' || l.dir === W.dir.par)
+    .filter(l => W.cat.par === 'all' || l.cat === W.cat.par)
+    .sort((a, b) => b.log_date.localeCompare(a.log_date) || b.id - a.id);
+  wListEl.firstElementChild.innerHTML = `
+    <div class="w-hero">
+      <div class="w-k">零花钱明细</div>
+      <div class="w-bal"><small>¥</small>${wYuan(wBalance())}</div>
+      <div class="w-sub">
+        <button class="w-rng" data-wact="prange">${W.range.par === '30' ? '近30天' : '累计'} ⇄</button>
+        <b>+${wYuan(r.in)} / −${wYuan(r.out)} · ${wRows().length}笔</b>
+      </div>
+    </div>
+    ${wFilterRowHTML('p', W.dir.par, W.cat.par)}
+    <div class="w-rows">${rows.length ? rows.map(wRowHTML(true)).join('') : '<div class="empty-tip" style="padding:14px 0">没有符合条件的记录</div>'}</div>
+    <div class="input-row" style="margin-top:12px">
+      <button class="btn-primary" data-wact="padd" style="flex:1">📝 记一笔</button>
+      <button class="btn-cancel" data-wact="wclose" style="flex:1">关闭</button>
+    </div>`;
+}
+
+// ---------- 家长端：记一笔 ----------
+function openWalletParentForm() {
+  wFormEl = wOpenModal('w-modal');
+  W.formDir = 'out';   // 默认记花销
+  W.formCat = null;
+  wFormEl.firstElementChild.innerHTML = `
+    <h3>💳 记一笔</h3>
+    <div class="w-seg">
+      <button data-wact="pseg" data-d="out" class="${W.formDir === 'out' ? 'on' : ''}">🛒 记花销</button>
+      <button data-wact="pseg" data-d="in" class="${W.formDir === 'in' ? 'on' : ''}">💵 给零花钱</button>
+    </div>
+    ${wAmtField('w-p-amt', 'p')}
+    <div class="w-fld"><label>类别</label><div class="w-cats" id="w-p-cats">${wCatChipsHTML(W.formDir, 'p')}</div></div>
+    <div class="w-fld"><label>日期</label><input id="w-p-date" type="date" value="${DB.today()}"></div>
+    <div class="w-fld"><label>备注（可不填）</label><input id="w-p-note" type="text" maxlength="30" placeholder="备注"></div>
+    <div class="input-row" style="margin-top:14px">
+      <button class="btn-cancel" data-wact="pback" style="flex:1">返回</button>
+      <button class="btn-primary" data-wact="psave" style="flex:2">保存</button>
+    </div>`;
+  wFormEl.addEventListener('click', async e => {
+    const b = e.target.closest('[data-wact]');
+    if (!b) return;
+    const act = b.dataset.wact;
+    if (act === 'pback') { wFormEl.remove(); wFormEl = null; }
+    else if (act === 'pquick') { document.getElementById('w-p-amt').value = b.dataset.amt; }
+    else if (act === 'pseg') {   // 切方向只换类别池，不清金额/日期/备注
+      W.formDir = b.dataset.d;
+      W.formCat = null;
+      wFormEl.querySelectorAll('.w-seg button').forEach(x => x.classList.toggle('on', x.dataset.d === W.formDir));
+      document.getElementById('w-p-cats').innerHTML = wCatChipsHTML(W.formDir, 'p');
+    }
+    else if (act === 'pcat') {
+      W.formCat = W.formCat === b.dataset.cat ? null : b.dataset.cat;
+      document.querySelectorAll('#w-p-cats .w-cat').forEach(x => x.classList.toggle('on', x.dataset.cat === W.formCat));
+    }
+    else if (act === 'pmgr') openWalletMgr('parent');
+    else if (act === 'psave') {
+      const amt = Number(document.getElementById('w-p-amt').value);
+      if (!(amt > 0)) { toast('先填一下金额'); return; }
+      b.disabled = true;
+      try {
+        const row = await DB.addWalletLog({
+          log_date: document.getElementById('w-p-date').value || DB.today(),
+          dir: W.formDir,
+          cat: W.formCat || wCats(W.formDir)[0],
+          note: (document.getElementById('w-p-note').value || '').trim(),
+          amt, pending: false,
+        });
+        S.walletLogs.push(row);
+        wFormEl.remove(); wFormEl = null;
+        toast(`已记下 ${W.formDir === 'in' ? '+' : '−'}¥${wYuan(amt)}`);
+        render();
+        walletRefreshOpenLists();
+      } catch (err) { b.disabled = false; toast('没记上：' + err.message); }
+    }
+  });
+}
+
+// ---------- 管理类别（家长可加可删；孩子端只加不删） ----------
+function openWalletMgr(mode) {
+  wMgrEl = wOpenModal('w-modal');
+  wMgrEl.addEventListener('click', async e => {
+    const b = e.target.closest('[data-wact]');
+    if (!b) return;
+    const act = b.dataset.wact;
+    if (act === 'wclose') { wMgrEl.remove(); wMgrEl = null; }
+    else if (act === 'mgradd') {
+      const name = (document.getElementById('w-mgr-new').value || '').trim();
+      if (!name) { toast('先输入类别名'); return; }
+      if (wCats(W.formDir).includes(name)) { toast('已经有这个类别了'); return; }
+      S.walletCats = S.walletCats || readWalletCats({});
+      S.walletCats[W.formDir] = [name].concat(wCats(W.formDir));
+      walletSaveCats();
+      toast(`已加上「${name}」`);
+      renderWalletMgr(mode);
+      walletRefreshFormCats();
+    }
+    else if (act === 'mgrdel' && mode === 'parent') {
+      const cat = b.dataset.cat;
+      S.walletCats[W.formDir] = wCats(W.formDir).filter(c => c !== cat);
+      walletSaveCats();
+      if (W.formCat === cat) W.formCat = null;
+      toast(`已删掉「${cat}」，老记录不受影响`);
+      renderWalletMgr(mode);
+      walletRefreshFormCats();
+    }
+  });
+  renderWalletMgr(mode);
+}
+function renderWalletMgr(mode) {
+  if (!wMgrEl || !document.body.contains(wMgrEl)) return;
+  wMgrEl.firstElementChild.innerHTML = `
+    <h3>🏷️ 管理类别 <small style="font-weight:400">${W.formDir === 'out' ? '花销' : '收入'}</small></h3>
+    <p class="form-hint">删掉的只是类别，老记录的类别和金额不受影响</p>
+    ${wCats(W.formDir).map(c => `
+      <div class="prow w-mgr-row">
+        <span>${wIcon(c, W.formDir)}</span>
+        <div class="grow"><b>${escHTML(c)}</b></div>
+        ${mode === 'parent' ? `<button class="btn-icon" data-wact="mgrdel" data-cat="${escHTML(c)}" title="删除">🗑</button>` : ''}
+      </div>`).join('')}
+    <div class="input-row" style="margin-top:10px">
+      <input id="w-mgr-new" type="text" maxlength="8" placeholder="新类别名" style="flex:2">
+      <button class="btn-primary" data-wact="mgradd" style="flex:1">＋ 添加</button>
+    </div>
+    <div class="input-row" style="margin-top:8px">
+      <button class="btn-cancel" data-wact="wclose" style="width:100%">关闭</button>
+    </div>`;
+}
+
+// ---------- 数据变了之后的联动 ----------
+function walletRefreshFormCats() {   // 表单还开着的话，类别行刷一下
+  const el = document.getElementById('w-k-cats');
+  if (el && wKidFormEl) el.innerHTML = wCatChipsHTML('out', 'k');
+  const p = document.getElementById('w-p-cats');
+  if (p && wFormEl) p.innerHTML = wCatChipsHTML(W.formDir, 'p');
+}
+function walletRefreshOpenLists() {  // 明细弹窗还开着的话，原地重渲染（不关不跳）
+  if (wKidEl && document.body.contains(wKidEl)) renderWalletKid();
+  if (wListEl && document.body.contains(wListEl)) renderWalletList();
+}
+
+// ---------- 确认 / 拒绝 / 删除 ----------
+async function walletConfirm(id) {
+  const l = wRows().find(x => x.id === id);
+  if (!l || !l.pending) return;
+  try {
+    await DB.confirmWalletLog(id);
+    l.pending = false;
+    toast(`已确认「${l.cat} −¥${wYuan(l.amt)}」`);
+    render();
+    walletRefreshOpenLists();
+  } catch (e) { toast('没确认上：' + e.message); }
+}
+async function walletReject(id) {
+  const i = wRows().findIndex(x => x.id === id);
+  if (i < 0) return;
+  const one = S.walletLogs[i];
+  try {
+    await DB.deleteWalletLog(id);
+    S.walletLogs.splice(i, 1);
+    toast(`已拒绝「${one.cat}」，没扣钱`);
+    render();
+    walletRefreshOpenLists();
+  } catch (e) { toast('没删掉：' + e.message); }
+}
+async function walletDelete(id) {
+  const i = wRows().findIndex(x => x.id === id);
+  if (i < 0) return;
+  const one = S.walletLogs[i];
+  try {
+    await DB.deleteWalletLog(id);
+    S.walletLogs.splice(i, 1);
+    toast(`已删掉「${one.cat} −¥${wYuan(one.amt)}」`);
+    render();
+    walletRefreshOpenLists();
+  } catch (e) { toast('没删掉：' + e.message); }
+}

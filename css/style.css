@@ -2105,3 +2105,79 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 
 /* backdrop-filter 在 Safari 需要 -webkit- 前缀才生效（旧版 Safari 认带前缀的） */
 .modal-mask, .overlay { -webkit-backdrop-filter: blur(4px); }
+
+/* ================= 零花钱 ================= */
+.me-actions { justify-content: space-between; }
+.w-hero { position: relative; border-radius: 16px; padding: 14px 16px; color: #fff;
+  background: linear-gradient(135deg, #34a15f, #66bb6a); box-shadow: 0 8px 20px rgba(46, 158, 91, .25); margin-top: 10px; }
+.w-hero .w-k { font-size: 12px; opacity: .92; font-weight: 700; }
+.w-bal { font-size: 30px; font-weight: 900; letter-spacing: .5px; line-height: 1.25; }
+.w-bal small { font-size: 16px; margin-right: 2px; }
+.w-sub { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 12px; white-space: nowrap; }
+.w-sub b { font-weight: 800; }
+.w-rng { border: 0; background: rgba(255, 255, 255, .94); color: #1f7a45; border-radius: 999px; padding: 4px 10px;
+  font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.w-cta { position: absolute; top: 11px; right: 11px; border: 0; background: rgba(255, 255, 255, .94); color: #1f7a45;
+  border-radius: 999px; padding: 7px 12px; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .15); }
+.w-cta:active { transform: scale(.96); }
+/* 筛选行：左边方向循环钮（固定不滚）+ 右边类别胶囊（横向滚、单选、再点取消） */
+.w-filter { display: flex; gap: 6px; align-items: flex-start; margin: 10px 0 8px; }
+.w-dir { flex: 0 0 auto; border: 0; border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12px;
+  font-weight: 800; color: #fff; cursor: pointer; white-space: nowrap; }
+.w-dir[data-d="all"] { background: #78909c; }
+.w-dir[data-d="in"] { background: #2e9e5b; }
+.w-dir[data-d="out"] { background: #e05252; }
+.w-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex: 1 1 auto; }
+.w-chips::-webkit-scrollbar { display: none; }
+.w-chip { flex: 0 0 auto; border: 1.5px solid #e3e8ef; background: #fff; border-radius: 999px; padding: 5px 11px;
+  font: inherit; font-size: 12px; font-weight: 700; color: #607d8b; cursor: pointer; white-space: nowrap; }
+.w-chip.on { border-color: #a5d6a7; background: #eaf7ef; color: #1f7a45; }
+/* 明细行 */
+.w-rows { display: flex; flex-direction: column; }
+.w-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid #f0f3f7; }
+.w-row:last-child { border-bottom: 0; }
+.w-row .ic { font-size: 17px; flex: 0 0 auto; }
+.w-row .mid { flex: 1 1 auto; min-width: 0; }
+.w-row .mid b { font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px; }
+.w-row .mid .note { display: block; font-size: 11px; color: #90a4ae; margin-top: 1px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.w-row .amt { font-size: 14px; font-weight: 900; flex: 0 0 auto; }
+.w-row.in .amt { color: #2e9e5b; }
+.w-row.out .amt { color: #e05252; }
+.w-row.pend .amt { opacity: .45; }
+.tag-pend { flex: 0 0 auto; font-size: 10px; font-weight: 800; color: #a2701c; background: #fff3d6;
+  border-radius: 999px; padding: 1px 7px; }
+.w-rowbtn { flex: 0 0 auto; border: 0; width: 30px; height: 30px; border-radius: 50%; font: inherit;
+  font-size: 14px; font-weight: 900; cursor: pointer; }
+.w-rowbtn.ok { background: #2e9e5b; color: #fff; }
+.w-rowbtn.del { background: #fff5f5; color: #e05252; }
+/* 记账表单 */
+.w-seg { display: flex; gap: 6px; margin: 10px 0 4px; }
+.w-seg button { flex: 1; border: 1.5px solid #e3e8ef; background: #fff; border-radius: 12px; padding: 9px 0;
+  font: inherit; font-size: 13px; font-weight: 800; color: #607d8b; cursor: pointer; }
+.w-seg button.on[data-d="out"] { border-color: #e05252; background: #fdecec; color: #c53939; }
+.w-seg button.on[data-d="in"] { border-color: #2e9e5b; background: #eaf7ef; color: #1f7a45; }
+.w-fld { margin-top: 10px; }
+.w-fld > label { display: block; font-size: 11.5px; color: #90a4ae; font-weight: 700; margin-bottom: 5px; }
+.w-fld input[type="text"], .w-fld input[type="date"] { width: 100%; height: 44px; border: 1.5px solid #e3e8ef;
+  border-radius: 12px; padding: 0 12px; font: inherit; font-size: 14px; margin: 0; box-sizing: border-box; background: #fff; }
+.w-amt-row { display: flex; align-items: center; gap: 6px; border: 1.5px solid #e3e8ef; border-radius: 12px;
+  padding: 0 12px; background: #fff; }
+.w-amt-row:focus-within { border-color: #66bb6a; }
+.w-amt-row i { font-style: normal; font-size: 16px; font-weight: 900; color: #2e9e5b; }
+.w-amt-row input { border: 0 !important; outline: none; flex: 1; height: 44px; font-size: 17px; font-weight: 800;
+  margin: 0 !important; background: transparent; }
+.w-quick { display: flex; gap: 6px; margin-top: 6px; }
+.w-quick button { flex: 1; border: 1.5px solid #e3e8ef; background: #fff; border-radius: 10px; padding: 6px 0;
+  font: inherit; font-size: 12.5px; font-weight: 800; color: #546e7a; cursor: pointer; }
+.w-cats { display: flex; flex-wrap: wrap; gap: 6px; }
+.w-cat { border: 1.5px solid #e3e8ef; background: #fff; border-radius: 999px; padding: 6px 12px; font: inherit;
+  font-size: 12.5px; font-weight: 700; color: #546e7a; cursor: pointer; }
+.w-cat.on { border-color: #66bb6a; background: #eaf7ef; color: #1f7a45; }
+.w-cat.act { border-style: dashed; color: #90a4ae; }
+/* 家长中心：待确认卡 / 管理类别行 */
+.w-pend-panel .w-pend-row .btn-icon { flex: 0 0 auto; }
+.w-amt { font-size: 13.5px; font-weight: 900; flex: 0 0 auto; }
+.w-amt.out { color: #e05252; }
+.w-mgr-row .btn-icon { flex: 0 0 auto; }
