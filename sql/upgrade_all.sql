@@ -82,6 +82,19 @@ create table if not exists settings (
   value text not null
 );
 
+-- 零花钱流水表（dir: in 收 / out 支；pending=孩子记的等家长确认）
+-- 注意：必须建在下面 RLS 循环之前，循环会把这张表一起开 RLS
+create table if not exists wallet_logs (
+  id bigint generated always as identity primary key,
+  log_date date not null default current_date,
+  dir text not null,
+  cat text not null,
+  note text not null default '',
+  amt numeric(10,2) not null,
+  pending boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
 -- 2. 行级安全：家庭个人使用，anon key 全开放（读写都允许）
 do $$
 declare t text;
@@ -122,19 +135,3 @@ alter table tasks add column if not exists sort int not null default 0;
 alter table tasks add column if not exists bonus int;
 -- 属性版本快照（编辑只对今天及之后生效；历史日期按 history 里的旧属性渲染）
 alter table tasks add column if not exists history jsonb;
-
--- ============================================================
--- v11：零花钱流水表（dir: in 收 / out 支；pending=孩子记的等家长确认）
--- ============================================================
-create table if not exists wallet_logs (
-  id bigint generated always as identity primary key,
-  log_date date not null default current_date,
-  dir text not null,
-  cat text not null,
-  note text not null default '',
-  amt numeric(10,2) not null,
-  pending boolean not null default false,
-  created_at timestamptz not null default now()
-);
-alter table wallet_logs enable row level security;
-create policy "public access" on wallet_logs for all using (true) with check (true);
