@@ -5667,7 +5667,6 @@ function wAmtField(id, who) {
     <div class="w-fld">
       <label>金额</label>
       <div class="w-amt-row"><i>¥</i><input id="${id}" type="number" inputmode="decimal" step="any" min="0" placeholder="0.00"></div>
-      <div class="w-quick">${[5, 10, 20, 50].map(n => `<button data-wact="${who}quick" data-amt="${n}">${n}</button>`).join('')}</div>
     </div>`;
 }
 function openWalletKidForm() {
@@ -5677,9 +5676,15 @@ function openWalletKidForm() {
   wKidFormEl.firstElementChild.innerHTML = `
     <h3>🛒 我花了一笔</h3>
     <p class="form-hint">提交后等家长确认，确认了才从余额里扣</p>
-    ${wAmtField('w-k-amt', 'k')}
-    <div class="w-fld"><label>类别</label>
-      ${uiSelectHTML('w-k-cat', W.formCat, wKidCatOpts(), '', 'wKidCatPicked')}
+    <div class="w-fld">
+      <div class="w-2col">
+        <div class="w-col-a"><label>金额</label>
+          <div class="w-amt-row"><i>¥</i><input id="w-k-amt" type="number" inputmode="decimal" step="any" min="0" placeholder="0.00"></div>
+        </div>
+        <div class="w-col-b"><label>类别</label>
+          ${uiSelectHTML('w-k-cat', W.formCat, wKidCatOpts(), '', 'wKidCatPicked')}
+        </div>
+      </div>
       <div class="w-newrow" id="w-k-newrow" style="display:none">
         <input id="w-k-newcat" type="text" maxlength="8" placeholder="新类别">
         <button type="button" data-wact="kaddcat">＋</button>
@@ -5700,7 +5705,6 @@ function openWalletKidForm() {
     if (!b) return;
     const act = b.dataset.wact;
     if (act === 'kback') { wKidFormEl.remove(); wKidFormEl = null; }
-    else if (act === 'kquick') { document.getElementById('w-k-amt').value = b.dataset.amt; }
     else if (act === 'kaddcat') {   // 自定义：加上并选中，收起输入行
       const inp = document.getElementById('w-k-newcat');
       const name = (inp.value || '').trim();
@@ -5710,7 +5714,10 @@ function openWalletKidForm() {
       S.walletCats.out = [name].concat(wCats('out'));
       walletSaveCats();
       W.formCat = name;
-      uiSetVal('w-k-cat', name);
+      // 关键：下拉的选项列表是开表单时渲染的，新类别不在里面——
+      // 只 uiSetVal 会因找不到选项把按钮显示成空白、菜单里也没有它。必须整体重建。
+      const box = document.getElementById('w-k-cat');
+      if (box) box.outerHTML = uiSelectHTML('w-k-cat', name, wKidCatOpts(), '', 'wKidCatPicked');
       const row = document.getElementById('w-k-newrow');
       if (row) row.style.display = 'none';
       toast(`已加上「${name}」`);
@@ -5799,7 +5806,6 @@ function openWalletParentForm() {
     if (!b) return;
     const act = b.dataset.wact;
     if (act === 'pback') { wFormEl.remove(); wFormEl = null; }
-    else if (act === 'pquick') { document.getElementById('w-p-amt').value = b.dataset.amt; }
     else if (act === 'pseg') {   // 切方向只换类别池，不清金额/日期/备注
       W.formDir = b.dataset.d;
       W.formCat = null;

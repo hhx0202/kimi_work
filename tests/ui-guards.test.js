@@ -270,6 +270,7 @@ module.exports.walletChecks = () => {
   ok(/<button class="btn-cancel" data-wact="wclose" style="width:100%">关闭<\/button>/.test(APP.split('function renderWalletKid')[1].split('function ')[0]), '孩子端明细底部有关闭按钮（不会手势返回也能退出）');
   ok(/uiSelectHTML\('w-k-cat'/.test(APP.split('function openWalletKidForm')[1].split('function openWalletList')[0]) && !/data-wact="kmgr"/.test(APP.split('function openWalletKidForm')[1].split('function openWalletList')[0]), '孩子表单类别是下拉（不跳管理）');
   ok(/function wKidCatPicked\(/.test(APP) && /'__new'/.test(APP), '下拉默认其他 + 最近使用排序 + 最下面「＋ 自定义…」');
+  ok(/box\.outerHTML = uiSelectHTML\('w-k-cat', name, wKidCatOpts\(\)/.test(APP), '加完自定义类别重建下拉（选项列表是开表单时渲染的，不重建会显示空白且菜单里没有它）');
   ok(/\.w-amt-row \{[^}]*max-width:\s*190px/.test(CSS), '金额输入框收窄到 190px');
   ok(!APP.includes('w-addcat') && !APP.includes('w-cat editing'), '没有大输入框/胶囊编辑态残留');
   ok(/W\.formDir = 'out';/.test(APP), '家长记账默认记花销');
