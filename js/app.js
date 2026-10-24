@@ -5635,11 +5635,14 @@ function renderWalletKid() {
 }
 
 // ---------- 记账表单（孩子记花销 / 家长记账共用一套样式） ----------
-function wCatChipsHTML(dir, who, manage) {   // manage=true 才显示「🏷️ 管理」（家长）；孩子端用行内输入框直接加
+function wCatChipsHTML(dir, who, manage) {   // manage=true 才显示「🏷️ 管理」（家长）
   return wCats(dir).map(c =>
     `<button class="w-cat${W.formCat === c ? ' on' : ''}" data-wact="${who}cat" data-cat="${escHTML(c)}">${wIcon(c, dir)} ${escHTML(c)}</button>`).join('')
     + (manage ? `<button class="w-cat act" data-wact="${who}mgr">🏷️ 管理</button>` : '');
 }
+// 孩子端类别池：胶囊和别的类别一样大，点开就地变成小输入框
+const wKidAddChip = '<button class="w-cat act" data-wact="knewcat">＋ 自定义</button>';
+const wKidCatsHTML = () => wCatChipsHTML('out', 'k', false) + wKidAddChip;
 function wAmtField(id, who) {
   return `
     <div class="w-fld">
@@ -5656,9 +5659,7 @@ function openWalletKidForm() {
     <h3>🛒 我花了一笔</h3>
     <p class="form-hint">提交后等家长确认，确认了才从余额里扣</p>
     ${wAmtField('w-k-amt', 'k')}
-    <div class="w-fld"><label>类别</label><div class="w-cats" id="w-k-cats">${wCatChipsHTML('out', 'k', false)}</div>
-      <div class="w-addcat"><input id="w-k-newcat" type="text" maxlength="8" placeholder="没有想要的？输入新类别"><button data-wact="kaddcat" title="添加类别">＋</button></div>
-    </div>
+    <div class="w-fld"><label>类别</label><div class="w-cats" id="w-k-cats">${wKidCatsHTML()}</div></div>
     <div class="w-fld"><label>说明（可不填）</label><input id="w-k-note" type="text" maxlength="30" placeholder="买了什么"></div>
     <div class="input-row" style="margin-top:14px">
       <button class="btn-cancel" data-wact="kback" style="flex:1">返回</button>
@@ -5674,17 +5675,29 @@ function openWalletKidForm() {
       W.formCat = W.formCat === b.dataset.cat ? null : b.dataset.cat;
       document.querySelectorAll('#w-k-cats .w-cat').forEach(x => x.classList.toggle('on', x.dataset.cat === W.formCat));
     }
-    else if (act === 'kaddcat') {   // 孩子端行内加类别：加完自动选中，不用跳管理
+    else if (act === 'knewcat') {   // 「＋ 自定义」胶囊点开 → 就地变成同尺寸小输入框
+      const chip = document.querySelector('#w-k-cats [data-wact="knewcat"]');
+      if (!chip || document.getElementById('w-k-newcat')) return;
+      const span = document.createElement('span');
+      span.className = 'w-cat editing';
+      span.innerHTML = '<input id="w-k-newcat" type="text" maxlength="8" placeholder="新类别"><button type="button" data-wact="kaddcat">＋</button>';
+      chip.replaceWith(span);
+      const inp = span.querySelector('input');
+      inp.focus();
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); span.querySelector('[data-wact="kaddcat"]').click(); }
+      });
+    }
+    else if (act === 'kaddcat') {   // 加完自动选中，类别条恢复原样
       const inp = document.getElementById('w-k-newcat');
       const name = (inp.value || '').trim();
-      if (!name) { toast('先输入类别名'); return; }
+      if (!name) { toast('输入个名字'); return; }
       if (wCats('out').includes(name)) { toast('已经有这个类别了'); return; }
       S.walletCats = S.walletCats || readWalletCats({});
       S.walletCats.out = [name].concat(wCats('out'));
       walletSaveCats();
       W.formCat = name;
-      document.getElementById('w-k-cats').innerHTML = wCatChipsHTML('out', 'k', false);
-      inp.value = '';
+      document.getElementById('w-k-cats').innerHTML = wKidCatsHTML();
       toast(`已加上「${name}」并选中`);
     }
     else if (act === 'ksave') {
