@@ -266,7 +266,9 @@ module.exports.walletChecks = () => {
   ok(/function walletPanel\(/.test(APP) && APP.includes('wallet-range'), '家长中心有零花钱面板，余额口径可切近30天/累计');
   ok(/function openWalletKid\(/.test(APP) && APP.includes('我花了一笔'), '孩子端明细弹窗 + 右上角记花销按钮');
   ok(/function openWalletList\(/.test(APP) && /w-rowbtn del/.test(APP), '家长明细带删除按钮');
-  ok(/function openWalletMgr\(/.test(APP) && /mode === 'parent' \? `<button class="btn-icon" data-wact="mgrdel"/.test(APP), '管理类别：孩子只能加、家长能删');
+  ok(/function openWalletMgr\(/.test(APP) && /mode === 'parent' \? `<button class="btn-icon" data-wact="mgrdel"/.test(APP), '管理类别：删除入口只在家长端');
+  ok(/<button class="btn-cancel" data-wact="wclose" style="width:100%">关闭<\/button>/.test(APP.split('function renderWalletKid')[1].split('function ')[0]), '孩子端明细底部有关闭按钮（不会手势返回也能退出）');
+  ok(!/data-wact="kmgr"/.test(APP.split('function openWalletKidForm')[1].split('function openWalletList')[0]) && /kaddcat/.test(APP.split('function openWalletKidForm')[1].split('function openWalletList')[0]), '孩子表单不跳管理，类别用行内输入框+＋直接加');
   ok(/W\.formDir = 'out';/.test(APP), '家长记账默认记花销');
   // 数据层：demo / supabase 两个实现都要有，且必须导出
   ok(DB_SRC.includes('wallet_logs'), 'db.js 里有 wallet_logs 表');

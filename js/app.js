@@ -5607,6 +5607,7 @@ function openWalletKid() {
     }
     else if (act === 'kcat') { W.cat.kid = W.cat.kid === b.dataset.cat ? 'all' : b.dataset.cat; renderWalletKid(); }
     else if (act === 'kidform') openWalletKidForm();
+    else if (act === 'wclose') { wKidEl.remove(); wKidEl = null; }
   });
   renderWalletKid();
 }
@@ -5629,14 +5630,15 @@ function renderWalletKid() {
     </div>
     ${wFilterRowHTML('k', W.dir.kid, W.cat.kid)}
     <div class="w-rows">${rows.length ? rows.map(wRowHTML(false)).join('') : '<div class="empty-tip" style="padding:14px 0">没有符合条件的记录</div>'}</div>
-    <p class="form-hint" style="text-align:center;margin-top:10px">花钱点右上角「我花了一笔」，家长确认后才扣</p>`;
+    <p class="form-hint" style="text-align:center;margin-top:10px">花钱点右上角「我花了一笔」，家长确认后才扣</p>
+    <div class="input-row" style="margin-top:8px"><button class="btn-cancel" data-wact="wclose" style="width:100%">关闭</button></div>`;
 }
 
 // ---------- 记账表单（孩子记花销 / 家长记账共用一套样式） ----------
-function wCatChipsHTML(dir, who) {
+function wCatChipsHTML(dir, who, manage) {   // manage=true 才显示「🏷️ 管理」（家长）；孩子端用行内输入框直接加
   return wCats(dir).map(c =>
     `<button class="w-cat${W.formCat === c ? ' on' : ''}" data-wact="${who}cat" data-cat="${escHTML(c)}">${wIcon(c, dir)} ${escHTML(c)}</button>`).join('')
-    + `<button class="w-cat act" data-wact="${who}mgr">🏷️ 管理</button>`;
+    + (manage ? `<button class="w-cat act" data-wact="${who}mgr">🏷️ 管理</button>` : '');
 }
 function wAmtField(id, who) {
   return `
@@ -5654,7 +5656,9 @@ function openWalletKidForm() {
     <h3>🛒 我花了一笔</h3>
     <p class="form-hint">提交后等家长确认，确认了才从余额里扣</p>
     ${wAmtField('w-k-amt', 'k')}
-    <div class="w-fld"><label>类别</label><div class="w-cats" id="w-k-cats">${wCatChipsHTML('out', 'k')}</div></div>
+    <div class="w-fld"><label>类别</label><div class="w-cats" id="w-k-cats">${wCatChipsHTML('out', 'k', false)}</div>
+      <div class="w-addcat"><input id="w-k-newcat" type="text" maxlength="8" placeholder="没有想要的？输入新类别"><button data-wact="kaddcat" title="添加类别">＋</button></div>
+    </div>
     <div class="w-fld"><label>说明（可不填）</label><input id="w-k-note" type="text" maxlength="30" placeholder="买了什么"></div>
     <div class="input-row" style="margin-top:14px">
       <button class="btn-cancel" data-wact="kback" style="flex:1">返回</button>
@@ -5670,7 +5674,19 @@ function openWalletKidForm() {
       W.formCat = W.formCat === b.dataset.cat ? null : b.dataset.cat;
       document.querySelectorAll('#w-k-cats .w-cat').forEach(x => x.classList.toggle('on', x.dataset.cat === W.formCat));
     }
-    else if (act === 'kmgr') openWalletMgr('kid');
+    else if (act === 'kaddcat') {   // 孩子端行内加类别：加完自动选中，不用跳管理
+      const inp = document.getElementById('w-k-newcat');
+      const name = (inp.value || '').trim();
+      if (!name) { toast('先输入类别名'); return; }
+      if (wCats('out').includes(name)) { toast('已经有这个类别了'); return; }
+      S.walletCats = S.walletCats || readWalletCats({});
+      S.walletCats.out = [name].concat(wCats('out'));
+      walletSaveCats();
+      W.formCat = name;
+      document.getElementById('w-k-cats').innerHTML = wCatChipsHTML('out', 'k', false);
+      inp.value = '';
+      toast(`已加上「${name}」并选中`);
+    }
     else if (act === 'ksave') {
       const amt = Number(document.getElementById('w-k-amt').value);
       if (!(amt > 0)) { toast('先填一下金额'); return; }
@@ -5743,7 +5759,7 @@ function openWalletParentForm() {
       <button data-wact="pseg" data-d="in" class="${W.formDir === 'in' ? 'on' : ''}">💵 给零花钱</button>
     </div>
     ${wAmtField('w-p-amt', 'p')}
-    <div class="w-fld"><label>类别</label><div class="w-cats" id="w-p-cats">${wCatChipsHTML(W.formDir, 'p')}</div></div>
+    <div class="w-fld"><label>类别</label><div class="w-cats" id="w-p-cats">${wCatChipsHTML(W.formDir, 'p', true)}</div></div>
     <div class="w-fld"><label>日期</label><input id="w-p-date" type="date" value="${DB.today()}"></div>
     <div class="w-fld"><label>备注（可不填）</label><input id="w-p-note" type="text" maxlength="30" placeholder="备注"></div>
     <div class="input-row" style="margin-top:14px">
@@ -5760,7 +5776,7 @@ function openWalletParentForm() {
       W.formDir = b.dataset.d;
       W.formCat = null;
       wFormEl.querySelectorAll('.w-seg button').forEach(x => x.classList.toggle('on', x.dataset.d === W.formDir));
-      document.getElementById('w-p-cats').innerHTML = wCatChipsHTML(W.formDir, 'p');
+      document.getElementById('w-p-cats').innerHTML = wCatChipsHTML(W.formDir, 'p', true);
     }
     else if (act === 'pcat') {
       W.formCat = W.formCat === b.dataset.cat ? null : b.dataset.cat;
@@ -5848,9 +5864,9 @@ function renderWalletMgr(mode) {
 // ---------- 数据变了之后的联动 ----------
 function walletRefreshFormCats() {   // 表单还开着的话，类别行刷一下
   const el = document.getElementById('w-k-cats');
-  if (el && wKidFormEl) el.innerHTML = wCatChipsHTML('out', 'k');
+  if (el && wKidFormEl) el.innerHTML = wCatChipsHTML('out', 'k', false);
   const p = document.getElementById('w-p-cats');
-  if (p && wFormEl) p.innerHTML = wCatChipsHTML(W.formDir, 'p');
+  if (p && wFormEl) p.innerHTML = wCatChipsHTML(W.formDir, 'p', true);
 }
 function walletRefreshOpenLists() {  // 明细弹窗还开着的话，原地重渲染（不关不跳）
   if (wKidEl && document.body.contains(wKidEl)) renderWalletKid();
