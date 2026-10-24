@@ -161,7 +161,27 @@ module.exports = async function run() {
   // 跨域脚本抛的 "Script error." 没有文件名/堆栈，弹横幅只会吓人 → 只进日志
   ok(/crossNoDetail/.test(APP) && /if \(!crossNoDetail\) showErrBanner/.test(APP), '跨域无详情错误不弹横幅');
   // 用户明确要求标题里别出现具体天数（"第 N 天"会随时间变得奇怪）
-  ok(/\$\{escHTML\(name\)\}的训练家，今天也完成任务啦/.test(APP), '主标是「XX 的训练家，今天也完成任务啦」');
+  // 用户 2026-10-24 改稿：小字改成「佑佑的每日打卡」、后半句改成随机尾巴、图鉴收集→宝可梦收集
+  ok(/\$\{escHTML\(name\)\}的训练家，\$\{escHTML\(tail\)\}/.test(APP), '主标是「XX 的训练家，+ 随机尾巴」');
+  ok(/class="sc-kicker">\$\{escHTML\(CONFIG\.KID_NAME/.test(APP), '小字用 KID_NAME 的「XX的每日打卡」');
+  ok(/<span>宝可梦收集<\/span>/.test(APP) && !APP.includes('图鉴收集'), '统计标签改成「宝可梦收集」');
+  // 标题必须一行放下：字号按字符宽度算，超长自动缩（换行会把标题区顶高、整卡变长）
+  ok(/style="font-size:\$\{shareTitleSize\(titleText\)\}px"/.test(APP), '标题字号按长度自适应');
+  ok(/function shareTitleSize\(text\)/.test(APP) && /SHARE_TITLE_MIN/.test(APP), '字号有上下限钳制');
+  ok(/SHARE_TITLE_AVAIL\s*=\s*490/.test(APP), '可用宽度按卡片实际内宽算');
+  {
+    const tails = (APP.match(/const SHARE_TAILS = \[([\s\S]*?)\];/) || [])[1] || '';
+    const n = (tails.match(/'/g) || []).length / 2;
+    ok(n >= 8 && tails.includes('今天的任务也完成啦'), `标题尾巴够随机（${n} 句，含用户原话）`);
+    const lines = (APP.match(/const SHARE_LINES = \[([\s\S]*?)\];/) || [])[1] || '';
+    const m = (lines.match(/'/g) || []).length / 2;
+    ok(m >= 10, `通用台词池 ${m} 句`);
+    const typeBlock = (APP.match(/const SHARE_TYPE_LINES = \{([\s\S]*?)\n\};/) || [])[1] || '';
+    const t = (typeBlock.match(/'/g) || []).length / 2;
+    ok(t >= 34 && /fire:\s*\['[^']+',\s*'[^']+'\]/.test(APP), `属性专属台词 ${t} 句（每属性 2 句）`);
+    // 预览和截图是两次独立渲染：随机必须由 seed 派生，不能 Math.random
+    ok(!/SHARE_TAILS[^;]*Math\.random/.test(APP) && /shareHeadTail\(seed\)/.test(APP), '尾巴按 seed 挑，不用 Math.random');
+  }
   ok(!APP.includes('checkinDays'), '标题不再带天数（checkinDays 已删）');
   // 场景图是 height:auto，没写 aspect-ratio 的话：图未加载时高 0 → 缩放比按矮卡片算，
   // 图加载完卡片变 1039 高、缩放比不重算，卡片直接盖住底部的关闭/生成按钮

@@ -88,7 +88,7 @@ const MOTTO = [
   '今天的任务做完，明天就能捉新宝可梦！',
   '每只宝可梦都在等你点亮它的图鉴格子！',
   '出战宝可梦每次完成任务都会获得经验哦！',
-  '攒积分买精灵球，图鉴收集越多越开心！',
+  '攒积分买精灵球，宝可梦收集越多越开心！',
   '把必做任务全清，还有额外加分哦！',
   '选做任务全清也有加分，别小看它们！',
   '多日任务按时完成，奖励更丰厚！',
@@ -2860,7 +2860,7 @@ function kidShellHTML() {
   return `
     <div class="topbar">
       ${DEMO_ACTIVE ? '<div class="demo-tag">🎬 演示模式</div>' : ''}
-      <div class="title">🏝️ 佑佑的任务岛<small>${mottoText()}</small></div>
+      <div class="title">🏝️ ${escHTML(CONFIG.KID_NAME || '佑佑')}的任务岛<small>${mottoText()}</small></div>
       <div class="badges">
         <span class="badge">⭐ <b id="pt">0</b></span>
         <span class="badge ball">🔴 <b id="bl">0</b></span>
@@ -5272,37 +5272,69 @@ function sharePmNo() {
 
 // 成就图底部那句话：按当前宝可梦的属性挑一句，再掺几句通用的
 // 用 sharePick.quoteSeed 决定取哪一句（不用 Math.random：预览和截图必须同一句）
+// 底部那句话：专业叫法就是 **flavor text（风味文案 / 风味文本）**——宝可梦图鉴、卡牌
+// 下面那句描述就是它（项目里 js/pokemon-flavor.js 存的就是这个）。
+// 这里每个属性给两句，再和通用池混在一起按 seed 挑一句。
+// **不用 Math.random**：预览和截图是两次独立渲染，必须挑到同一句。
 const SHARE_TYPE_LINES = {
-  fire:     '火焰越烧越旺，今天的努力也一样。',
-  water:    '水一直在流，所以你从没停下。',
-  electric: '攒够的每一分，都会变成电光照亮你。',
-  grass:    '像种子一样，每天长一点点。',
-  ice:      '冷静一点，一步一个脚印也能登顶。',
-  fighting: '每一拳都算数，每一次坚持都记录在案。',
-  poison:   '慢慢来，你的积累正在起效。',
-  ground:   '大地从不着急，却托起了所有山。',
-  flying:   '飞得高不难，难的是每天都起飞。',
-  psychic:  '心里想着的事，会被一步一步做到。',
-  bug:      '小小的努力叠起来，就是一张大网。',
-  rock:     '一点点硬，最后就坚不可摧。',
-  ghost:    '看不见的坚持，最后都会显形。',
-  dragon:   '真正的力量，是一天一天长出来的。',
-  steel:    '把自己磨得结实，风雨都撞不弯。',
-  fairy:    '温柔地坚持，也是一种了不起的力量。',
-  normal:   '平凡的日子做好平凡的事，就很了不起。',
+  fire:     ['火焰越烧越旺，今天的努力也一样。', '心里有火，就不怕路长。'],
+  water:    ['水一直在流，所以你从没停下。', '水不急，但它能穿石。'],
+  electric: ['攒够的每一分，都会变成电光照亮你。', '蓄力够久，一次就亮。'],
+  grass:    ['像种子一样，每天长一点点。', '慢慢长，总有一天会开花。'],
+  ice:      ['冷静一点，一步一个脚印也能登顶。', '再冷的天，也冻不住往前走的人。'],
+  fighting: ['每一拳都算数，每一次坚持都记录在案。', '每次站起来，都比昨天强一点。'],
+  poison:   ['慢慢来，你的积累正在起效。', '一点点渗进去，最后都算数。'],
+  ground:   ['大地从不着急，却托起了所有山。', '稳稳站着，就是最硬的底气。'],
+  flying:   ['飞得高不难，难的是每天都起飞。', '风再大，也挡不住想飞的心。'],
+  psychic:  ['心里想着的事，会被一步一步做到。', '想清楚了，就一定能做到。'],
+  bug:      ['小小的努力叠起来，就是一张大网。', '一步一步爬，也能爬到顶上。'],
+  rock:     ['一点点硬，最后就坚不可摧。', '硬碰硬，你从来没输过。'],
+  ghost:    ['看不见的坚持，最后都会显形。', '悄悄努力，然后吓大家一跳。'],
+  dragon:   ['真正的力量，是一天一天长出来的。', '传说，也是从第一天开始的。'],
+  steel:    ['把自己磨得结实，风雨都撞不弯。', '千锤百炼，才叫靠得住。'],
+  fairy:    ['温柔地坚持，也是一种了不起的力量。', '心里柔软，脚步才走得稳。'],
+  normal:   ['平凡的日子做好平凡的事，就很了不起。', '普通的一天，也值得被记下来。'],
 };
 const SHARE_LINES = [
-  '记录不会说谎，你已经走了这么远了。',
-  '今天的这一步，就是明天的底气。',
-  '和它一起，把每一天都打一遍卡。',
-  '慢慢来，但要一直来。',
-  '训练家和宝可梦，都是一天一天变强的。',
+  '记录不会说谎，你已经走了这么远了。', '今天的这一步，就是明天的底气。',
+  '和它一起，把每一天都打一遍卡。',   '慢慢来，但要一直来。',
+  '训练家和宝可梦，都是一天一天变强的。', '不用一下子变强，只要每天都不退。',
+  '你已经比昨天的自己强了。',        '每一格进度，都是你亲手填上的。',
+  '累了就歇一会儿，明天继续出发。',    '坚持这件事，它一直看在眼里。',
+  '一起加油，我们还有很长的路要走。',  '把今天做完，就赢过了昨天的自己。',
+];
+// 标题后半句：固定「XX的训练家，」+ 随机尾巴（第一条是用户定的原话）
+const SHARE_TAILS = [
+  '今天的任务也完成啦',
+  '今天又变强了一点',
+  '今天的努力都存好了',
+  '又往前走了一步',
+  '今天也没偷懒哦',
+  '今天的训练全部完成',
+  '又攒下了一天的坚持',
+  '今天也稳稳打完了',
+  '今天比昨天更厉害了',
+  '今天的关卡都通关啦',
 ];
 function shareQuote(no, seed) {
-  const own = SHARE_TYPE_LINES[pmType(no)];
-  const pool = own ? [own].concat(SHARE_LINES) : SHARE_LINES.slice();
+  const own = SHARE_TYPE_LINES[pmType(no)] || [];
+  const pool = own.concat(SHARE_LINES);
   const i = Math.abs(Math.floor(seed || 0)) % pool.length;
   return pool[i];
+}
+// 标题尾巴和底部台词用同一个 seed 派生，但乘个质数错开，免得永远是固定搭配
+function shareHeadTail(seed) {
+  const i = Math.abs(Math.floor(seed || 0) * 7 + 3) % SHARE_TAILS.length;
+  return SHARE_TAILS[i];
+}
+// 标题必须一行放下：中文按 1em、英文数字按 .56em 估宽（再加 letter-spacing 的 2%），
+// 装不下就把字号往下压。**不能靠 CSS 自动换行**——换行会把标题区顶高、整张卡变长。
+const SHARE_TITLE_AVAIL = 490;          // 卡片 560 - 外框 6 - 内边距 48 - 标题块 8 - 余量
+const SHARE_TITLE_MAX = 27, SHARE_TITLE_MIN = 18;
+function shareTitleSize(text) {
+  const units = [...String(text)].reduce((s, ch) => s + (/[\x00-\xff]/.test(ch) ? .56 : 1), 0);
+  if (!units) return SHARE_TITLE_MAX;
+  return Math.max(SHARE_TITLE_MIN, Math.min(SHARE_TITLE_MAX, Math.floor(SHARE_TITLE_AVAIL / (units * 1.02))));
 }
 
 // 固定装饰点（不用随机：每次预览和截图必须长得一模一样）
@@ -5325,7 +5357,10 @@ function shareCardHTML() {
   const name = (pm && (pm.name || info.name)) || '皮卡丘';
   const doneTotal = totalDoneCount();
   const dexN = dexGotCount();
-  const quote = shareQuote(no, sharePick.quoteSeed || 0);
+  const seed = sharePick.quoteSeed || 0;
+  const quote = shareQuote(no, seed);
+  const tail = shareHeadTail(seed);
+  const titleText = `${name}的训练家，${tail}`;
   const pal = sharePalette(no);
   return `
     <div class="share-card${scene ? ' scene-mode' : ''}">
@@ -5335,8 +5370,8 @@ function shareCardHTML() {
         ${SHARE_SPARKS.map(([x, y, s]) => `<i class="sc-spark" style="left:${x}%;top:${y}%;font-size:${s}px">✦</i>`).join('')}
         <div class="sc-body">
           <div class="sc-head">
-            <div class="sc-kicker">每日打卡 <span class="sc-kicker-date">${DB.today()}</span></div>
-            <div class="sc-title">${escHTML(name)}的训练家，今天也完成任务啦</div>
+            <div class="sc-kicker">${escHTML(CONFIG.KID_NAME || '佑佑')}的每日打卡 <span class="sc-kicker-date">${DB.today()}</span></div>
+            <div class="sc-title" style="font-size:${shareTitleSize(titleText)}px">${escHTML(name)}的训练家，${escHTML(tail)}</div>
           </div>
           <div class="sc-stage">
             <img class="sc-art${scene ? ' scene' : ''}" src="${src}" alt="">
@@ -5345,7 +5380,7 @@ function shareCardHTML() {
           <div class="sc-tag">${stageText(pm || {})} · ${theme.name}属性</div>
           <div class="share-stats">
             <div class="sc-stat"><b>${doneTotal}</b><span>累计完成任务</span></div>
-            <div class="sc-stat"><b>${dexN}<em>/151</em></b><span>图鉴收集</span></div>
+            <div class="sc-stat"><b>${dexN}<em>/151</em></b><span>宝可梦收集</span></div>
           </div>
           <div class="sc-foot"><i></i>${escHTML(quote)}<i></i></div>
         </div>
