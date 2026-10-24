@@ -5303,16 +5303,19 @@ const SHARE_LINES = [
   '累了就歇一会儿，明天继续出发。',    '坚持这件事，它一直看在眼里。',
   '一起加油，我们还有很长的路要走。',  '把今天做完，就赢过了昨天的自己。',
 ];
-// 标题后半句：固定「XX的训练家，」+ 随机尾巴（第一条是用户定的原话）
+// 标题后半句：固定「XX的小训练家，」+ 随机尾巴（第一条是用户定的原话）
+// 名字后面这半句**只在这里定义一次**：标题渲染和字号测量都用它，
+// 以前两处各写一份，改了一处页面上看不到变化（用户踩过）
+const SHARE_TITLE_MID = '的小训练家，';
 const SHARE_TAILS = [
   '今天的任务也完成啦',
   '今天又变强了一点',
   '今天的努力都存好了',
   '又往前走了一步',
   '今天也没偷懒哦',
-  '今天的训练全部完成',
+  '今天的训练已全部完成',
   '又攒下了一天的坚持',
-  '今天也稳稳打完了',
+  '今天也稳稳打完卡了',
   '今天比昨天更厉害了',
   '今天的关卡都通关啦',
 ];
@@ -5360,7 +5363,7 @@ function shareCardHTML() {
   const seed = sharePick.quoteSeed || 0;
   const quote = shareQuote(no, seed);
   const tail = shareHeadTail(seed);
-  const titleText = `${name}的训练家，${tail}`;
+  const titleText = `${name}${SHARE_TITLE_MID}${tail}`;
   const pal = sharePalette(no);
   return `
     <div class="share-card${scene ? ' scene-mode' : ''}">
@@ -5371,7 +5374,7 @@ function shareCardHTML() {
         <div class="sc-body">
           <div class="sc-head">
             <div class="sc-kicker">${escHTML(CONFIG.KID_NAME || '佑佑')}的每日打卡 <span class="sc-kicker-date">${DB.today()}</span></div>
-            <div class="sc-title" style="font-size:${shareTitleSize(titleText)}px">${escHTML(name)}的训练家，${escHTML(tail)}</div>
+            <div class="sc-title" style="font-size:${shareTitleSize(titleText)}px">${escHTML(name)}${escHTML(SHARE_TITLE_MID)}${escHTML(tail)}</div>
           </div>
           <div class="sc-stage">
             <img class="sc-art${scene ? ' scene' : ''}" src="${src}" alt="">

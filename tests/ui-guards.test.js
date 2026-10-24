@@ -162,7 +162,11 @@ module.exports = async function run() {
   ok(/crossNoDetail/.test(APP) && /if \(!crossNoDetail\) showErrBanner/.test(APP), '跨域无详情错误不弹横幅');
   // 用户明确要求标题里别出现具体天数（"第 N 天"会随时间变得奇怪）
   // 用户 2026-10-24 改稿：小字改成「佑佑的每日打卡」、后半句改成随机尾巴、图鉴收集→宝可梦收集
-  ok(/\$\{escHTML\(name\)\}的训练家，\$\{escHTML\(tail\)\}/.test(APP), '主标是「XX 的训练家，+ 随机尾巴」');
+  // 用户改「小训练家」时只改了一处、页面上没生效：中间那句以前在「算字号」和「渲染」里各写了一遍。
+  // 现在只有 SHARE_TITLE_MID 一个来源，两处都引用它
+  ok(/const SHARE_TITLE_MID = '的小训练家，'/.test(APP), '主标中间的「的小训练家，」只有一个定义');
+  ok(/\$\{escHTML\(name\)\}\$\{escHTML\(SHARE_TITLE_MID\)\}\$\{escHTML\(tail\)\}/.test(APP), '渲染用的是 SHARE_TITLE_MID（不是写死的一份）');
+  ok(/const titleText = `\$\{name\}\$\{SHARE_TITLE_MID\}\$\{tail\}`/.test(APP), '量宽度也用同一份，两处不会再走散');
   ok(/class="sc-kicker">\$\{escHTML\(CONFIG\.KID_NAME/.test(APP), '小字用 KID_NAME 的「XX的每日打卡」');
   ok(/<span>宝可梦收集<\/span>/.test(APP) && !APP.includes('图鉴收集'), '统计标签改成「宝可梦收集」');
   // 标题必须一行放下：字号按字符宽度算，超长自动缩（换行会把标题区顶高、整卡变长）
@@ -187,7 +191,7 @@ module.exports = async function run() {
   // 图加载完卡片变 1039 高、缩放比不重算，卡片直接盖住底部的关闭/生成按钮
   ok(/\.sc-art\.scene\s*\{[^}]*aspect-ratio:\s*400 \/ 559/.test(CSS), '场景图固定宽高比（图片未加载也有高度）');
   ok(/function watchShareCard\(/.test(APP) && /new ResizeObserver/.test(APP), '卡片变高后自动重算缩放');
-  ok(/\$\{escHTML\(name\)\}的训练家/.test(APP) && !/和 \$\{escHTML\(name\)\} 一起/.test(APP), '旧主标已替换');
+  ok(!APP.includes('的训练家，') || APP.includes("SHARE_TITLE_MID"), '旧主标（训练家）已换掉');
   ok(/\.share-card\s*\{[^}]*width:\s*560px/.test(CSS), '卡片改窄到 560（原 640，太扁）');
   ok(/\.sc-art\s*\{[^}]*height:\s*412px/.test(CSS), '立绘放大到 412，宝可梦当主角');
   ok(/\.share-scaler\s*\{[^}]*width:\s*560px/.test(CSS), '预览缩放框与卡片同宽（否则会盖住底部按钮）');
