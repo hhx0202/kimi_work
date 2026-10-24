@@ -269,7 +269,7 @@ module.exports.walletChecks = () => {
   ok(/function openWalletMgr\(/.test(APP) && /mode === 'parent' \? `<button class="btn-icon" data-wact="mgrdel"/.test(APP), '管理类别：删除入口只在家长端');
   ok(/<button class="btn-cancel" data-wact="wclose" style="width:100%">关闭<\/button>/.test(APP.split('function renderWalletKid')[1].split('function ')[0]), '孩子端明细底部有关闭按钮（不会手势返回也能退出）');
   ok(!/data-wact="kmgr"/.test(APP.split('function openWalletKidForm')[1].split('function openWalletList')[0]) && /kaddcat/.test(APP.split('function openWalletKidForm')[1].split('function openWalletList')[0]), '孩子表单不跳管理，类别就地新增');
-  ok(/data-wact="knewcat">＋ 自定义</.test(APP.split('function openWalletKidForm')[1].split('function openWalletList')[0]) && !APP.includes('w-addcat'), '新增入口是「＋ 自定义」胶囊（和类别一样大），没有大输入框');
+  ok(/data-wact="knewcat">＋ 自定义</.test(APP) && /wKidCatsHTML\(\)/.test(APP.split('function openWalletKidForm')[1].split('function openWalletList')[0]) && !APP.includes('w-addcat'), '新增入口是「＋ 自定义」胶囊（和类别一样大），没有大输入框');
   ok(/W\.formDir = 'out';/.test(APP), '家长记账默认记花销');
   // 数据层：demo / supabase 两个实现都要有，且必须导出
   ok(DB_SRC.includes('wallet_logs'), 'db.js 里有 wallet_logs 表');
