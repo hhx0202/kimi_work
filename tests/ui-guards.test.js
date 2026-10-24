@@ -268,8 +268,10 @@ module.exports.walletChecks = () => {
   ok(/function openWalletList\(/.test(APP) && /w-rowbtn del/.test(APP), '家长明细带删除按钮');
   ok(/function openWalletMgr\(/.test(APP) && /mode === 'parent' \? `<button class="btn-icon" data-wact="mgrdel"/.test(APP), '管理类别：删除入口只在家长端');
   ok(/<button class="btn-cancel" data-wact="wclose" style="width:100%">关闭<\/button>/.test(APP.split('function renderWalletKid')[1].split('function ')[0]), '孩子端明细底部有关闭按钮（不会手势返回也能退出）');
-  ok(!/data-wact="kmgr"/.test(APP.split('function openWalletKidForm')[1].split('function openWalletList')[0]) && /kaddcat/.test(APP.split('function openWalletKidForm')[1].split('function openWalletList')[0]), '孩子表单不跳管理，类别就地新增');
-  ok(/data-wact="knewcat">＋ 自定义</.test(APP) && /wKidCatsHTML\(\)/.test(APP.split('function openWalletKidForm')[1].split('function openWalletList')[0]) && !APP.includes('w-addcat'), '新增入口是「＋ 自定义」胶囊（和类别一样大），没有大输入框');
+  ok(/uiSelectHTML\('w-k-cat'/.test(APP.split('function openWalletKidForm')[1].split('function openWalletList')[0]) && !/data-wact="kmgr"/.test(APP.split('function openWalletKidForm')[1].split('function openWalletList')[0]), '孩子表单类别是下拉（不跳管理）');
+  ok(/function wKidCatPicked\(/.test(APP) && /'__new'/.test(APP), '下拉默认其他 + 最近使用排序 + 最下面「＋ 自定义…」');
+  ok(/\.w-amt-row \{[^}]*max-width:\s*190px/.test(CSS), '金额输入框收窄到 190px');
+  ok(!APP.includes('w-addcat') && !APP.includes('w-cat editing'), '没有大输入框/胶囊编辑态残留');
   ok(/W\.formDir = 'out';/.test(APP), '家长记账默认记花销');
   // 数据层：demo / supabase 两个实现都要有，且必须导出
   ok(DB_SRC.includes('wallet_logs'), 'db.js 里有 wallet_logs 表');

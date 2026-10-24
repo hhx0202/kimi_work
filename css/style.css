@@ -2163,7 +2163,7 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
 .w-fld input[type="text"], .w-fld input[type="date"] { width: 100%; height: 44px; border: 1.5px solid #e3e8ef;
   border-radius: 12px; padding: 0 12px; font: inherit; font-size: 14px; margin: 0; box-sizing: border-box; background: #fff; }
 .w-amt-row { display: flex; align-items: center; gap: 6px; border: 1.5px solid #e3e8ef; border-radius: 12px;
-  padding: 0 12px; background: #fff; }
+  padding: 0 12px; background: #fff; max-width: 190px; }
 .w-amt-row:focus-within { border-color: #66bb6a; }
 .w-amt-row i { font-style: normal; font-size: 16px; font-weight: 900; color: #2e9e5b; }
 .w-amt-row input { border: 0 !important; outline: none; flex: 1; height: 44px; font-size: 17px; font-weight: 800;
@@ -2176,13 +2176,13 @@ details.log-fold .when { font-size: 12px; color: var(--ink-soft); flex: none; ma
   font-size: 12.5px; font-weight: 700; color: #546e7a; cursor: pointer; }
 .w-cat.on { border-color: #66bb6a; background: #eaf7ef; color: #1f7a45; }
 .w-cat.act { border-style: dashed; color: #90a4ae; }
-/* 孩子端「＋ 自定义」点开后的编辑态：和胶囊同高的小输入框 + 圆形 ＋ */
-.w-cat.editing { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; }
-.w-cat.editing input { width: 88px; height: 24px; border: 0; outline: none; margin: 0; padding: 0;
-  font: inherit; font-size: 12.5px; font-weight: 700; color: #37474f; background: transparent; }
-.w-cat.editing button { width: 24px; height: 24px; border: 0; border-radius: 50%; padding: 0;
-  background: #eaf7ef; color: #1f7a45; font: inherit; font-size: 14px; font-weight: 900; cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+/* 孩子端下拉里选了「＋ 自定义…」后出现的小输入行（窄的，不占满） */
+.w-newrow { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+.w-newrow input { width: 150px; height: 36px; border: 1.5px solid #e3e8ef; border-radius: 10px;
+  padding: 0 10px; font: inherit; font-size: 12.5px; margin: 0; background: #fff; box-sizing: border-box; }
+.w-newrow button { width: 36px; height: 36px; border: 0; border-radius: 10px; background: #eaf7ef;
+  color: #1f7a45; font: inherit; font-size: 16px; font-weight: 900; cursor: pointer; flex: 0 0 auto; }
+.w-newrow button:active { transform: scale(.94); }
 /* 家长中心：待确认卡 / 管理类别行 */
 .w-pend-panel .w-pend-row .btn-icon { flex: 0 0 auto; }
 .w-amt { font-size: 13.5px; font-weight: 900; flex: 0 0 auto; }
