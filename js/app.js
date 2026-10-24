@@ -1411,6 +1411,7 @@ const NOTICE_META = {
   minus: { ic: '➖', cls: 'minus', tag: '扣分' },
   points: { ic: '🏅', cls: 'points', tag: '积分到账' },
   bonus: { ic: '🎁', cls: 'bonus', tag: '奖励积分' },
+  wallet: { ic: '💰', cls: 'wallet', tag: '零花钱' },
 };
 const NOTICE_MAX = 20;
 function noticeTime(n) {
@@ -1450,7 +1451,8 @@ function pushNotice(type, text, sub, items) {
     };
     const lines = (Array.isArray(items) ? items : [])
       .filter(it => it && String(it.title || '').trim())
-      .map(it => ({ title: String(it.title).trim().slice(0, 40), pts: Math.round(Number(it.pts) || 0) }));
+      .map(it => ({ title: String(it.title).trim().slice(0, 40), pts: Math.round(Number(it.pts) || 0),
+        ...(it.money !== undefined && it.money !== null ? { money: String(it.money).slice(0, 14) } : {}) }));
     if (lines.length) {
       rec.items = lines.slice(0, 8);            // 最多列 8 行，再多会把通知卡撑到要滑半天
       if (lines.length > 8) rec.more = lines.length - 8;
@@ -1478,8 +1480,10 @@ function noticesHTML() {
         const itemsHTML = rows.length ? `
             <ul class="notice-items">
               ${rows.map(it => {
-                const pts = Math.round(Number(it.pts) || 0);
-                return `<li><span>${escHTML(it.title)}</span><b class="${pts < 0 ? 'minus' : ''}">${pts > 0 ? '+' : ''}${pts}</b></li>`;
+                const isMoney = it.money !== undefined && it.money !== null;   // 零花钱明细：金额自带 ¥ 和正负号
+                const minus = isMoney ? /^[−-]/.test(String(it.money)) : (Math.round(Number(it.pts) || 0) < 0);
+                const val = isMoney ? escHTML(it.money) : (() => { const p = Math.round(Number(it.pts) || 0); return (p > 0 ? '+' : '') + p; })();
+                return `<li><span>${escHTML(it.title)}</span><b class="${minus ? 'minus' : ''}">${val}</b></li>`;
               }).join('')}
               ${Number(n.more) > 0 ? `<li class="more">…还有 ${Number(n.more)} 项</li>` : ''}
             </ul>` : '';
@@ -5778,6 +5782,11 @@ function openWalletParentForm() {
         S.walletLogs.push(row);
         wFormEl.remove(); wFormEl = null;
         toast(`已记下 ${W.formDir === 'in' ? '+' : '−'}¥${wYuan(amt)}`);
+        // 孩子端通知：给钱 / 家长代记花销都发一条
+        pushNotice('wallet',
+          W.formDir === 'in' ? '家长给你零花钱啦' : '家长记了一笔花销',
+          row.note || '',
+          [{ title: `${row.cat}${row.note ? ' · ' + row.note : ''}`, money: `${W.formDir === 'in' ? '+' : '−'}¥${wYuan(row.amt)}` }]);
         render();
         walletRefreshOpenLists();
       } catch (err) { b.disabled = false; toast('没记上：' + err.message); }
@@ -5856,6 +5865,8 @@ async function walletConfirm(id) {
     await DB.confirmWalletLog(id);
     l.pending = false;
     toast(`已确认「${l.cat} −¥${wYuan(l.amt)}」`);
+    pushNotice('wallet', '你记的花销家长确认啦', '已从零花钱里扣',
+      [{ title: `${l.cat}${l.note ? ' · ' + l.note : ''}`, money: `−¥${wYuan(l.amt)}` }]);
     render();
     walletRefreshOpenLists();
   } catch (e) { toast('没确认上：' + e.message); }
@@ -5868,6 +5879,8 @@ async function walletReject(id) {
     await DB.deleteWalletLog(id);
     S.walletLogs.splice(i, 1);
     toast(`已拒绝「${one.cat}」，没扣钱`);
+    pushNotice('wallet', '你记的花销家长没通过（没扣钱）', one.note || '',
+      [{ title: one.cat, money: `¥${wYuan(one.amt)}` }]);
     render();
     walletRefreshOpenLists();
   } catch (e) { toast('没删掉：' + e.message); }
